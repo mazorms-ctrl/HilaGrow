@@ -4,7 +4,8 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
-  base: '/GROW/',
+  // GitHub Pages is case-sensitive; repo is served under "/Grow/"
+  base: '/Grow/',
   plugins: [react()],
   resolve: {
     alias: {
