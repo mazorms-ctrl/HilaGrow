@@ -23,7 +23,7 @@ function loadFromStorage<T>(key: string, defaultValue: T): T {
   try {
     const stored = localStorage.getItem(key);
     if (!stored) return defaultValue;
-    return JSON.parse(stored, (key, value) => {
+    return JSON.parse(stored, (_key, value) => {
       // Revive Date objects
       if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}.\d{3}Z$/.test(value)) {
         return new Date(value);

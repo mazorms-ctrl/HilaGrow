@@ -340,7 +340,6 @@ function App() {
   const searchInputRef = useRef<HTMLInputElement>(null);
   
   // Auto-save status tracking
-  const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [showSavedIndicator, setShowSavedIndicator] = useState(false);
 
   const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';

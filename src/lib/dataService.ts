@@ -7,7 +7,6 @@ import {
 } from './mockData';
 import type { Project, Group, Task, Milestone, TaskProgress, Person, TaskWatcher } from '@/types';
 import {
-  saveProject,
   loadProject,
   saveGroups,
   loadGroups,
