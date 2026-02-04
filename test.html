@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>בדיקה - GROW</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            direction: rtl;
+        }
+        .container {
+            text-align: center;
+            background: rgba(255,255,255,0.1);
+            padding: 50px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+        }
+        h1 { font-size: 3em; margin: 0; }
+        p { font-size: 1.5em; margin-top: 20px; }
+        .success { color: #4ade80; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>✅ השרת עובד!</h1>
+        <p>זהו דף בדיקה פשוט</p>
+        <p class="success">אם אתה רואה את זה - הבעיה היא ב-React</p>
+        <p style="margin-top: 40px; font-size: 1.2em;">
+            חזור ל: <a href="/" style="color: #fbbf24; text-decoration: underline;">localhost:5175</a>
+        </p>
+    </div>
+</body>
+</html>

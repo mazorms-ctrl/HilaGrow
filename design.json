@@ -1,0 +1,539 @@
+{
+  "meta": {
+    "name": "GROW+ Design System",
+    "version": "1.0.0",
+    "lastUpdated": "2026-02-03",
+    "source": {
+      "reference": "Screenshot: work-items list / issues table (RTL Hebrew UI)",
+      "intent": "Enable AI to replicate this exact look and density across the app."
+    },
+    "projectAlignment": {
+      "existingTokensFile": "src/styles/tokens.ts",
+      "existingUiPrimitives": [
+        "src/components/ui/Card.tsx",
+        "src/components/ui/Chip.tsx",
+        "src/components/ui/Progress.tsx",
+        "src/components/ui/Button.tsx",
+        "src/components/ui/Drawer.tsx",
+        "src/components/ui/StatPill.tsx",
+        "src/components/ui/SectionHeader.tsx"
+      ],
+      "note": "This document is the creative-direction layer above tokens: it defines the visual grammar, component anatomy, and interaction rules."
+    }
+  },
+  "global": {
+    "directionality": {
+      "default": "rtl",
+      "language": "he-IL",
+      "rules": [
+        "Use logical CSS properties (padding-inline, margin-inline, inset-inline) to avoid hard-coded left/right.",
+        "Primary reading flow is right-to-left: titles, metadata clusters, and badges should read from right edge inward.",
+        "Numbers are still LTR; prevent awkward bidi by wrapping numeric fragments in <span dir='ltr'> when embedded in Hebrew."
+      ]
+    },
+    "designPersonality": {
+      "keywords": [
+        "soft",
+        "clean",
+        "compact",
+        "rounded",
+        "calm",
+        "information-dense but not noisy",
+        "priority-aware via gentle color tints",
+        "minimal chrome"
+      ],
+      "antiKeywords": [
+        "heavy shadows",
+        "harsh dividers",
+        "neon saturation",
+        "busy gradients inside list rows",
+        "overly large icons",
+        "excessive animation"
+      ],
+      "corePrinciples": [
+        "Hierarchy by weight + tint: titles are dark and semibold; metadata is smaller; priority is expressed as subtle tinted surfaces and small badges.",
+        "Pills everywhere: use pill chips/badges to encode category, status, owner, and priority consistently.",
+        "Calm surfaces: prefer white/near-white base with softly tinted row backgrounds and 1px borders.",
+        "Compact 8pt grid: tight but breathable spacing; align to 4/8/12/16/20/24px increments.",
+        "RTL-first layout: component anatomy must look intentional in Hebrew without mirroring artifacts."
+      ]
+    }
+  },
+  "foundations": {
+    "spacing": {
+      "grid": "8pt",
+      "scalePx": [4, 8, 12, 16, 20, 24, 32, 48],
+      "defaults": {
+        "pagePadding": { "mobile": 16, "desktop": 24 },
+        "sectionGap": 20,
+        "cardGap": 12,
+        "rowPadding": { "x": 16, "y": 12 },
+        "pillPadding": { "x": 10, "y": 2 },
+        "chipGap": 8,
+        "iconTextGap": 6
+      }
+    },
+    "radii": {
+      "system": "rounded, friendly",
+      "valuesPx": {
+        "xs": 6,
+        "sm": 8,
+        "md": 12,
+        "lg": 16,
+        "xl": 20,
+        "pill": 9999
+      },
+      "usageRules": [
+        "List rows use md–lg radius (12–16px).",
+        "Pills, chips, priority badges, owner pill: always fully rounded (pill).",
+        "Progress bars: fully rounded track and fill."
+      ]
+    },
+    "typography": {
+      "fontFamily": {
+        "primary": "Inter",
+        "hebrewPreferred": ["Rubik", "Heebo", "Assistant"],
+        "fallback": "-apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif",
+        "rule": "Use one sans family across UI; ensure Hebrew glyphs render crisply. If Inter is kept, include a Hebrew-friendly fallback early in the stack."
+      },
+      "scalePx": {
+        "xs": 12,
+        "sm": 13,
+        "base": 14,
+        "md": 15,
+        "lg": 16,
+        "xl": 18,
+        "h3": 20,
+        "h2": 24
+      },
+      "weights": {
+        "regular": 400,
+        "medium": 500,
+        "semibold": 600,
+        "bold": 700
+      },
+      "lineHeights": {
+        "tight": 1.2,
+        "normal": 1.45,
+        "relaxed": 1.6
+      },
+      "hierarchyRules": [
+        "Page title: h2/24px, bold, right-aligned in RTL.",
+        "Row title: 15–16px, semibold, single line clamp if needed.",
+        "Metadata line: 12–13px, medium; secondary text uses lower contrast.",
+        "Counts and priorities: 12–13px, bold inside small badges/pills."
+      ],
+      "numerals": {
+        "tabular": true,
+        "rule": "Prefer tabular numerals for progress fractions (e.g., 2/4) and counts (פתוחות 3) to prevent jitter."
+      }
+    },
+    "color": {
+      "intent": "Neutral base + semantic tints. Priority is expressed with soft background tints and tiny badges, not big blocks of saturated color.",
+      "neutrals": {
+        "pageBg": "#FFFFFF",
+        "surface": "#FFFFFF",
+        "surfaceMuted": "#F8FAFC",
+        "border": "rgba(15,23,42,0.08)",
+        "divider": "rgba(15,23,42,0.06)",
+        "textPrimary": "#0F172A",
+        "textSecondary": "#475569",
+        "textTertiary": "#64748B",
+        "icon": "rgba(15,23,42,0.45)"
+      },
+      "priority": {
+        "P1": { "bgTint": "#FEE2E2", "border": "#FECACA", "text": "#DC2626" },
+        "P2": { "bgTint": "#FED7AA", "border": "#FDBA74", "text": "#EA580C" },
+        "P3": { "bgTint": "#DBEAFE", "border": "#BAE6FD", "text": "#0284C7" }
+      },
+      "statusTags": {
+        "welfarePurple": { "bg": "#EDE9FE", "text": "#7C3AED" },
+        "internsBlue": { "bg": "#DBEAFE", "text": "#2563EB" },
+        "signsGreen": { "bg": "#DCFCE7", "text": "#16A34A" }
+      },
+      "progress": {
+        "track": "rgba(15,23,42,0.08)",
+        "fillSuccess": "#22C55E",
+        "fillPrimary": "#3B82F6",
+        "fillWarning": "#F59E0B",
+        "fillDanger": "#EF4444"
+      },
+      "tintMixingRule": {
+        "rule": "When tinting large surfaces (rows), mix priority bgTint with white at 10–25% opacity. Keep text neutral; only badges/labels take strong semantic colors."
+      }
+    },
+    "elevationAndBorders": {
+      "borders": {
+        "default": "1px solid rgba(15,23,42,0.08)",
+        "tinted": "1px solid {priority.border}",
+        "pill": "1px solid rgba(15,23,42,0.10)"
+      },
+      "shadows": {
+        "default": "none or very subtle",
+        "hover": "0 6px 18px rgba(15,23,42,0.06)"
+      },
+      "rules": [
+        "In list rows, prioritize border + tint over shadow.",
+        "Use shadows sparingly for hover/drag states only."
+      ]
+    },
+    "iconography": {
+      "style": "thin line icons (Lucide-like), small, calm contrast",
+      "sizesPx": { "xs": 12, "sm": 14, "md": 16, "lg": 18 },
+      "rules": [
+        "Icons should never dominate the row; they exist to hint meaning (owner, disclosure).",
+        "Use a single icon weight across the app; default stroke looks best at 1.5–2px."
+      ]
+    },
+    "motion": {
+      "durationsMs": { "fast": 150, "base": 200, "slow": 300 },
+      "easing": "cubic-bezier(0.4, 0, 0.2, 1)",
+      "rules": [
+        "Animations are micro-interactions only (hover, disclosure, progress fill).",
+        "No bouncy motion; keep it professional and understated."
+      ]
+    },
+    "accessibility": {
+      "contrast": {
+        "minimum": "WCAG AA",
+        "rule": "Do not rely on tint alone for meaning; always pair priority/status with a label (e.g., P1)."
+      },
+      "focus": {
+        "style": "2–4px soft ring",
+        "color": "rgba(59,130,246,0.20)",
+        "rule": "All interactive pills/buttons/selects must have visible focus."
+      },
+      "hitTargets": {
+        "minimumHeightPx": 36,
+        "rule": "Even in compact density, maintain 36px minimum for primary clickable controls."
+      }
+    }
+  },
+  "layoutPatterns": {
+    "pageHeaderWithFilter": {
+      "intent": "Right-aligned title + left-side filter control in RTL (visually balanced).",
+      "anatomy": [
+        "Title (right)",
+        "Optional actions row",
+        "Filter select (left cluster)"
+      ],
+      "spec": {
+        "titleStyle": { "fontSizePx": 24, "fontWeight": 700, "color": "neutrals.textPrimary" },
+        "filterHeightPx": 36,
+        "gapPx": 12
+      }
+    },
+    "workItemList": {
+      "intent": "A vertical stack of tinted rows where each row reads like a compact card.",
+      "spec": {
+        "containerBg": "neutrals.pageBg",
+        "rowGapPx": 10,
+        "rowRadiusPx": 12,
+        "rowPaddingPx": { "x": 16, "y": 12 },
+        "rowMinHeightPx": 72,
+        "rowBorder": "1px solid rgba(15,23,42,0.06)"
+      },
+      "rowGrid": {
+        "columns": [
+          {
+            "name": "disclosure",
+            "widthPx": 28,
+            "alignment": "center"
+          },
+          {
+            "name": "progressBlock",
+            "widthPx": 190,
+            "alignment": "start",
+            "contents": ["fractionText", "progressBar", "openCountLabel"]
+          },
+          {
+            "name": "mainContent",
+            "flex": true,
+            "alignment": "end",
+            "contents": ["titleLine", "metaLine"]
+          }
+        ],
+        "note": "In RTL, mainContent anchors to the right; progressBlock sits to its left; disclosure icon stays far left."
+      }
+    }
+  },
+  "components": {
+    "Text": {
+      "variants": {
+        "pageTitle": { "fontSizePx": 24, "fontWeight": 700, "color": "neutrals.textPrimary" },
+        "rowTitle": { "fontSizePx": 16, "fontWeight": 600, "color": "neutrals.textPrimary" },
+        "meta": { "fontSizePx": 13, "fontWeight": 500, "color": "neutrals.textSecondary" },
+        "hint": { "fontSizePx": 12, "fontWeight": 500, "color": "neutrals.textTertiary" },
+        "dangerCount": { "fontSizePx": 13, "fontWeight": 700, "color": "priority.P1.text" }
+      },
+      "rules": [
+        "Clamp rowTitle to 1 line; allow meta to wrap to 2 lines max.",
+        "Keep meta labels (e.g., \"הבא:\") slightly lower contrast than values."
+      ]
+    },
+    "Select": {
+      "intent": "A compact filter control (e.g., \"כל התעדכונים\") with a down chevron.",
+      "sizes": { "heightPx": 36, "minWidthPx": 160 },
+      "style": {
+        "bg": "#FFFFFF",
+        "border": "1px solid rgba(15,23,42,0.10)",
+        "radiusPx": 10,
+        "paddingPx": { "x": 12, "y": 8 },
+        "text": { "fontSizePx": 14, "fontWeight": 500, "color": "neutrals.textPrimary" },
+        "icon": { "sizePx": 14, "color": "neutrals.icon" }
+      },
+      "states": {
+        "hover": { "border": "1px solid rgba(15,23,42,0.16)", "bg": "#FFFFFF" },
+        "focus": { "ring": "rgba(59,130,246,0.20)" },
+        "disabled": { "opacity": 0.5 }
+      }
+    },
+    "Badge": {
+      "intent": "Small, high-signal label (priority P1/P2/P3).",
+      "anatomy": ["text"],
+      "size": { "heightPx": 20, "paddingPx": { "x": 8, "y": 2 }, "radiusPx": 9999 },
+      "variants": {
+        "P1": { "bg": "priority.P1.bgTint", "border": "1px solid priority.P1.border", "text": "priority.P1.text" },
+        "P2": { "bg": "priority.P2.bgTint", "border": "1px solid priority.P2.border", "text": "priority.P2.text" },
+        "P3": { "bg": "priority.P3.bgTint", "border": "1px solid priority.P3.border", "text": "priority.P3.text" }
+      },
+      "typography": { "fontSizePx": 12, "fontWeight": 700 }
+    },
+    "Chip": {
+      "intent": "Pill tag for category/status (purple/blue/green).",
+      "anatomy": ["optionalIcon", "text"],
+      "size": { "heightPx": 22, "paddingPx": { "x": 10, "y": 2 }, "radiusPx": 9999 },
+      "typography": { "fontSizePx": 12, "fontWeight": 700 },
+      "variants": {
+        "categoryPurple": { "bg": "statusTags.welfarePurple.bg", "text": "statusTags.welfarePurple.text", "border": "1px solid rgba(124,58,237,0.15)" },
+        "roleBlue": { "bg": "statusTags.internsBlue.bg", "text": "statusTags.internsBlue.text", "border": "1px solid rgba(37,99,235,0.15)" },
+        "tagGreen": { "bg": "statusTags.signsGreen.bg", "text": "statusTags.signsGreen.text", "border": "1px solid rgba(22,163,74,0.15)" },
+        "neutral": { "bg": "neutrals.surfaceMuted", "text": "neutrals.textSecondary", "border": "1px solid rgba(15,23,42,0.10)" }
+      },
+      "rules": [
+        "Chips cluster near the title; keep chip count small (1–2) to avoid noise.",
+        "Always use pill radius and bold small text to match screenshot density."
+      ]
+    },
+    "OwnerPill": {
+      "intent": "A subtle identification pill with a user icon and name.",
+      "anatomy": ["userIcon", "name"],
+      "size": { "heightPx": 22, "paddingPx": { "x": 10, "y": 2 }, "radiusPx": 9999 },
+      "style": {
+        "bg": "#F1F5F9",
+        "border": "1px solid rgba(15,23,42,0.08)",
+        "text": "neutrals.textPrimary",
+        "icon": { "sizePx": 14, "color": "neutrals.icon" }
+      },
+      "typography": { "fontSizePx": 12, "fontWeight": 600 }
+    },
+    "ProgressBar": {
+      "intent": "A thin, calm progress bar inside the row’s progress block.",
+      "size": { "heightPx": 6, "radiusPx": 9999 },
+      "style": { "trackBg": "progress.track" },
+      "variants": {
+        "success": { "fill": "progress.fillSuccess" },
+        "primary": { "fill": "progress.fillPrimary" },
+        "warning": { "fill": "progress.fillWarning" },
+        "danger": { "fill": "progress.fillDanger" }
+      },
+      "animation": { "durationMs": 300, "easing": "foundations.motion.easing" },
+      "rules": [
+        "Track is always visible; fill color communicates progress status.",
+        "No gradient in the fill for this list view; keep it solid and clean."
+      ]
+    },
+    "DisclosureIconButton": {
+      "intent": "A tiny chevron for expanding/collapsing a row (leftmost control).",
+      "size": { "hitAreaPx": 28, "iconPx": 16 },
+      "style": {
+        "bg": "transparent",
+        "radiusPx": 8,
+        "iconColor": "neutrals.icon"
+      },
+      "states": {
+        "hover": { "bg": "rgba(15,23,42,0.04)" },
+        "active": { "bg": "rgba(15,23,42,0.06)" },
+        "expanded": { "rotationDeg": 180 }
+      }
+    },
+    "WorkItemRow": {
+      "intent": "Primary list row used in the screenshot: tinted card-like row with title, chips, owner, priority, progress, and meta line.",
+      "anatomy": [
+        "DisclosureIconButton (far left)",
+        "ProgressBlock (fraction + progress bar + open count)",
+        "TitleLine (right cluster): Title + PriorityBadge",
+        "TagLine (right cluster): Chips + OwnerPill",
+        "MetaLine (below): \"הבא:\" + next step text (muted)"
+      ],
+      "density": "compact",
+      "size": {
+        "minHeightPx": 72,
+        "radiusPx": 12,
+        "paddingPx": { "x": 16, "y": 12 },
+        "rowGapPx": 10
+      },
+      "surfaceRules": {
+        "base": {
+          "bg": "#FFFFFF",
+          "border": "1px solid rgba(15,23,42,0.06)"
+        },
+        "priorityTinted": {
+          "P1": { "bg": "rgba(254,226,226,0.35)", "border": "1px solid rgba(254,202,202,0.85)" },
+          "P2": { "bg": "rgba(254,215,170,0.25)", "border": "1px solid rgba(253,186,116,0.75)" },
+          "P3": { "bg": "rgba(219,234,254,0.25)", "border": "1px solid rgba(186,230,253,0.75)" }
+        }
+      },
+      "states": {
+        "default": { "shadow": "none" },
+        "hover": { "shadow": "foundations.elevationAndBorders.shadows.hover", "translateYPx": -1 },
+        "selected": { "border": "1px solid rgba(59,130,246,0.35)", "bg": "rgba(219,234,254,0.25)" },
+        "expanded": { "metaLineVisible": true, "detailsArea": "rendered below as nested content" }
+      },
+      "typography": {
+        "title": "Text.variants.rowTitle",
+        "meta": "Text.variants.hint",
+        "fraction": { "fontSizePx": 13, "fontWeight": 600, "color": "neutrals.textSecondary" },
+        "openCountLabel": "Text.variants.dangerCount"
+      },
+      "contentRules": [
+        "Title and priority badge are aligned on the same baseline (priority badge typically at the far right of the row in RTL).",
+        "Chips and owner pill form a single line cluster; wrap to a second line only on small screens.",
+        "The meta line starts with a label (\"הבא:\") followed by a bullet or separator (\"•\") then the next step."
+      ]
+    },
+    "Card": {
+      "intent": "General purpose container. For this screenshot style, prefer 'flat tinted' over heavy glass blur.",
+      "variants": {
+        "flat": {
+          "bg": "#FFFFFF",
+          "border": "1px solid rgba(15,23,42,0.08)",
+          "shadow": "none",
+          "radiusPx": 12
+        },
+        "tinted": {
+          "bg": "rgba(15,23,42,0.02)",
+          "border": "1px solid rgba(15,23,42,0.06)",
+          "shadow": "none",
+          "radiusPx": 12
+        }
+      }
+    },
+    "Button": {
+      "intent": "Secondary in this UI; avoid loud buttons inside list rows. Use outline/ghost for filters and tertiary actions.",
+      "sizes": {
+        "sm": { "heightPx": 32, "radiusPx": 10, "fontSizePx": 13 },
+        "md": { "heightPx": 36, "radiusPx": 12, "fontSizePx": 14 }
+      },
+      "variants": {
+        "primary": { "bg": "#3B82F6", "text": "#FFFFFF" },
+        "outline": { "bg": "#FFFFFF", "border": "1px solid rgba(15,23,42,0.12)", "text": "neutrals.textPrimary" },
+        "ghost": { "bg": "transparent", "text": "neutrals.textSecondary" },
+        "danger": { "bg": "#EF4444", "text": "#FFFFFF" }
+      },
+      "states": {
+        "hover": { "bgDelta": "slightly darker/lighter", "shadow": "subtle", "translateYPx": -1 },
+        "disabled": { "opacity": 0.5 }
+      }
+    },
+    "Drawer": {
+      "intent": "A details panel opened from a row click. Should feel like an extension of the list, not a different product.",
+      "style": {
+        "bg": "#FFFFFF",
+        "radiusPx": 16,
+        "border": "1px solid rgba(15,23,42,0.08)",
+        "header": { "titleFontSizePx": 18, "titleWeight": 700 },
+        "sectionSpacingPx": 16
+      },
+      "rules": [
+        "Keep the drawer content compact and pill-based; reuse chips/badges for metadata.",
+        "Use the same progress bar component and the same priority tint mapping."
+      ]
+    },
+    "Toast": {
+      "intent": "Brief feedback with low visual noise.",
+      "style": {
+        "bg": "#FFFFFF",
+        "border": "1px solid rgba(15,23,42,0.10)",
+        "shadow": "0 10px 30px rgba(15,23,42,0.10)",
+        "radiusPx": 12,
+        "paddingPx": 12
+      },
+      "variants": {
+        "success": { "accent": "#22C55E" },
+        "warning": { "accent": "#F59E0B" },
+        "danger": { "accent": "#EF4444" },
+        "info": { "accent": "#3B82F6" }
+      }
+    },
+    "FormField": {
+      "intent": "Inputs that match the calm, clean aesthetic.",
+      "label": { "fontSizePx": 13, "fontWeight": 600, "color": "neutrals.textSecondary" },
+      "helperText": { "fontSizePx": 12, "fontWeight": 500, "color": "neutrals.textTertiary" },
+      "errorText": { "fontSizePx": 12, "fontWeight": 600, "color": "priority.P1.text" }
+    },
+    "Input": {
+      "intent": "Simple, compact input field.",
+      "size": { "heightPx": 36, "radiusPx": 10, "paddingPx": { "x": 12, "y": 8 } },
+      "style": {
+        "bg": "#FFFFFF",
+        "border": "1px solid rgba(15,23,42,0.10)",
+        "placeholder": "rgba(15,23,42,0.35)"
+      },
+      "states": {
+        "hover": { "border": "1px solid rgba(15,23,42,0.16)" },
+        "focus": { "ring": "rgba(59,130,246,0.20)", "border": "1px solid rgba(59,130,246,0.35)" },
+        "error": { "border": "1px solid rgba(239,68,68,0.45)", "ring": "rgba(239,68,68,0.15)" }
+      }
+    },
+    "Table": {
+      "intent": "If a tabular view is used instead of rows, it must still feel like the same system.",
+      "style": {
+        "rowBg": "#FFFFFF",
+        "rowHoverBg": "rgba(15,23,42,0.02)",
+        "rowBorder": "1px solid rgba(15,23,42,0.06)",
+        "headerBg": "#F8FAFC",
+        "headerText": "neutrals.textSecondary"
+      },
+      "rules": [
+        "Prefer pills in cells (status, owner, priority) instead of plain text.",
+        "Keep row height compact (44–52px)."
+      ]
+    },
+    "Skeleton": {
+      "intent": "Loading placeholders matching the soft UI.",
+      "style": {
+        "bg": "rgba(15,23,42,0.06)",
+        "highlight": "rgba(15,23,42,0.10)",
+        "radiusPx": 9999
+      }
+    }
+  },
+  "implementationHints": {
+    "howToUseThisFile": [
+      "Treat this as the single source of truth for UI look: when generating new UI, pick components from 'components' and follow anatomy, sizes, and states.",
+      "When uncertain, default to: rounded pills, 1px borders, subtle tints, compact spacing, and neutral text."
+    ],
+    "tokenMappingToProject": {
+      "note": "Your project already defines tokens in src/styles/tokens.ts. Prefer those values where possible.",
+      "priority": {
+        "P1": "colors.priority.p1 (bg/text/border)",
+        "P2": "colors.priority.p2 (bg/text/border)",
+        "P3": "colors.priority.p3 (bg/text/border)"
+      },
+      "text": {
+        "primary": "colors.text.primary",
+        "secondary": "colors.text.secondary",
+        "tertiary": "colors.text.tertiary"
+      },
+      "spacing": "spacing (xs..xxxxl)",
+      "radius": "radius (sm..full)",
+      "shadows": "shadows (xs..xxl)"
+    },
+    "rtlChecklist": [
+      "Use flex with logical ordering; avoid hard-coded margin-left/right.",
+      "Place the most important label (title) on the right edge.",
+      "Ensure chevrons rotate correctly and still indicate expand/collapse in RTL."
+    ]
+  }
+}
