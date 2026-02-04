@@ -1322,7 +1322,7 @@ function App() {
           className="md:gap-4"
           >
             <img 
-              src="/hillel-yaffe-logo.png?v=2" 
+              src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
               alt="הלל יפה"
               className="h-[56px] sm:h-[64px] md:h-[56px] lg:h-[64px] w-auto max-w-[170px] sm:max-w-[220px] md:max-w-[200px] lg:max-w-[220px] object-contain shrink-0"
             />
