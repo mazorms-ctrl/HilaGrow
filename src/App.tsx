@@ -488,10 +488,8 @@ function App() {
   useEffect(() => {
     try {
       localStorage.setItem('grow.app.tasks', JSON.stringify(tasks));
-      const now = new Date();
-      setLastSaved(now);
       setShowSavedIndicator(true);
-      console.log('💾 Auto-saved tasks to localStorage at', now.toLocaleTimeString('he-IL'));
+      console.log('💾 Auto-saved tasks to localStorage at', new Date().toLocaleTimeString('he-IL'));
       
       // Hide "saved" indicator after 2 seconds
       const timer = setTimeout(() => setShowSavedIndicator(false), 2000);
