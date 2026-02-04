@@ -7,6 +7,9 @@ import {
   createTask,
   updateTask,
   deleteTask,
+  createGroup,
+  updateGroup,
+  deleteGroup,
   createMilestone,
   updateMilestone,
   deleteMilestone,
@@ -19,7 +22,7 @@ import {
   addTaskWatcher,
   removeTaskWatcher,
 } from '@/lib/dataService';
-import type { Task, Milestone, TaskWithRelations, Person } from '@/types';
+import type { Task, Milestone, TaskWithRelations, Person, Group } from '@/types';
 import { useMemo } from 'react';
 
 // Query keys
@@ -103,6 +106,44 @@ export function useTask(taskId: string | null) {
 
 // --- Mutations ---
 
+// Groups mutations
+export function useCreateGroup() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: createGroup,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+    },
+  });
+}
+
+export function useUpdateGroup() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<Group> }) =>
+      updateGroup(id, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+    },
+  });
+}
+
+export function useDeleteGroup() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: deleteGroup,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.groups });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks });
+      queryClient.invalidateQueries({ queryKey: queryKeys.milestones });
+    },
+  });
+}
+
+// Tasks mutations
 export function useCreateTask() {
   const queryClient = useQueryClient();
 

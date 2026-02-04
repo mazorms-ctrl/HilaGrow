@@ -4,11 +4,19 @@ import { TasksView } from '@/components/tasks/TasksView';
 import { BoardView } from '@/components/board/BoardView';
 import { TreeView } from '@/components/tree/TreeView';
 import { TaskDrawer } from '@/components/tasks/TaskDrawer';
+import { AutoSaveIndicator } from '@/components/AutoSaveIndicator';
 import { useUIStore } from '@/store/uiStore';
+import { useAutoSaveStatus } from '@/hooks/useAutoSaveStatus';
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 
 function App() {
+  console.log('🎨 Rendering App component');
+  
   const { viewMode, setViewMode } = useUIStore();
+  const { isSaving, lastSaved } = useAutoSaveStatus();
+  
+  console.log('📊 View mode:', viewMode);
+  console.log('💾 Auto-save status:', { isSaving, lastSaved });
 
   return (
     <ErrorBoundary>
@@ -23,6 +31,7 @@ function App() {
               <h1 className="text-xl font-bold text-neutral-900">
                 GROW - מחזור ב מובילים שינוי
               </h1>
+              <AutoSaveIndicator isSaving={isSaving} lastSaved={lastSaved} />
             </div>
 
             <div className="flex items-center gap-2">

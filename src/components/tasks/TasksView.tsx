@@ -1,14 +1,48 @@
-import { useMemo } from 'react';
-import { useTasksWithRelations } from '@/hooks/useData';
+import { useMemo, useState } from 'react';
+import { useTasksWithRelations, useCreateTask, useGroups } from '@/hooks/useData';
 import { useUIStore } from '@/store/uiStore';
 import { TaskCard } from './TaskCard';
-import { Loader2, Search } from 'lucide-react';
+import { Loader2, Search, Plus } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { Drawer } from '@/components/ui/Drawer';
 
 export function TasksView() {
   const { data: tasks = [], isLoading } = useTasksWithRelations();
+  const { data: groups = [] } = useGroups();
   const { searchQuery, setSearchQuery, openTaskDrawer } = useUIStore();
+  const createTask = useCreateTask();
+  
+  // New task form state
+  const [showNewTaskDrawer, setShowNewTaskDrawer] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskDescription, setNewTaskDescription] = useState('');
+  const [newTaskGroupId, setNewTaskGroupId] = useState('');
+  const [newTaskOwner, setNewTaskOwner] = useState('');
+
+  const handleCreateTask = () => {
+    if (!newTaskTitle.trim() || !newTaskGroupId) return;
+
+    createTask.mutate(
+      {
+        title: newTaskTitle.trim(),
+        description: newTaskDescription.trim() || undefined,
+        groupId: newTaskGroupId,
+        ownerName: newTaskOwner.trim() || undefined,
+        progressMode: 'auto',
+        order: tasks.length,
+      },
+      {
+        onSuccess: () => {
+          setNewTaskTitle('');
+          setNewTaskDescription('');
+          setNewTaskGroupId('');
+          setNewTaskOwner('');
+          setShowNewTaskDrawer(false);
+        },
+      }
+    );
+  };
 
   // Filter tasks by search
   const filteredTasks = useMemo(() => {
@@ -64,13 +98,21 @@ export function TasksView() {
             className="pr-10"
           />
         </div>
+        <Button 
+          variant="primary" 
+          size="md"
+          onClick={() => setShowNewTaskDrawer(true)}
+        >
+          <Plus className="h-5 w-5 ml-1" />
+          משימה חדשה
+        </Button>
         <Button variant="outline" size="md">
           סינון
         </Button>
       </div>
 
       {/* Summary stats */}
-      <div className="flex gap-4">
+      <div className="flex gap-4" dir="rtl">
         <div className="rounded-lg border border-primary-200 bg-primary-50 px-4 py-3">
           <div className="text-2xl font-bold text-primary-700">
             {tasks.length}
@@ -130,6 +172,85 @@ export function TasksView() {
           ))}
         </div>
       )}
+
+      {/* New Task Drawer */}
+      <Drawer
+        open={showNewTaskDrawer}
+        onClose={() => setShowNewTaskDrawer(false)}
+        title="משימה חדשה"
+      >
+        <div className="space-y-4" dir="rtl">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-700">
+              כותרת
+            </label>
+            <Input
+              value={newTaskTitle}
+              onChange={(e) => setNewTaskTitle(e.target.value)}
+              placeholder="שם המשימה"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-700">
+              תיאור
+            </label>
+            <textarea
+              value={newTaskDescription}
+              onChange={(e) => setNewTaskDescription(e.target.value)}
+              placeholder="תיאור מפורט של המשימה..."
+              rows={4}
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-700">
+              קטגוריה
+            </label>
+            <select
+              value={newTaskGroupId}
+              onChange={(e) => setNewTaskGroupId(e.target.value)}
+              className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm focus:border-primary-500 focus:outline-none focus:ring-2 focus:ring-primary-200"
+            >
+              <option value="">בחר קטגוריה...</option>
+              {groups.map((group) => (
+                <option key={group.id} value={group.id}>
+                  {group.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-700">
+              אחראי
+            </label>
+            <Input
+              value={newTaskOwner}
+              onChange={(e) => setNewTaskOwner(e.target.value)}
+              placeholder="שם האחראי (אופציונלי)"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-4">
+            <Button
+              onClick={handleCreateTask}
+              disabled={!newTaskTitle.trim() || !newTaskGroupId || createTask.isPending}
+              className="flex-1"
+            >
+              {createTask.isPending ? 'יוצר...' : 'צור משימה'}
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowNewTaskDrawer(false)}
+              className="flex-1"
+            >
+              ביטול
+            </Button>
+          </div>
+        </div>
+      </Drawer>
     </div>
   );
 }

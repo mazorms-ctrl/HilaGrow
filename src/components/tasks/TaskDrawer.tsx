@@ -8,6 +8,7 @@ import { useUIStore } from '@/store/uiStore';
 import { 
   useTask, 
   useUpdateTask, 
+  useDeleteTask,
   useUpdateMilestone, 
   useCreateMilestone, 
   useDeleteMilestone,
@@ -24,6 +25,7 @@ export function TaskDrawer() {
   const { selectedTaskId, isDrawerOpen, closeTaskDrawer } = useUIStore();
   const { data: task, isLoading } = useTask(selectedTaskId);
   const updateTask = useUpdateTask();
+  const deleteTask = useDeleteTask();
   const updateMilestone = useUpdateMilestone();
   const createMilestone = useCreateMilestone();
   const deleteMilestone = useDeleteMilestone();
@@ -96,6 +98,18 @@ export function TaskDrawer() {
   const handleDeleteMilestone = (milestoneId: string) => {
     if (confirm('האם למחוק מיילסטון זה?')) {
       deleteMilestone.mutate(milestoneId);
+    }
+  };
+
+  const handleDeleteTask = () => {
+    if (!task) return;
+    
+    if (confirm(`האם למחוק את המשימה "${task.title}"? פעולה זו תמחק גם את כל המיילסטונים הקשורים.`)) {
+      deleteTask.mutate(task.id, {
+        onSuccess: () => {
+          closeTaskDrawer();
+        },
+      });
     }
   };
 
@@ -200,14 +214,24 @@ export function TaskDrawer() {
             />
           </div>
 
-          {/* Save button */}
-          <Button
-            onClick={handleSaveBasicInfo}
-            disabled={updateTask.isPending}
-            className="w-full"
-          >
-            {updateTask.isPending ? 'שומר...' : 'שמור שינויים'}
-          </Button>
+          {/* Save and Delete buttons */}
+          <div className="flex gap-2">
+            <Button
+              onClick={handleSaveBasicInfo}
+              disabled={updateTask.isPending}
+              className="flex-1"
+            >
+              {updateTask.isPending ? 'שומר...' : 'שמור שינויים'}
+            </Button>
+            <Button
+              onClick={handleDeleteTask}
+              disabled={deleteTask.isPending}
+              variant="outline"
+              className="border-danger-300 text-danger-600 hover:bg-danger-50"
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
 
           {/* Progress section */}
           <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-4">

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { TreePine, X } from 'lucide-react';
+import { TreePine, X, Cloud, CheckCircle2 } from 'lucide-react';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
@@ -297,7 +297,19 @@ interface MedicalTask {
 }
 
 function App() {
-  const [tasks, setTasks] = useState<MedicalTask[]>(initialTasks as MedicalTask[]);
+  // Load tasks from localStorage, fallback to initialTasks
+  const [tasks, setTasks] = useState<MedicalTask[]>(() => {
+    try {
+      const stored = localStorage.getItem('grow.app.tasks');
+      if (stored) {
+        return JSON.parse(stored);
+      }
+    } catch (error) {
+      console.error('Error loading tasks from localStorage:', error);
+    }
+    return initialTasks as MedicalTask[];
+  });
+  
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('dashboard');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -326,6 +338,10 @@ function App() {
   const [activeStep, setActiveStep] = useState<number>(0);
   const [categoryModalFilter, setCategoryModalFilter] = useState<null | 'p1' | 'overdue' | 'blockers' | 'unassigned' | 'kpi'>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  
+  // Auto-save status tracking
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [showSavedIndicator, setShowSavedIndicator] = useState(false);
 
   const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
@@ -467,6 +483,23 @@ function App() {
       if (next.length === prev.length && next.every((v, i) => v === prev[i])) return prev;
       return next;
     });
+  }, [tasks]);
+
+  // 💾 AUTO-SAVE: Save tasks to localStorage whenever they change
+  useEffect(() => {
+    try {
+      localStorage.setItem('grow.app.tasks', JSON.stringify(tasks));
+      const now = new Date();
+      setLastSaved(now);
+      setShowSavedIndicator(true);
+      console.log('💾 Auto-saved tasks to localStorage at', now.toLocaleTimeString('he-IL'));
+      
+      // Hide "saved" indicator after 2 seconds
+      const timer = setTimeout(() => setShowSavedIndicator(false), 2000);
+      return () => clearTimeout(timer);
+    } catch (error) {
+      console.error('Error saving tasks to localStorage:', error);
+    }
   }, [tasks]);
 
   // Auto-set active step to first incomplete when opening drawer
@@ -1268,7 +1301,7 @@ function App() {
           position: 'relative',
           gap: '12px'
         }}
-        className="pl-3 pr-[72px] md:!px-8 h-[80px] md:h-[80px] lg:h-[88px] justify-center md:justify-between flex-nowrap"
+        className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px] md:justify-between flex-nowrap"
         >
           {/* Desktop Navigation - Left side on desktop */}
           <div className="desktop-only" style={{ 
@@ -1313,21 +1346,26 @@ function App() {
             ))}
           </div>
 
-          {/* Logo and Title - Centered on mobile, centered on desktop */}
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'row', 
-            alignItems: 'center',
-            gap: '6px',
-            textAlign: 'center',
-            minWidth: 0
-          }}
-          className="md:gap-4"
+          {/* Mobile spacer to balance menu button - only visible on mobile */}
+          <div 
+            className="mobile-only"
+            style={{ 
+              minWidth: '54px', // Match menu button width (44px + some margin)
+              flexShrink: 0 
+            }} 
+          />
+
+          {/* Logo and Title - Centered on all screen sizes */}
+          <div 
+            className="flex-1 md:flex-1 flex items-center justify-center gap-2 md:gap-3 min-w-0"
           >
             <img 
               src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
               alt="הלל יפה"
-              className="h-[56px] sm:h-[64px] md:h-[56px] lg:h-[64px] w-auto max-w-[170px] sm:max-w-[220px] md:max-w-[200px] lg:max-w-[220px] object-contain shrink-0"
+              style={{
+                filter: 'brightness(1) contrast(1.1)'
+              }}
+              className="h-[48px] md:h-[56px] lg:h-[64px] w-auto max-w-[120px] md:max-w-[180px] lg:max-w-[220px] object-contain shrink-0"
             />
             <div style={{ 
               display: 'flex', 
@@ -1341,32 +1379,63 @@ function App() {
                 style={{ 
                   fontWeight: typography.fontWeight.black, 
                   color: '#000000',
-                  letterSpacing: '-1px',
+                  letterSpacing: '-0.5px',
                   fontFamily: typography.fontFamily,
-                  textAlign: 'right'
+                  textAlign: 'right',
+                  margin: 0,
+                  padding: 0,
+                  whiteSpace: 'nowrap'
                 }}
-                className="self-center md:self-start md:-translate-x-0.5 m-0 md:-mb-1 truncate leading-none text-[26px] sm:text-3xl md:text-3xl lg:text-4xl md:px-6"
+                className="leading-none text-[19px] md:text-3xl lg:text-4xl"
               >
                 GROW
               </h1>
               <p 
                 style={{ 
-                  color: '#000000', 
-                  marginTop: 1,
-                  marginBottom: 1,
-                  paddingTop: 1,
-                  paddingBottom: 1,
-                  paddingLeft: 2,
-                  paddingRight: 2,
+                  color: '#1a1a1a', 
+                  margin: 0,
+                  marginTop: '2px',
+                  padding: 0,
                   fontWeight: typography.fontWeight.medium,
                   fontFamily: typography.fontFamily,
-                  fontSize: '14px'
+                  whiteSpace: 'nowrap'
                 }}
-                className="self-center md:self-start md:-mt-1 truncate leading-tight text-xs sm:text-sm md:text-base lg:text-lg md:px-6"
+                className="leading-tight text-[9.5px] md:text-sm lg:text-base"
               >
                 פיתוח וחיזוק מחוברות ארגונית
               </p>
             </div>
+          </div>
+
+          {/* Auto-Save Indicator */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px',
+            borderRadius: '8px',
+            background: showSavedIndicator ? '#f0fdf4' : '#f8fafc',
+            border: showSavedIndicator ? '1px solid #86efac' : '1px solid #e2e8f0',
+            transition: 'all 0.3s ease',
+            fontSize: '13px',
+            fontWeight: '500',
+            color: showSavedIndicator ? '#16a34a' : '#64748b',
+            flexShrink: 0
+          }}
+          className="hidden md:flex lg:gap-2 lg:px-3"
+          title={showSavedIndicator ? 'נשמר' : 'שמירה אוטומטית מופעלת'}
+          >
+            {showSavedIndicator ? (
+              <>
+                <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
+                <span className="hidden lg:inline">נשמר</span>
+              </>
+            ) : (
+              <>
+                <Cloud size={16} style={{ color: '#94a3b8' }} />
+                <span className="hidden lg:inline">שמירה אוטומטית</span>
+              </>
+            )}
           </div>
 
           {/* Mobile Menu Button - Right side on mobile */}
