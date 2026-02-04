@@ -298,7 +298,7 @@ interface MedicalTask {
 
 function App() {
   const [tasks, setTasks] = useState<MedicalTask[]>(initialTasks as MedicalTask[]);
-  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('rows');
+  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('dashboard');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
@@ -914,7 +914,10 @@ function App() {
         overflowX: 'auto',
         overflowY: 'auto',
         position: 'relative',
-        height: '100%',
+        // Use concrete viewport height for full tree view (mobile fix)
+        height: isDashboard ? '100%' : 'calc(100dvh - 110px)',
+        minHeight: isDashboard ? undefined : 'calc(100vh - 110px)',
+        width: '100%',
         WebkitOverflowScrolling: 'touch',
         touchAction: 'pan-x pan-y',
         MozUserSelect: 'none',
@@ -2771,9 +2774,7 @@ function App() {
           {viewMode === 'tree' && (
             <div style={{ 
               position: 'relative',
-              width: '100%',
-              height: '100%',
-              overflow: 'hidden'
+              width: '100%'
             }}>
               {renderTreeDiagram('full')}
               
