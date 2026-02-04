@@ -20,7 +20,7 @@ git status
 echo.
 
 echo [3/4] Creating commit...
-git commit -m "Initial commit: GROW+ project website"
+git commit -m "Fix: Update GROW CRM to working version"
 if errorlevel 1 (
     echo.
     echo Note: If you see "nothing to commit", files may already be committed.
