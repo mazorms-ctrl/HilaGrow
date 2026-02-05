@@ -81,7 +81,7 @@ function dbRowToMedicalTask(
   }
 
   return {
-    id: parseInt(taskRow.id.replace(/-/g, '').slice(0, 8), 16), // Simple numeric ID from UUID
+    id: parseInt(taskRow.id.replace(/-/g, '').slice(-8), 16), // Use last 8 chars for uniqueness
     title: taskRow.title,
     description: taskRow.description || '',
     category: groupRow.name,
@@ -256,8 +256,8 @@ export async function updateTask(task: MedicalTask): Promise<void> {
   }
 
   // Convert numeric ID back to UUID format (simplified)
-  const taskId = task.id.toString(16).padStart(8, '0');
-  const taskUuid = `20000000-0000-0000-0000-0000${taskId}`;
+  const taskIdHex = task.id.toString(16).padStart(8, '0');
+  const taskUuid = `20000000-0000-0000-0000-0000${taskIdHex}`;
 
   // Prepare metadata
   const metadata = {
@@ -442,6 +442,32 @@ export async function deleteTask(taskId: number): Promise<void> {
   const taskUuid = `20000000-0000-0000-0000-0000${taskIdHex}`;
 
   const { error } = await supabase.from('tasks').delete().eq('id', taskUuid);
+
+  if (error) throw error;
+}
+
+/**
+ * Function to rename a category/group in Supabase
+ */
+export async function renameCategory(oldName: string, newName: string): Promise<void> {
+  const { error } = await supabase
+    .from('groups')
+    .update({ name: newName })
+    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('name', oldName);
+
+  if (error) throw error;
+}
+
+/**
+ * Function to update a category/group color in Supabase
+ */
+export async function updateCategoryColor(categoryName: string, color: string): Promise<void> {
+  const { error } = await supabase
+    .from('groups')
+    .update({ color })
+    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('name', categoryName);
 
   if (error) throw error;
 }

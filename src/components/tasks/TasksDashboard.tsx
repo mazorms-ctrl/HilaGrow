@@ -489,11 +489,10 @@ export function TasksDashboard({
 
               return (
                 <div className="w-full" dir="rtl">
-                  <button
-                    type="button"
+                  <div
                     onClick={() => toggleCategory(category)}
                     className={cn(
-                      'w-full rounded-md border px-3 py-2 text-right transition-colors',
+                      'w-full rounded-md border px-3 py-2 text-right transition-colors cursor-pointer',
                       'hover:bg-neutral-50/80'
                     )}
                     style={{
@@ -503,6 +502,7 @@ export function TasksDashboard({
                       borderRightStyle: 'solid',
                       borderRightColor: categoryColor,
                     }}
+                    role="button"
                     aria-expanded={isOpen}
                   >
                     <div className="flex items-center justify-between gap-3">
@@ -590,7 +590,7 @@ export function TasksDashboard({
                         </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 </div>
               );
             })()}

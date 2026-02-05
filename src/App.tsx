@@ -5,7 +5,7 @@ import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, updateTask, createTask, deleteTask as deleteTaskFromSupabase } from './lib/supabase-hooks';
+import { useTasks, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB } from './lib/supabase-hooks';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -824,13 +824,10 @@ function App() {
     );
   };
 
-  const updateCategoryColor = async (oldCategory: string, newColor: string) => {
+  const updateCategoryColor = async (categoryName: string, newColor: string) => {
     try {
-      // Update all tasks in this category
-      const tasksToUpdate = tasks.filter(t => t.category === oldCategory);
-      await Promise.all(
-        tasksToUpdate.map(task => updateTask({ ...task, color: newColor }))
-      );
+      // Update the category color directly in the database
+      await updateCategoryColorInDB(categoryName, newColor);
       showToast('צבע הקטגוריה עודכן', 'success');
     } catch (error) {
       console.error('Error updating category color:', error);
@@ -845,11 +842,8 @@ function App() {
       return;
     }
     try {
-      // Update all tasks in this category
-      const tasksToUpdate = tasks.filter(t => t.category === oldName);
-      await Promise.all(
-        tasksToUpdate.map(task => updateTask({ ...task, category: newName }))
-      );
+      // Rename the category directly in the database
+      await renameCategoryInDB(oldName, newName);
       setExpandedCategories(prev => prev.map(c => c === oldName ? newName : c));
       setEditingCategory(null);
       showToast('שם הקטגוריה עודכן', 'success');
