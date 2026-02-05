@@ -339,14 +339,18 @@ export async function updateTask(task: MedicalTask): Promise<void> {
  */
 export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<MedicalTask> {
   // Find or create the group (category)
-  let { data: group } = await supabase
+  const { data: existingGroup } = await supabase
     .from('groups')
     .select('id')
     .eq('project_id', DEFAULT_PROJECT_ID)
     .eq('name', task.category)
     .single();
 
-  if (!group) {
+  let groupId: string;
+
+  if (existingGroup) {
+    groupId = existingGroup.id;
+  } else {
     // Create new group
     const { data: newGroup, error: groupError } = await supabase
       .from('groups')
@@ -361,7 +365,7 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
 
     if (groupError) throw groupError;
     if (!newGroup) throw new Error('Failed to create group');
-    group = newGroup;
+    groupId = newGroup.id;
   }
 
   // Prepare metadata
@@ -386,7 +390,7 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
   const { data: newTask, error: taskError } = await supabase
     .from('tasks')
     .insert({
-      group_id: group.id,
+      group_id: groupId,
       title: task.title,
       description: task.description,
       owner_name: task.owner,
