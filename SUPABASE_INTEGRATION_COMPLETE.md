@@ -34,7 +34,7 @@
 **חשוב מאוד!** לפני שהאפליקציה תעבוד, צריך להריץ את ה-migration:
 
 1. היכנס ל-[Supabase Dashboard](https://supabase.com/dashboard)
-2. בחר בפרויקט שלך: **isldkcvmavetmymkzznkb**
+2. בחר בפרויקט שלך: **isldkcvmvetmymkzznkb**
 3. לחץ על **SQL Editor** בתפריט הצד
 4. העתק והדבק את התוכן מ-`supabase/migration_add_metadata.sql`
 5. לחץ **Run** (או F5)
@@ -115,7 +115,7 @@ await deleteTask(taskId);
 
 **פתרון:** ודא שקובץ `.env` מכיל:
 ```env
-VITE_SUPABASE_URL=https://isldkcvmavetmymkzznkb.supabase.co
+VITE_SUPABASE_URL=https://isldkcvmvetmymkzznkb.supabase.co
 VITE_SUPABASE_ANON_KEY=sb_publishable_UsEac2v255ZMoXovLOsuWw_ghvrL-xA
 ```
 
