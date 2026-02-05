@@ -301,7 +301,7 @@ export async function updateTask(task: MedicalTask): Promise<void> {
   // Update or create milestones
   for (let i = 0; i < task.milestones.length; i++) {
     const milestone = task.milestones[i];
-    const existing = existingMilestones?.find((m, idx) => idx === i);
+    const existing = existingMilestones?.find((_m, idx) => idx === i);
 
     if (existing) {
       // Update existing milestone
@@ -360,6 +360,7 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
       .single();
 
     if (groupError) throw groupError;
+    if (!newGroup) throw new Error('Failed to create group');
     group = newGroup;
   }
 

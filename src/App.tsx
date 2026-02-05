@@ -5,7 +5,7 @@ import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, updateTask, createTask, deleteTask, type MedicalTask as SupabaseMedicalTask } from './lib/supabase-hooks';
+import { useTasks, updateTask, createTask, deleteTask as deleteTaskFromSupabase } from './lib/supabase-hooks';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -299,7 +299,7 @@ interface MedicalTask {
 
 function App() {
   // Load tasks from Supabase with real-time sync
-  const { tasks: supabaseTasks, loading: tasksLoading, error: tasksError, refetch: refetchTasks } = useTasks();
+  const { tasks: supabaseTasks, loading: tasksLoading } = useTasks();
   
   // Use Supabase tasks or fallback to initial tasks while loading
   const tasks = supabaseTasks.length > 0 ? supabaseTasks : (tasksLoading ? [] : initialTasks as MedicalTask[]);
@@ -765,7 +765,7 @@ function App() {
     if (confirm('האם אתה בטוח שברצונך למחוק משימה זו?')) {
       try {
         // Delete from Supabase
-        await deleteTask(taskId);
+        await deleteTaskFromSupabase(taskId);
         // The real-time subscription will update the UI automatically
         setSelectedTask(null);
         setEditingTask(null);
@@ -864,7 +864,7 @@ function App() {
     try {
       // Delete all tasks in this category
       const tasksToDelete = tasks.filter(t => t.category === category);
-      await Promise.all(tasksToDelete.map(task => deleteTask(task.id)));
+      await Promise.all(tasksToDelete.map(task => deleteTaskFromSupabase(task.id)));
       setExpandedCategories(prev => prev.filter(c => c !== category));
       showToast('הקטגוריה נמחקה', 'success');
     } catch (error) {

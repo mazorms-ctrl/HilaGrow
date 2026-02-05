@@ -18,6 +18,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// Check if backend is configured
+export const isBackendConfigured = () => {
+  return !!(supabaseUrl && supabaseAnonKey);
+};
+
 // Database Types
 export interface Database {
   public: {
