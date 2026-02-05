@@ -336,6 +336,19 @@ function App() {
   // Auto-save status tracking
   const [showSavedIndicator, setShowSavedIndicator] = useState(false);
 
+  // Project name state with localStorage persistence
+  const [projectName, setProjectName] = useState(() => {
+    const saved = localStorage.getItem('grow.projectName');
+    return saved || 'GROW - מחזור ב מובילים שינוי';
+  });
+  const [isEditingProjectName, setIsEditingProjectName] = useState(false);
+  const [tempProjectName, setTempProjectName] = useState(projectName);
+  
+  // Save project name to localStorage when it changes
+  useEffect(() => {
+    localStorage.setItem('grow.projectName', projectName);
+  }, [projectName]);
+
   const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
   // Tree zoom functions
@@ -353,6 +366,19 @@ function App() {
     
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, [viewMode]);
+
+  // Scroll to top when switching to tree view to ensure project root is visible
+  useEffect(() => {
+    if (viewMode === 'tree') {
+      // Small delay to ensure DOM is rendered
+      setTimeout(() => {
+        const mainElement = document.querySelector('main');
+        if (mainElement) {
+          mainElement.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+      }, 100);
+    }
   }, [viewMode]);
 
   // Keyboard shortcuts for tree zoom
@@ -978,7 +1004,7 @@ function App() {
     
     return (
       <div style={{ 
-        padding: isDashboard ? '0' : spacing.xxl,
+        padding: isDashboard ? '0' : window.innerWidth < 768 ? '24px 4px' : spacing.xxl,
         overflow: 'auto',
         overflowX: 'auto',
         overflowY: 'auto',
@@ -992,11 +1018,13 @@ function App() {
         MozUserSelect: 'none',
         WebkitUserSelect: 'none',
         msUserSelect: 'none',
-        userSelect: 'none'
+        userSelect: 'none',
+        display: 'flex',
+        justifyContent: 'center'
       }}>
         <div style={{
           transform: `scale(${treeZoom})`,
-          transformOrigin: 'top left',
+          transformOrigin: 'top center',
           transition: 'transform 0.3s ease',
           width: `${100 / treeZoom}%`,
           minWidth: 'max-content',
@@ -1020,22 +1048,92 @@ function App() {
         
         {/* Project Root */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.xxxxl }}>
-          <div style={{
-            padding: `${spacing.xl} ${spacing.xxxxl}`,
-            background: colors.brand.gradient,
-            backdropFilter: 'blur(20px)',
-            WebkitBackdropFilter: 'blur(20px)',
-            color: colors.text.inverse,
-            borderRadius: radius.xl,
-            fontSize: typography.fontSize.h2,
-            fontWeight: typography.fontWeight.black,
-            fontFamily: typography.fontFamily,
-            boxShadow: shadows.brand,
-            border: `1px solid rgba(255, 255, 255, 0.2)`,
-            letterSpacing: '-0.5px'
-          }}>
-            GROW - מחזור ב מובילים שינוי
-          </div>
+          {isEditingProjectName ? (
+            <input
+              type="text"
+              value={tempProjectName}
+              onChange={(e) => setTempProjectName(e.target.value)}
+              onBlur={() => {
+                if (tempProjectName.trim()) {
+                  setProjectName(tempProjectName.trim());
+                  setIsEditingProjectName(false);
+                } else {
+                  setTempProjectName(projectName);
+                  setIsEditingProjectName(false);
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  if (tempProjectName.trim()) {
+                    setProjectName(tempProjectName.trim());
+                    setIsEditingProjectName(false);
+                  }
+                } else if (e.key === 'Escape') {
+                  setTempProjectName(projectName);
+                  setIsEditingProjectName(false);
+                }
+              }}
+              autoFocus
+              style={{
+                padding: `${spacing.xl} ${spacing.xxxxl}`,
+                background: 'rgba(255, 255, 255, 0.95)',
+                color: colors.text.primary,
+                borderRadius: radius.xl,
+                fontSize: typography.fontSize.h2,
+                fontWeight: typography.fontWeight.black,
+                fontFamily: typography.fontFamily,
+                boxShadow: shadows.brand,
+                border: `2px solid ${colors.brand.primary}`,
+                letterSpacing: '-0.5px',
+                textAlign: 'center',
+                outline: 'none',
+                minWidth: '300px'
+              }}
+            />
+          ) : (
+            <div 
+              onClick={() => {
+                setTempProjectName(projectName);
+                setIsEditingProjectName(true);
+              }}
+              style={{
+                padding: `${spacing.xl} ${spacing.xxxxl}`,
+                background: colors.brand.gradient,
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                color: colors.text.inverse,
+                borderRadius: radius.xl,
+                fontSize: typography.fontSize.h2,
+                fontWeight: typography.fontWeight.black,
+                fontFamily: typography.fontFamily,
+                boxShadow: shadows.brand,
+                border: `1px solid rgba(255, 255, 255, 0.2)`,
+                letterSpacing: '-0.5px',
+                cursor: 'pointer',
+                transition: 'all 0.2s',
+                position: 'relative'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.transform = 'scale(1.02)';
+                e.currentTarget.style.boxShadow = shadows.brandHover;
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.transform = 'scale(1)';
+                e.currentTarget.style.boxShadow = shadows.brand;
+              }}
+              title="לחץ לעריכת שם הפרויקט"
+            >
+              {projectName}
+              <span style={{
+                position: 'absolute',
+                top: '4px',
+                left: '8px',
+                fontSize: '12px',
+                opacity: 0.7,
+                fontWeight: 'normal'
+              }}>✏️</span>
+            </div>
+          )}
 
           {/* Categories */}
           <div style={{ 
@@ -1335,7 +1433,8 @@ function App() {
           display: 'flex',
           alignItems: 'center',
           position: 'relative',
-          gap: '12px'
+          gap: '12px',
+          backgroundColor: 'rgba(255, 255, 255, 1)'
         }}
         className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px] md:justify-between flex-nowrap"
         >
@@ -1487,6 +1586,7 @@ function App() {
               fontSize: '24px',
               transition: 'all 0.2s',
               position: 'absolute',
+              left: 'auto',
               right: 'max(12px, env(safe-area-inset-right))',
               top: '50%',
               transform: 'translateY(-50%)',
