@@ -258,7 +258,7 @@ export function TasksDashboard({
 
       <button
         type="button"
-        className="h-9 w-full sm:w-auto rounded-[10px] border border-neutral-900/10 bg-neutral-50 px-3 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-100 min-h-[44px] sm:min-h-0"
+        className="h-11 sm:h-9 w-full sm:w-auto rounded-[10px] border border-neutral-900/10 bg-neutral-50 px-3 text-sm font-semibold text-neutral-700 transition-colors hover:bg-neutral-100"
         onClick={() => {
           setPriorityFilter('all');
           setCategoryFilter('all');
@@ -271,7 +271,7 @@ export function TasksDashboard({
       {onRequestAddTask && (
         <button
           type="button"
-          className="h-9 rounded-[10px] bg-blue-50 px-3 text-sm font-bold text-blue-500 transition-colors hover:bg-blue-100"
+          className="h-11 sm:h-9 rounded-[10px] bg-blue-50 px-3 text-sm font-bold text-blue-500 transition-colors hover:bg-blue-100"
           onClick={onRequestAddTask}
         >
           ➕ משימה
@@ -281,7 +281,7 @@ export function TasksDashboard({
       {(onAddOwner || onRenameOwner) && (
         <button
           type="button"
-          className="h-9 rounded-[10px] border border-neutral-900/10 bg-white px-3 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50"
+          className="h-11 sm:h-9 rounded-[10px] border border-neutral-900/10 bg-white px-3 text-sm font-semibold text-neutral-800 transition-colors hover:bg-neutral-50"
           onClick={() => setIsOwnersManagerOpen((v) => !v)}
         >
           👥 אחראים
@@ -291,7 +291,7 @@ export function TasksDashboard({
       {onAddCategory && (
         <button
           type="button"
-          className="h-9 rounded-[10px] border border-blue-500/25 bg-blue-50 px-3 text-sm font-rubik font-semibold text-blue-700 transition-colors hover:bg-blue-100"
+          className="h-11 sm:h-9 rounded-[10px] border border-blue-500/25 bg-blue-50 px-3 text-sm font-rubik font-semibold text-blue-700 transition-colors hover:bg-blue-100"
           onClick={() => setIsAddCategoryOpen((v) => !v)}
         >
           ➕ קטגוריה
@@ -360,7 +360,7 @@ export function TasksDashboard({
                 />
                 <button
                   type="button"
-                  className="h-9 rounded-[10px] bg-blue-600 px-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700"
+                  className="h-11 sm:h-9 rounded-[10px] bg-blue-600 px-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700"
                   onClick={addOwner}
                 >
                   הוסף
@@ -370,7 +370,7 @@ export function TasksDashboard({
 
             <button
               type="button"
-              className="h-9 rounded-[10px] border border-neutral-900/10 bg-neutral-50 px-3 text-sm font-bold text-neutral-700 transition-colors hover:bg-neutral-100"
+              className="h-11 sm:h-9 rounded-[10px] border border-neutral-900/10 bg-neutral-50 px-3 text-sm font-bold text-neutral-700 transition-colors hover:bg-neutral-100"
               onClick={() => setIsOwnersManagerOpen(false)}
             >
               סגור
@@ -405,7 +405,7 @@ export function TasksDashboard({
                   {onRenameOwner && !isEditing && (
                     <button
                       type="button"
-                      className="h-7 rounded-[8px] border border-neutral-900/10 bg-white px-2 text-xs font-rubik font-semibold text-neutral-700 hover:bg-neutral-50"
+                      className="h-8 sm:h-7 rounded-[8px] border border-neutral-900/10 bg-white px-2 text-xs font-rubik font-semibold text-neutral-700 hover:bg-neutral-50"
                       onClick={() => startEditOwner(o)}
                     >
                       ערוך
@@ -416,14 +416,14 @@ export function TasksDashboard({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="h-7 rounded-[8px] bg-blue-600 px-2 text-xs font-extrabold text-white hover:bg-blue-700"
+                        className="h-8 sm:h-7 rounded-[8px] bg-blue-600 px-2 text-xs font-extrabold text-white hover:bg-blue-700"
                         onClick={() => saveEditOwner(o)}
                       >
                         שמור
                       </button>
                       <button
                         type="button"
-                        className="h-7 rounded-[8px] border border-neutral-900/10 bg-white px-2 text-xs font-rubik font-semibold text-neutral-700 hover:bg-neutral-50"
+                        className="h-8 sm:h-7 rounded-[8px] border border-neutral-900/10 bg-white px-2 text-xs font-rubik font-semibold text-neutral-700 hover:bg-neutral-50"
                         onClick={cancelEditOwner}
                       >
                         בטל
@@ -456,7 +456,7 @@ export function TasksDashboard({
             />
             <button
               type="button"
-              className="h-9 rounded-[10px] bg-blue-600 px-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700"
+              className="h-11 sm:h-9 rounded-[10px] bg-blue-600 px-3 text-sm font-extrabold text-white transition-colors hover:bg-blue-700"
               onClick={() => {
                 const name = newCategoryName.trim();
                 if (!name) return;
@@ -470,7 +470,7 @@ export function TasksDashboard({
             </button>
             <button
               type="button"
-              className="h-9 rounded-[10px] border border-neutral-900/10 bg-neutral-50 px-3 text-sm font-bold text-neutral-700 transition-colors hover:bg-neutral-100"
+              className="h-11 sm:h-9 rounded-[10px] border border-neutral-900/10 bg-neutral-50 px-3 text-sm font-bold text-neutral-700 transition-colors hover:bg-neutral-100"
               onClick={() => setIsAddCategoryOpen(false)}
             >
               ביטול
@@ -508,10 +508,10 @@ export function TasksDashboard({
                     <div className="flex items-center justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         {!isEditing ? (
-                          <div className="truncate text-sm font-bold text-neutral-900">{category}</div>
+                          <div className="truncate text-base sm:text-sm font-bold text-neutral-900">{category}</div>
                         ) : (
                           <input
-                            className="h-8 w-full rounded-[8px] border border-neutral-900/10 bg-white px-2 text-sm font-bold text-neutral-900 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
+                            className="h-9 sm:h-8 w-full rounded-[8px] border border-neutral-900/10 bg-white px-3 sm:px-2 text-sm font-bold text-neutral-900 focus:outline-none focus:ring-4 focus:ring-blue-500/20"
                             value={editingCategoryDraft}
                             onChange={(e) => setEditingCategoryDraft(e.target.value)}
                             onKeyDown={(e) => {
@@ -641,22 +641,22 @@ export function TasksDashboard({
       </div>
 
       {/* Summary Footer */}
-      <div className="mt-8 flex gap-4 rounded-md border border-neutral-200 bg-neutral-50 p-4">
+      <div className="mt-8 flex gap-4 rounded-md border border-neutral-200 bg-neutral-50 p-6 sm:p-4">
         <div className="flex-1 text-center">
-          <div className="text-2xl font-bold text-neutral-900">{tasks.length}</div>
-          <div className="text-sm text-neutral-600">סה״כ משימות</div>
+          <div className="text-3xl sm:text-2xl font-bold text-neutral-900">{tasks.length}</div>
+          <div className="text-base sm:text-sm text-neutral-600">סה״כ משימות</div>
         </div>
         <div className="flex-1 text-center">
-          <div className="text-2xl font-bold text-[#DC2626]">
+          <div className="text-3xl sm:text-2xl font-bold text-[#DC2626]">
             {tasks.filter(t => t.milestones.some(m => !m.done)).length}
           </div>
-          <div className="text-sm text-neutral-600">פתוחות</div>
+          <div className="text-base sm:text-sm text-neutral-600">פתוחות</div>
         </div>
         <div className="flex-1 text-center">
-          <div className="text-2xl font-bold text-[#22C55E]">
+          <div className="text-3xl sm:text-2xl font-bold text-[#22C55E]">
             {tasks.filter(t => t.milestones.every(m => m.done)).length}
           </div>
-          <div className="text-sm text-neutral-600">הושלמו</div>
+          <div className="text-base sm:text-sm text-neutral-600">הושלמו</div>
         </div>
       </div>
     </div>
