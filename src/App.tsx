@@ -5,6 +5,7 @@ import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { WorkItemRow } from './components/ui/WorkItemRow';
+import { useTasks, updateTask, createTask, deleteTask, type MedicalTask as SupabaseMedicalTask } from './lib/supabase-hooks';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -297,18 +298,11 @@ interface MedicalTask {
 }
 
 function App() {
-  // Load tasks from localStorage, fallback to initialTasks
-  const [tasks, setTasks] = useState<MedicalTask[]>(() => {
-    try {
-      const stored = localStorage.getItem('grow.app.tasks');
-      if (stored) {
-        return JSON.parse(stored);
-      }
-    } catch (error) {
-      console.error('Error loading tasks from localStorage:', error);
-    }
-    return initialTasks as MedicalTask[];
-  });
+  // Load tasks from Supabase with real-time sync
+  const { tasks: supabaseTasks, loading: tasksLoading, error: tasksError, refetch: refetchTasks } = useTasks();
+  
+  // Use Supabase tasks or fallback to initial tasks while loading
+  const tasks = supabaseTasks.length > 0 ? supabaseTasks : (tasksLoading ? [] : initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('dashboard');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
@@ -484,20 +478,18 @@ function App() {
     });
   }, [tasks]);
 
-  // 💾 AUTO-SAVE: Save tasks to localStorage whenever they change
+  // 💾 AUTO-SAVE: Now handled by Supabase real-time sync
+  // Show saved indicator when Supabase tasks update
   useEffect(() => {
-    try {
-      localStorage.setItem('grow.app.tasks', JSON.stringify(tasks));
+    if (supabaseTasks.length > 0 && !tasksLoading) {
       setShowSavedIndicator(true);
-      console.log('💾 Auto-saved tasks to localStorage at', new Date().toLocaleTimeString('he-IL'));
+      console.log('💾 Synced with Supabase at', new Date().toLocaleTimeString('he-IL'));
       
       // Hide "saved" indicator after 2 seconds
       const timer = setTimeout(() => setShowSavedIndicator(false), 2000);
       return () => clearTimeout(timer);
-    } catch (error) {
-      console.error('Error saving tasks to localStorage:', error);
     }
-  }, [tasks]);
+  }, [supabaseTasks, tasksLoading]);
 
   // Auto-set active step to first incomplete when opening drawer
   useEffect(() => {
@@ -581,7 +573,14 @@ function App() {
       return next;
     });
 
-    setTasks((prev) => prev.map((t) => (normalizeOwnerName(t.owner) === from ? { ...t, owner: to } : t)));
+    // Update tasks in Supabase
+    const tasksToUpdate = tasks.filter(t => normalizeOwnerName(t.owner) === from);
+    Promise.all(tasksToUpdate.map(task => updateTask({ ...task, owner: to })))
+      .catch(error => {
+        console.error('Error updating owner in tasks:', error);
+        showToast('שגיאה בעדכון האחראי במשימות', 'error');
+      });
+    
     setSelectedTask((prev) => (prev && normalizeOwnerName(prev.owner) === from ? { ...prev, owner: to } : prev));
     setEditingTask((prev) => (prev && normalizeOwnerName(prev.owner) === from ? { ...prev, owner: to } : prev));
     setSelectedOwners((prev) => prev.map((o) => (normalizeOwnerName(o) === from ? to : o)));
@@ -714,12 +713,19 @@ function App() {
     setCategoryModalFilter(null);
   };
 
-  const handleSaveTask = () => {
+  const handleSaveTask = async () => {
     if (editingTask) {
-      setTasks(tasks.map(t => t.id === editingTask.id ? editingTask : t));
-      setSelectedTask(editingTask);
-      setEditingTask(null);
-      showToast('השינויים נשמרו בהצלחה!', 'success');
+      try {
+        // Update in Supabase
+        await updateTask(editingTask);
+        // The real-time subscription will update the UI automatically
+        setSelectedTask(editingTask);
+        setEditingTask(null);
+        showToast('השינויים נשמרו בהצלחה!', 'success');
+      } catch (error) {
+        console.error('Error saving task:', error);
+        showToast('שגיאה בשמירת המשימה', 'error');
+      }
     }
   };
 
@@ -755,19 +761,33 @@ function App() {
     }
   };
 
-  const deleteTask = (taskId: number) => {
+  const deleteTask = async (taskId: number) => {
     if (confirm('האם אתה בטוח שברצונך למחוק משימה זו?')) {
-      setTasks(tasks.filter(t => t.id !== taskId));
-      setSelectedTask(null);
-      setEditingTask(null);
-      showToast('המשימה נמחקה בהצלחה', 'success');
+      try {
+        // Delete from Supabase
+        await deleteTask(taskId);
+        // The real-time subscription will update the UI automatically
+        setSelectedTask(null);
+        setEditingTask(null);
+        showToast('המשימה נמחקה בהצלחה', 'success');
+      } catch (error) {
+        console.error('Error deleting task:', error);
+        showToast('שגיאה במחיקת המשימה', 'error');
+      }
     }
   };
 
-  const addNewTask = (newTask: typeof tasks[0]) => {
-    setTasks([...tasks, newTask]);
-    setShowNewTaskModal(false);
-    showToast('המשימה נוספה בהצלחה!', 'success');
+  const addNewTask = async (newTask: typeof tasks[0]) => {
+    try {
+      // Create in Supabase
+      await createTask(newTask);
+      // The real-time subscription will update the UI automatically
+      setShowNewTaskModal(false);
+      showToast('המשימה נוספה בהצלחה!', 'success');
+    } catch (error) {
+      console.error('Error creating task:', error);
+      showToast('שגיאה בהוספת המשימה', 'error');
+    }
   };
 
   const exportData = () => {
@@ -804,70 +824,95 @@ function App() {
     );
   };
 
-  const updateCategoryColor = (oldCategory: string, newColor: string) => {
-    setTasks(tasks.map(task =>
-      task.category === oldCategory ? { ...task, color: newColor } : task
-    ));
-    showToast('צבע הקטגוריה עודכן', 'success');
+  const updateCategoryColor = async (oldCategory: string, newColor: string) => {
+    try {
+      // Update all tasks in this category
+      const tasksToUpdate = tasks.filter(t => t.category === oldCategory);
+      await Promise.all(
+        tasksToUpdate.map(task => updateTask({ ...task, color: newColor }))
+      );
+      showToast('צבע הקטגוריה עודכן', 'success');
+    } catch (error) {
+      console.error('Error updating category color:', error);
+      showToast('שגיאה בעדכון צבע הקטגוריה', 'error');
+    }
   };
 
-  const renameCategory = (oldName: string, newName: string) => {
+  const renameCategory = async (oldName: string, newName: string) => {
     if (!newName.trim() || oldName === newName) return;
     if (categories.includes(newName)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
     }
-    setTasks(tasks.map(task =>
-      task.category === oldName ? { ...task, category: newName } : task
-    ));
-    setExpandedCategories(prev => prev.map(c => c === oldName ? newName : c));
-    setEditingCategory(null);
-    showToast('שם הקטגוריה עודכן', 'success');
+    try {
+      // Update all tasks in this category
+      const tasksToUpdate = tasks.filter(t => t.category === oldName);
+      await Promise.all(
+        tasksToUpdate.map(task => updateTask({ ...task, category: newName }))
+      );
+      setExpandedCategories(prev => prev.map(c => c === oldName ? newName : c));
+      setEditingCategory(null);
+      showToast('שם הקטגוריה עודכן', 'success');
+    } catch (error) {
+      console.error('Error renaming category:', error);
+      showToast('שגיאה בשינוי שם הקטגוריה', 'error');
+    }
   };
 
-  const deleteCategory = (category: string) => {
+  const deleteCategory = async (category: string) => {
     if (!confirm(`האם למחוק את הקטגוריה "${category}" ואת כל המשימות בה?`)) return;
-    setTasks(tasks.filter(t => t.category !== category));
-    setExpandedCategories(prev => prev.filter(c => c !== category));
-    showToast('הקטגוריה נמחקה', 'success');
+    try {
+      // Delete all tasks in this category
+      const tasksToDelete = tasks.filter(t => t.category === category);
+      await Promise.all(tasksToDelete.map(task => deleteTask(task.id)));
+      setExpandedCategories(prev => prev.filter(c => c !== category));
+      showToast('הקטגוריה נמחקה', 'success');
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      showToast('שגיאה במחיקת הקטגוריה', 'error');
+    }
   };
 
-  const addCategory = (name: string, color: string) => {
+  const addCategory = async (name: string, color: string) => {
     if (!name.trim()) return;
     if (categories.includes(name)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
     }
-    // Add a dummy task to create the category
-    const newTask: MedicalTask = {
-      id: Math.max(...tasks.map(t => t.id)) + 1,
-      title: 'משימה ראשונה ב-' + name,
-      description: 'תיאור המשימה',
-      category: name,
-      color: color,
-      owner: 'ללא אחראי',
-      priority: 'P2' as const,
-      progress: 0,
-      department: '',
-      processName: '',
-      problemStatement: '',
-      goal: '',
-      kpiName: '',
-      baseline: '',
-      target: '',
-      measurementCadence: '',
-      startDate: '',
-      dueDate: '',
-      stakeholders: [],
-      risksBlockers: '',
-      dependencies: '',
-      links: '',
-      milestones: [{ text: 'שלב ראשון', done: false }]
-    };
-    setTasks([...tasks, newTask]);
-    setExpandedCategories([...expandedCategories, name]);
-    setShowAddCategory(false);
-    showToast('קטגוריה חדשה נוספה', 'success');
+    try {
+      // Add a dummy task to create the category
+      const newTask: Omit<MedicalTask, 'id'> = {
+        title: 'משימה ראשונה ב-' + name,
+        description: 'תיאור המשימה',
+        category: name,
+        color: color,
+        owner: 'ללא אחראי',
+        priority: 'P2' as const,
+        progress: 0,
+        department: '',
+        processName: '',
+        problemStatement: '',
+        goal: '',
+        kpiName: '',
+        baseline: '',
+        target: '',
+        measurementCadence: '',
+        startDate: '',
+        dueDate: '',
+        stakeholders: [],
+        risksBlockers: '',
+        dependencies: '',
+        links: '',
+        milestones: [{ text: 'שלב ראשון', done: false }]
+      };
+      await createTask(newTask);
+      setExpandedCategories([...expandedCategories, name]);
+      setShowAddCategory(false);
+      showToast('קטגוריה חדשה נוספה', 'success');
+    } catch (error) {
+      console.error('Error adding category:', error);
+      showToast('שגיאה בהוספת קטגוריה', 'error');
+    }
   };
 
   // Helper functions for dashboard metrics

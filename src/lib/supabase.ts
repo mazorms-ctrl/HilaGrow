@@ -3,13 +3,143 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
 
-// Helper to check if backend is configured
-export const isBackendConfigured = () => {
-  return !!supabaseUrl && !!supabaseAnonKey;
-};
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error('Missing Supabase environment variables. Please check your .env file.');
+}
 
-// Only create client if credentials are provided
-// When not configured, we use localStorage (see dataService.ts)
-export const supabase = isBackendConfigured()
-  ? createClient(supabaseUrl!, supabaseAnonKey!)
-  : createClient('https://demo.supabase.co', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRlbW8iLCJyb2xlIjoiYW5vbiIsImlhdCI6MTY0MTc2OTIwMCwiZXhwIjoxOTU3MzQ1MjAwfQ.dc_X5iR_VP_qT0zsiyj_I_OZ2T9FtRU2BBNWN8Bu4GE');
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
+  },
+});
+
+// Database Types
+export interface Database {
+  public: {
+    Tables: {
+      projects: {
+        Row: {
+          id: string;
+          name: string;
+          description: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          name: string;
+          description?: string | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          name?: string;
+          description?: string | null;
+          updated_at?: string;
+        };
+      };
+      groups: {
+        Row: {
+          id: string;
+          project_id: string;
+          name: string;
+          color: string | null;
+          order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          name: string;
+          color?: string | null;
+          order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          name?: string;
+          color?: string | null;
+          order?: number;
+          updated_at?: string;
+        };
+      };
+      tasks: {
+        Row: {
+          id: string;
+          group_id: string;
+          title: string;
+          description: string | null;
+          owner_name: string | null;
+          progress_mode: 'auto' | 'manual';
+          progress_manual: number | null;
+          order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          group_id: string;
+          title: string;
+          description?: string | null;
+          owner_name?: string | null;
+          progress_mode?: 'auto' | 'manual';
+          progress_manual?: number | null;
+          order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          group_id?: string;
+          title?: string;
+          description?: string | null;
+          owner_name?: string | null;
+          progress_mode?: 'auto' | 'manual';
+          progress_manual?: number | null;
+          order?: number;
+          updated_at?: string;
+        };
+      };
+      milestones: {
+        Row: {
+          id: string;
+          task_id: string;
+          title: string;
+          done: boolean;
+          due_date: string | null;
+          order: number;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          task_id: string;
+          title: string;
+          done?: boolean;
+          due_date?: string | null;
+          order?: number;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          task_id?: string;
+          title?: string;
+          done?: boolean;
+          due_date?: string | null;
+          order?: number;
+          updated_at?: string;
+        };
+      };
+    };
+  };
+}
