@@ -1,12 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 import { QueryProvider } from './providers/QueryProvider.tsx'
 import { AuthProvider } from './contexts/AuthContext.tsx'
-import { LoginPage } from './components/auth/LoginPage.tsx'
-import { ProtectedRoute } from './components/auth/ProtectedRoute.tsx'
 
 // Global error handler
 window.addEventListener('error', (event) => {
@@ -28,17 +26,7 @@ try {
       <BrowserRouter>
         <QueryProvider>
           <AuthProvider>
-            <Routes>
-              <Route path="/login" element={<LoginPage />} />
-              <Route
-                path="/*"
-                element={
-                  <ProtectedRoute>
-                    <App />
-                  </ProtectedRoute>
-                }
-              />
-            </Routes>
+            <App />
           </AuthProvider>
         </QueryProvider>
       </BrowserRouter>

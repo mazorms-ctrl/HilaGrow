@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { TreePine, X, Cloud, CheckCircle2, LogOut } from 'lucide-react';
+import { TreePine, X, Cloud, CheckCircle2, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
+import { LoginModal } from './components/auth/LoginModal';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
@@ -300,6 +301,7 @@ interface MedicalTask {
 
 function App() {
   const { user, profile, signOut } = useAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   // Load tasks from Supabase with real-time sync
   const { tasks: supabaseTasks, loading: tasksLoading } = useTasks();
@@ -641,8 +643,8 @@ function App() {
         return;
       }
 
-      // N - New Task
-      if (e.key === 'n' || e.key === 'N') {
+      // N - New Task (only when authenticated)
+      if ((e.key === 'n' || e.key === 'N') && user) {
         setShowNewTaskModal(true);
         e.preventDefault();
       }
@@ -1576,31 +1578,45 @@ function App() {
             )}
           </div>
 
-          {/* User info + Logout — desktop only */}
+          {/* User info + Logout OR Sign In — desktop only */}
           <div className="hidden md:flex items-center gap-2 flex-shrink-0">
-            {profile?.avatar_url ? (
-              <img
-                src={profile.avatar_url}
-                alt={profile.full_name ?? 'משתמש'}
-                className="w-8 h-8 rounded-full object-cover border border-gray-200"
-              />
+            {user ? (
+              <>
+                {profile?.avatar_url ? (
+                  <img
+                    src={profile.avatar_url}
+                    alt={profile.full_name ?? 'משתמש'}
+                    className="w-8 h-8 rounded-full object-cover border border-gray-200"
+                  />
+                ) : (
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+                    style={{ background: colors.brand.primary }}
+                    title={profile?.full_name ?? user.email ?? ''}
+                  >
+                    {(profile?.full_name ?? user.email ?? '?')[0].toUpperCase()}
+                  </div>
+                )}
+                <button
+                  onClick={signOut}
+                  title="יציאה"
+                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs"
+                >
+                  <LogOut size={14} />
+                  <span className="hidden lg:inline">יציאה</span>
+                </button>
+              </>
             ) : (
-              <div
-                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+              <button
+                onClick={() => setShowLoginModal(true)}
+                title="כניסה"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors"
                 style={{ background: colors.brand.primary }}
-                title={profile?.full_name ?? user?.email ?? ''}
               >
-                {(profile?.full_name ?? user?.email ?? '?')[0].toUpperCase()}
-              </div>
+                <LogIn size={14} />
+                <span>כניסה</span>
+              </button>
             )}
-            <button
-              onClick={signOut}
-              title="יציאה"
-              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs"
-            >
-              <LogOut size={14} />
-              <span className="hidden lg:inline">יציאה</span>
-            </button>
           </div>
 
           {/* Mobile Menu Button - Right side on mobile */}
@@ -2069,7 +2085,8 @@ function App() {
                 onRenameCategory={renameCategory}
                 onAddCategory={addCategory}
                 onUpdateCategoryColor={updateCategoryColor}
-                onRequestAddTask={() => setShowNewTaskModal(true)}
+                onRequestAddTask={user ? () => setShowNewTaskModal(true) : undefined}
+                isAuthenticated={!!user}
                 owners={owners}
                 onAddOwner={addOwner}
                 onRenameOwner={renameOwner}
@@ -4474,26 +4491,28 @@ function App() {
                   ← הקודם
                 </button>
 
-                <button
-                  onClick={handleSaveTask}
-                  style={{
-                    flex: 2,
-                    padding: '14px',
-                    background: '#0ea5e9',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '15px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    fontFamily: 'inherit'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#0284c7'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#0ea5e9'}
-                >
-                  💾 שמור שינויים
-                </button>
+                {user && (
+                  <button
+                    onClick={handleSaveTask}
+                    style={{
+                      flex: 2,
+                      padding: '14px',
+                      background: '#0ea5e9',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      fontFamily: 'inherit'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#0284c7'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#0ea5e9'}
+                  >
+                    💾 שמור שינויים
+                  </button>
+                )}
 
                 <button
                   onClick={() => setActiveStep(Math.min(stepConfig.length - 1, activeStep + 1))}
@@ -4516,33 +4535,35 @@ function App() {
                 </button>
               </div>
 
-              {/* Delete Task Button */}
-              <button
-                onClick={() => deleteTask(editingTask.id)}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: '#fee2e2',
-                  color: '#991b1b',
-                  border: '1px solid #fecaca',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  marginTop: '16px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#fecaca';
-                  e.currentTarget.style.color = '#7f1d1d';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#fee2e2';
-                  e.currentTarget.style.color = '#991b1b';
-                }}
-              >
-                🗑️ מחק משימה
-              </button>
+              {/* Delete Task Button — only for authenticated users */}
+              {user && (
+                <button
+                  onClick={() => deleteTask(editingTask.id)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: '#fee2e2',
+                    color: '#991b1b',
+                    border: '1px solid #fecaca',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    marginTop: '16px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#fecaca';
+                    e.currentTarget.style.color = '#7f1d1d';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#fee2e2';
+                    e.currentTarget.style.color = '#991b1b';
+                  }}
+                >
+                  🗑️ מחק משימה
+                </button>
+              )}
 
               {/* Keyboard Shortcuts Hint */}
               <div style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e5e5' }}>
@@ -5334,6 +5355,11 @@ function App() {
       }}>
         פיתוח: שי שבו, המרכז הרפואי הלל יפה
       </footer>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
     </div>
   );
 }

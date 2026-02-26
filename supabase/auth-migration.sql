@@ -88,23 +88,38 @@ DROP POLICY IF EXISTS "Allow all operations" ON public.people;
 DROP POLICY IF EXISTS "Allow all operations" ON public.task_watchers;
 DROP POLICY IF EXISTS "Allow all operations" ON public.email_outbox;
 
--- New: any authenticated user has full read/write access (shared workspace)
-CREATE POLICY "Authenticated users full access"
+-- Public dashboard: anyone (including anonymous) can READ tasks
+-- Only authenticated users can INSERT / UPDATE / DELETE
+
+-- projects
+CREATE POLICY "Public read access"
+  ON public.projects FOR SELECT TO public USING (true);
+CREATE POLICY "Authenticated users write access"
   ON public.projects FOR ALL TO authenticated
   USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users full access"
+-- groups
+CREATE POLICY "Public read access"
+  ON public.groups FOR SELECT TO public USING (true);
+CREATE POLICY "Authenticated users write access"
   ON public.groups FOR ALL TO authenticated
   USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users full access"
+-- tasks
+CREATE POLICY "Public read access"
+  ON public.tasks FOR SELECT TO public USING (true);
+CREATE POLICY "Authenticated users write access"
   ON public.tasks FOR ALL TO authenticated
   USING (true) WITH CHECK (true);
 
-CREATE POLICY "Authenticated users full access"
+-- milestones
+CREATE POLICY "Public read access"
+  ON public.milestones FOR SELECT TO public USING (true);
+CREATE POLICY "Authenticated users write access"
   ON public.milestones FOR ALL TO authenticated
   USING (true) WITH CHECK (true);
 
+-- people / task_watchers / email_outbox — authenticated only (no public read)
 CREATE POLICY "Authenticated users full access"
   ON public.people FOR ALL TO authenticated
   USING (true) WITH CHECK (true);
