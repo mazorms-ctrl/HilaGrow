@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { TreePine, X, Cloud, CheckCircle2 } from 'lucide-react';
+import { TreePine, X, Cloud, CheckCircle2, LogOut } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
@@ -298,6 +299,8 @@ interface MedicalTask {
 }
 
 function App() {
+  const { user, profile, signOut } = useAuth();
+
   // Load tasks from Supabase with real-time sync
   const { tasks: supabaseTasks, loading: tasksLoading } = useTasks();
   
@@ -805,8 +808,8 @@ function App() {
 
   const addNewTask = async (newTask: typeof tasks[0]) => {
     try {
-      // Create in Supabase
-      await createTask(newTask);
+      // Create in Supabase, stamping the current user as creator
+      await createTask(newTask, user?.id);
       // The real-time subscription will update the UI automatically
       setShowNewTaskModal(false);
       showToast('המשימה נוספה בהצלחה!', 'success');
@@ -1571,6 +1574,33 @@ function App() {
                 <span className="hidden lg:inline">שמירה אוטומטית</span>
               </>
             )}
+          </div>
+
+          {/* User info + Logout — desktop only */}
+          <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+            {profile?.avatar_url ? (
+              <img
+                src={profile.avatar_url}
+                alt={profile.full_name ?? 'משתמש'}
+                className="w-8 h-8 rounded-full object-cover border border-gray-200"
+              />
+            ) : (
+              <div
+                className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
+                style={{ background: colors.brand.primary }}
+                title={profile?.full_name ?? user?.email ?? ''}
+              >
+                {(profile?.full_name ?? user?.email ?? '?')[0].toUpperCase()}
+              </div>
+            )}
+            <button
+              onClick={signOut}
+              title="יציאה"
+              className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs"
+            >
+              <LogOut size={14} />
+              <span className="hidden lg:inline">יציאה</span>
+            </button>
           </div>
 
           {/* Mobile Menu Button - Right side on mobile */}

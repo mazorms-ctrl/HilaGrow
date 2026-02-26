@@ -338,7 +338,7 @@ export async function updateTask(task: MedicalTask): Promise<void> {
 /**
  * Function to create a new task in Supabase
  */
-export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<MedicalTask> {
+export async function createTask(task: Omit<MedicalTask, 'id'>, createdBy?: string): Promise<MedicalTask> {
   // Find or create the group (category)
   const { data: existingGroup } = await supabase
     .from('groups')
@@ -398,6 +398,7 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
       priority: task.priority,
       progress_mode: 'auto',
       metadata,
+      ...(createdBy ? { created_by: createdBy } : {}),
     })
     .select()
     .single();
