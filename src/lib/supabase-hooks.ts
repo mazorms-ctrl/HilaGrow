@@ -291,46 +291,20 @@ export async function updateTask(task: MedicalTask): Promise<void> {
 
   if (taskError) throw taskError;
 
-  // Update milestones
-  // First, get existing milestones
-  const { data: existingMilestones } = await supabase
-    .from('milestones')
-    .select('id, title, done, order')
-    .eq('task_id', taskUuid);
+  // Update milestones: delete all existing then reinsert to avoid
+  // position-based matching bugs and (task_id, order) conflict errors.
+  await supabase.from('milestones').delete().eq('task_id', taskUuid);
 
-  // Update or create milestones
-  for (let i = 0; i < task.milestones.length; i++) {
-    const milestone = task.milestones[i];
-    const existing = existingMilestones?.find((_m, idx) => idx === i);
-
-    if (existing) {
-      // Update existing milestone
-      await supabase
-        .from('milestones')
-        .update({
-          title: milestone.text,
-          done: milestone.done,
-          order: i,
-        })
-        .eq('id', existing.id);
-    } else {
-      // Create new milestone
-      await supabase.from('milestones').insert({
+  if (task.milestones.length > 0) {
+    const { error: milestonesError } = await supabase.from('milestones').insert(
+      task.milestones.map((m, idx) => ({
         task_id: taskUuid,
-        title: milestone.text,
-        done: milestone.done,
-        order: i,
-      });
-    }
-  }
-
-  // Delete extra milestones if task has fewer milestones now
-  if (existingMilestones && existingMilestones.length > task.milestones.length) {
-    const toDelete = existingMilestones.slice(task.milestones.length);
-    await supabase
-      .from('milestones')
-      .delete()
-      .in('id', toDelete.map(m => m.id));
+        title: m.text,
+        done: m.done,
+        order: idx,
+      }))
+    );
+    if (milestonesError) throw milestonesError;
   }
 }
 
