@@ -277,8 +277,12 @@ export async function updateTask(task: MedicalTask): Promise<void> {
     links: task.links,
   };
 
-  // Update task
-  const { error: taskError } = await supabase
+  // Update task — select('id') returns the real UUID from Postgres so we
+  // never rely on the reconstructed taskUuid for child writes (fixes FK 23503
+  // for tasks created outside the seed data whose UUIDs don't follow the
+  // 20000000-… pattern). maybeSingle() returns null instead of erroring when
+  // no row is matched, so we can surface a clear message.
+  const { data: updatedTask, error: taskError } = await supabase
     .from('tasks')
     .update({
       title: task.title,
@@ -287,18 +291,45 @@ export async function updateTask(task: MedicalTask): Promise<void> {
       priority: task.priority,
       metadata,
     })
-    .eq('id', taskUuid);
+    .eq('id', taskUuid)
+    .select('id')
+    .maybeSingle();
 
   if (taskError) throw taskError;
+  if (!updatedTask) throw new Error(`Task not found (id: ${task.id}). It may have been created outside seed data.`);
 
-  // Update milestones: delete all existing then reinsert to avoid
-  // position-based matching bugs and (task_id, order) conflict errors.
-  await supabase.from('milestones').delete().eq('task_id', taskUuid);
+  // Use the confirmed real UUID for all milestone operations.
+  const confirmedUuid = updatedTask.id;
+
+  // Only re-sync milestones if they actually changed — skip the DB writes
+  // entirely when only basic task properties (name, owner, etc.) were edited.
+  const { data: currentMilestones } = await supabase
+    .from('milestones')
+    .select('title, done, order')
+    .eq('task_id', confirmedUuid)
+    .order('order', { ascending: true });
+
+  const incomingKey = task.milestones
+    .map((m, i) => `${i}|${m.text}|${m.done}`)
+    .join('||');
+  const existingKey = (currentMilestones || [])
+    .map(m => `${m.order}|${m.title}|${m.done}`)
+    .join('||');
+
+  if (incomingKey === existingKey) return; // Milestones unchanged — nothing more to do.
+
+  // Milestones changed: delete all then reinsert cleanly.
+  const { error: deleteError } = await supabase
+    .from('milestones')
+    .delete()
+    .eq('task_id', confirmedUuid);
+
+  if (deleteError) throw deleteError;
 
   if (task.milestones.length > 0) {
     const { error: milestonesError } = await supabase.from('milestones').insert(
       task.milestones.map((m, idx) => ({
-        task_id: taskUuid,
+        task_id: confirmedUuid,
         title: m.text,
         done: m.done,
         order: idx,
