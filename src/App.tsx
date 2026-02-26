@@ -10,7 +10,7 @@ import { useTasks, updateTask, createTask, deleteTask as deleteTaskFromSupabase,
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
   { 
-    id: 1, 
+    id: '20000000-0000-0000-0000-000000000001', 
     title: 'הגדרת יעדי הפרויקט', 
     description: 'קביעת יעדים מדידים ומטרות ברורות לשיפור תהליכי בית החולים',
     category: 'תכנון ואסטרטגיה', 
@@ -39,7 +39,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 2, 
+    id: '20000000-0000-0000-0000-000000000002', 
     title: 'מיפוי בעלי עניין', 
     description: 'זיהוי וניתוח כל בעלי העניין הרלוונטיים לפרויקט', 
     category: 'תכנון ואסטרטגיה', 
@@ -68,7 +68,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 3, 
+    id: '20000000-0000-0000-0000-000000000003', 
     title: 'הכנת תקציב מפורט', 
     description: 'הכנת תקציב כולל עבור כל שלבי הפרויקט', 
     category: 'תכנון ואסטרטגיה', 
@@ -97,7 +97,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 4, 
+    id: '20000000-0000-0000-0000-000000000004', 
     title: 'פיתוח חומרי הדרכה', 
     description: 'יצירת מצגות, מדריכים וחומרי הדרכה איכותיים', 
     category: 'פיתוח תוכן', 
@@ -127,7 +127,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 5, 
+    id: '20000000-0000-0000-0000-000000000005', 
     title: 'בניית תוכנית לימודים', 
     description: 'פיתוח תוכנית לימודים מובנית ומותאמת', 
     category: 'פיתוח תוכן', 
@@ -156,7 +156,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 6, 
+    id: '20000000-0000-0000-0000-000000000006', 
     title: 'ארגון סדנאות הדרכה', 
     description: 'תכנון וביצוע סדנאות הדרכה לצוות', 
     category: 'הדרכה ויישום', 
@@ -185,7 +185,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 7, 
+    id: '20000000-0000-0000-0000-000000000007', 
     title: 'ליווי צמוד של משתתפים', 
     description: 'מעקב אחר התקדמות וליווי אישי', 
     category: 'הדרכה ויישום', 
@@ -213,7 +213,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 8, 
+    id: '20000000-0000-0000-0000-000000000008', 
     title: 'הכנת דוחות התקדמות', 
     description: 'דיווח חודשי על מצב הפרויקט', 
     category: 'מעקב והערכה', 
@@ -241,7 +241,7 @@ const initialTasks = [
     ]
   },
   { 
-    id: 9, 
+    id: '20000000-0000-0000-0000-000000000009', 
     title: 'סקרי שביעות רצון', 
     description: 'איסוף משוב מהמשתתפים', 
     category: 'מעקב והערכה', 
@@ -272,7 +272,7 @@ const initialTasks = [
 
 // Type for medical task to match TasksDashboard expectations
 interface MedicalTask {
-  id: number;
+  id: string; // UUID from Supabase — never convert to/from integer
   title: string;
   description: string;
   category: string;
@@ -314,7 +314,7 @@ function App() {
   const [newMilestone, setNewMilestone] = useState('');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [expandedTaskId, setExpandedTaskId] = useState<number | null>(null);
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [hoveredTaskInTree, setHoveredTaskInTree] = useState<typeof tasks[0] | null>(null);
   const [treeZoom, setTreeZoom] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 0.5 : 1.0);
   const [showTreeZoomHint, setShowTreeZoomHint] = useState(() => {
@@ -787,7 +787,7 @@ function App() {
     }
   };
 
-  const deleteTask = async (taskId: number) => {
+  const deleteTask = async (taskId: string) => {
     if (confirm('האם אתה בטוח שברצונך למחוק משימה זו?')) {
       try {
         // Delete from Supabase
@@ -840,7 +840,7 @@ function App() {
     );
   };
 
-  const toggleTaskExpand = (taskId: number) => {
+  const toggleTaskExpand = (taskId: string) => {
     setExpandedTaskId(expandedTaskId === taskId ? null : taskId);
   };
 
@@ -4609,7 +4609,7 @@ function App() {
                 const stakeholdersText = (formData.get('stakeholders') as string || '').split(',').map(s => s.trim()).filter(s => s);
 
                 const newTask: MedicalTask = {
-                  id: Math.max(...tasks.map(t => t.id)) + 1,
+                  id: crypto.randomUUID(),
                   title: formData.get('title') as string,
                   description: formData.get('description') as string || '',
                   category: formData.get('category') as string,

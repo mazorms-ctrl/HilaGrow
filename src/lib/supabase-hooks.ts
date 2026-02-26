@@ -4,7 +4,7 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // MedicalTask interface matching the app's expectations
 export interface MedicalTask {
-  id: number;
+  id: string; // UUID from Supabase — never convert to/from integer
   title: string;
   description: string;
   category: string;
@@ -81,7 +81,7 @@ function dbRowToMedicalTask(
   }
 
   return {
-    id: parseInt(taskRow.id.replace(/-/g, '').slice(-8), 16), // Use last 8 chars for uniqueness
+    id: taskRow.id,
     title: taskRow.title,
     description: taskRow.description || '',
     category: groupRow.name,
@@ -255,10 +255,6 @@ export async function updateTask(task: MedicalTask): Promise<void> {
     throw new Error(`Group not found for category: ${task.category}`);
   }
 
-  // Convert numeric ID back to UUID format (simplified)
-  const taskIdHex = task.id.toString(16).padStart(8, '0');
-  const taskUuid = `20000000-0000-0000-0000-0000${taskIdHex}`;
-
   // Prepare metadata
   const metadata = {
     department: task.department,
@@ -291,12 +287,12 @@ export async function updateTask(task: MedicalTask): Promise<void> {
       priority: task.priority,
       metadata,
     })
-    .eq('id', taskUuid)
+    .eq('id', task.id)
     .select('id')
     .maybeSingle();
 
   if (taskError) throw taskError;
-  if (!updatedTask) throw new Error(`Task not found (id: ${task.id}). It may have been created outside seed data.`);
+  if (!updatedTask) throw new Error(`Task not found (id: ${task.id}).`);
 
   // Use the confirmed real UUID for all milestone operations.
   const confirmedUuid = updatedTask.id;
@@ -441,12 +437,8 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
 /**
  * Function to delete a task from Supabase
  */
-export async function deleteTask(taskId: number): Promise<void> {
-  // Convert numeric ID to UUID format
-  const taskIdHex = taskId.toString(16).padStart(8, '0');
-  const taskUuid = `20000000-0000-0000-0000-0000${taskIdHex}`;
-
-  const { error } = await supabase.from('tasks').delete().eq('id', taskUuid);
+export async function deleteTask(taskId: string): Promise<void> {
+  const { error } = await supabase.from('tasks').delete().eq('id', taskId);
 
   if (error) throw error;
 }

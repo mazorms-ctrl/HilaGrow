@@ -5,7 +5,7 @@ import { useMemo, useState } from 'react';
 
 // Type definition for medical task from App.tsx
 export interface MedicalTask {
-  id: number;
+  id: string; // UUID from Supabase
   title: string;
   description: string;
   category: string;
