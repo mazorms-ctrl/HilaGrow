@@ -475,20 +475,23 @@ export function useTasks(projectId: string | null) {
 
       const taskIds = tasksData?.map(t => t.id) || [];
 
-      // Fetch all milestones for those tasks
-      const { data: milestones, error: milestonesError } = await supabase
-        .from('milestones')
-        .select('*')
-        .in('task_id', taskIds)
-        .order('order', { ascending: true });
+      // Fetch milestones and participants in parallel (both only depend on taskIds)
+      const [
+        { data: milestones, error: milestonesError },
+        { data: participantRows },
+      ] = await Promise.all([
+        supabase
+          .from('milestones')
+          .select('*')
+          .in('task_id', taskIds)
+          .order('order', { ascending: true }),
+        supabase
+          .from('task_participants')
+          .select('task_id, profile_id')
+          .in('task_id', taskIds),
+      ]);
 
       if (milestonesError) throw milestonesError;
-
-      // Fetch all task_participants for those tasks
-      const { data: participantRows } = await supabase
-        .from('task_participants')
-        .select('task_id, profile_id')
-        .in('task_id', taskIds);
 
       // Group milestones by task_id
       const milestonesByTask = new Map<string, MilestoneRow[]>();

@@ -285,15 +285,20 @@ function App() {
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   // ── Project workspace state ────────────────────────────────────────────────
-  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-  // Load tasks from Supabase for the selected project (null = no fetch)
-  const { tasks: supabaseTasks, loading: tasksLoading } = useTasks(user ? selectedProjectId : null);
   // Load all profiles for assignment dropdowns (only when logged in)
   const { profiles } = useProfiles();
-  // Load projects for auth-redirect auto-selection
-  const { projects } = useProjects();
+  // Load projects — must be before useTasks so we can derive effectiveProjectId first
+  const { projects, loading: projectsLoading } = useProjects();
+
+  // Derive the active project without waiting for a useEffect → setState round-trip.
+  // If the user has manually picked a project, use that; otherwise fall back to the first
+  // project from the DB so tasks start loading in the same render that projects arrive.
+  const effectiveProjectId = user && projects.length > 0 ? projects[0].id : null;
+
+  // Load tasks from Supabase for the effective project (null = no fetch)
+  const { tasks: supabaseTasks, loading: tasksLoading } = useTasks(user ? effectiveProjectId : null);
 
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
@@ -346,12 +351,6 @@ function App() {
     localStorage.setItem('grow.projectName', projectName);
   }, [projectName]);
 
-  // Auth redirect: when user logs in and projects load, auto-select first project
-  useEffect(() => {
-    if (user && projects.length > 0 && !selectedProjectId) {
-      setSelectedProjectId(projects[0].id);
-    }
-  }, [user, projects, selectedProjectId]);
 
 const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
@@ -605,8 +604,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
     // Update tasks in Supabase
     const tasksToUpdate = tasks.filter(t => normalizeOwnerName(t.owner) === from);
-    if (selectedProjectId) {
-      Promise.all(tasksToUpdate.map(task => updateTask({ ...task, owner: to }, selectedProjectId)))
+    if (effectiveProjectId) {
+      Promise.all(tasksToUpdate.map(task => updateTask({ ...task, owner: to }, effectiveProjectId)))
         .catch(error => {
           console.error('Error updating owner in tasks:', error);
           showToast('שגיאה בעדכון האחראי במשימות', 'error');
@@ -746,9 +745,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   const handleSaveTask = async () => {
-    if (editingTask && selectedProjectId) {
+    if (editingTask && effectiveProjectId) {
       try {
-        await updateTask(editingTask, selectedProjectId);
+        await updateTask(editingTask, effectiveProjectId);
         setSelectedTask(editingTask);
         setEditingTask(null);
         showToast('השינויים נשמרו בהצלחה!', 'success');
@@ -808,9 +807,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   const addNewTask = async (newTask: typeof tasks[0]) => {
-    if (!selectedProjectId) return;
+    if (!effectiveProjectId) return;
     try {
-      await createTask(newTask, selectedProjectId, user?.id);
+      await createTask(newTask, effectiveProjectId, user?.id);
       setShowNewTaskModal(false);
       showToast('המשימה נוספה בהצלחה!', 'success');
     } catch (error) {
@@ -854,9 +853,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   const updateCategoryColor = async (categoryName: string, newColor: string) => {
-    if (!selectedProjectId) return;
+    if (!effectiveProjectId) return;
     try {
-      await updateCategoryColorInDB(categoryName, newColor, selectedProjectId);
+      await updateCategoryColorInDB(categoryName, newColor, effectiveProjectId);
       showToast('צבע הקטגוריה עודכן', 'success');
     } catch (error) {
       console.error('Error updating category color:', error);
@@ -865,13 +864,13 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   const renameCategory = async (oldName: string, newName: string) => {
-    if (!newName.trim() || oldName === newName || !selectedProjectId) return;
+    if (!newName.trim() || oldName === newName || !effectiveProjectId) return;
     if (categories.includes(newName)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
     }
     try {
-      await renameCategoryInDB(oldName, newName, selectedProjectId);
+      await renameCategoryInDB(oldName, newName, effectiveProjectId);
       setExpandedCategories(prev => prev.map(c => c === oldName ? newName : c));
       setEditingCategory(null);
       showToast('שם הקטגוריה עודכן', 'success');
@@ -896,7 +895,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   const addCategory = async (name: string, color: string) => {
-    if (!name.trim() || !selectedProjectId) return;
+    if (!name.trim() || !effectiveProjectId) return;
     if (categories.includes(name)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
@@ -928,7 +927,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         links: '',
         milestones: [{ text: 'שלב ראשון', done: false }]
       };
-      await createTask(newTask, selectedProjectId);
+      await createTask(newTask, effectiveProjectId);
       setExpandedCategories([...expandedCategories, name]);
       setShowAddCategory(false);
       showToast('קטגוריה חדשה נוספה', 'success');
@@ -1749,8 +1748,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           }
         `}</style>
 
-          {/* Empty state: logged in but no project selected yet */}
-          {user && !selectedProjectId && !taskMatch && (
+          {/* Empty state: logged in but no project selected yet (hide while projects are still loading) */}
+          {user && !effectiveProjectId && !taskMatch && !projectsLoading && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -1785,7 +1784,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           )}
 
           {/* Main views — shown when guest OR when a project is selected (and not on task page) */}
-          {!taskMatch && (!user || selectedProjectId) && (
+          {!taskMatch && (!user || effectiveProjectId) && (
           <>
 
           {/* Dashboard View - Hybrid Dashboard */}
