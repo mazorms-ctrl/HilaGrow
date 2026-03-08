@@ -8,7 +8,7 @@ import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB } from './lib/supabase-hooks';
+import { useTasks, useProfiles, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB } from './lib/supabase-hooks';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -307,9 +307,13 @@ function App() {
   // ── Project workspace state ────────────────────────────────────────────────
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Task to open after project switch (sidebar navigation)
+  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
   // Load tasks from Supabase for the selected project (null = no fetch)
   const { tasks: supabaseTasks, loading: tasksLoading } = useTasks(user ? selectedProjectId : null);
+  // Load all profiles for assignment dropdowns (only when logged in)
+  const { profiles } = useProfiles();
 
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
@@ -361,6 +365,34 @@ function App() {
   useEffect(() => {
     localStorage.setItem('grow.projectName', projectName);
   }, [projectName]);
+
+  // Open a pending task once tasks finish loading (after a project switch from sidebar)
+  useEffect(() => {
+    if (!pendingTaskId || supabaseTasks.length === 0) return;
+    const task = supabaseTasks.find(t => t.id === pendingTaskId);
+    if (task) {
+      setSelectedTask(task);
+      setEditingTask(task);
+      setPendingTaskId(null);
+    }
+  }, [supabaseTasks, pendingTaskId]);
+
+  // Handle sidebar task click: switch project if needed, then open the drawer
+  const handleOpenTask = (projectId: string, taskId: string) => {
+    if (selectedProjectId === projectId) {
+      // Tasks already loaded — open immediately
+      const task = supabaseTasks.find(t => t.id === taskId);
+      if (task) {
+        setSelectedTask(task);
+        setEditingTask(task);
+        setActiveStep(0);
+      }
+    } else {
+      // Switch project first; task will open once tasks load
+      setSelectedProjectId(projectId);
+      setPendingTaskId(taskId);
+    }
+  };
 
   const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
@@ -917,6 +949,8 @@ function App() {
         category: name,
         color: color,
         owner: 'ללא אחראי',
+        assignedTo: null,
+        participants: [],
         priority: 'P2' as const,
         progress: 0,
         department: '',
@@ -1726,6 +1760,7 @@ function App() {
           <Sidebar
             selectedProjectId={selectedProjectId}
             onSelectProject={setSelectedProjectId}
+            onOpenTask={handleOpenTask}
             user={user}
             profile={profile}
             onSignOut={signOut}
@@ -3962,34 +3997,94 @@ function App() {
                       />
                     </div>
 
-                    {/* Owner Input */}
+                    {/* Owner / Assigned-to dropdown */}
                     <div>
                       <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#525252', marginBottom: '8px' }}>
-                        אחראי <span style={{ color: '#ef4444' }}>*</span>
+                        אחראי
                       </label>
-                      <input
-                        type="text"
-                        value={editingTask.owner}
-                        onChange={(e) => setEditingTask({ ...editingTask, owner: e.target.value })}
-                        list="owners-directory-edit"
-                        placeholder="שם מלא של האחראי"
+                      <select
+                        value={editingTask.assignedTo ?? ''}
+                        onChange={(e) => {
+                          const profileId = e.target.value || null;
+                          const profile = profiles.find(p => p.id === profileId);
+                          setEditingTask({
+                            ...editingTask,
+                            assignedTo: profileId,
+                            owner: profile ? (profile.full_name || profile.email) : '',
+                          });
+                        }}
                         style={{
                           width: '100%',
                           padding: '12px',
-                          border: !editingTask.owner?.trim() ? '2px solid #fca5a5' : '1px solid #e5e5e5',
+                          border: '1px solid #e5e5e5',
                           borderRadius: '8px',
                           fontSize: '14px',
-                          fontFamily: 'inherit'
+                          fontFamily: 'inherit',
+                          background: 'white',
+                          cursor: 'pointer',
                         }}
-                      />
-                      <datalist id="owners-directory-edit">
-                        {owners.map((o) => (
-                          <option key={o} value={o} />
+                      >
+                        <option value="">— ללא אחראי —</option>
+                        {profiles.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.full_name || p.email}
+                          </option>
                         ))}
-                      </datalist>
-                      {!editingTask.owner?.trim() && (
-                        <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px' }}>
-                          שדה חובה - יש להזין אחראי
+                      </select>
+                    </div>
+
+                    {/* Participants multi-select */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#525252', marginBottom: '8px' }}>
+                        משתתפים
+                      </label>
+                      <div style={{
+                        border: '1px solid #e5e5e5',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        maxHeight: '180px',
+                        overflowY: 'auto',
+                        background: 'white',
+                      }}>
+                        {profiles.length === 0 ? (
+                          <div style={{ fontSize: '13px', color: '#94a3b8', padding: '4px 0' }}>אין משתמשים זמינים</div>
+                        ) : profiles.map(p => {
+                          const currentParticipants = editingTask.participants ?? [];
+                          const checked = currentParticipants.includes(p.id);
+                          return (
+                            <label
+                              key={p.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '6px 4px',
+                                cursor: 'pointer',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                                color: '#374151',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const prev = editingTask.participants ?? [];
+                                  const newParticipants = e.target.checked
+                                    ? [...prev, p.id]
+                                    : prev.filter(id => id !== p.id);
+                                  setEditingTask({ ...editingTask, participants: newParticipants });
+                                }}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                              {p.full_name || p.email}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {(editingTask.participants ?? []).length > 0 && (
+                        <div style={{ fontSize: '12px', color: '#6366f1', marginTop: '4px' }}>
+                          {(editingTask.participants ?? []).length} משתתף{(editingTask.participants ?? []).length > 1 ? 'ים' : ''} נבחר{(editingTask.participants ?? []).length > 1 ? 'ו' : ''}
                         </div>
                       )}
                     </div>
@@ -4730,6 +4825,8 @@ function App() {
                   category: formData.get('category') as string,
                   color: tasks.find(t => t.category === formData.get('category'))?.color || '#7dd3fc',
                   owner: formData.get('owner') as string || 'ללא אחראי',
+                  assignedTo: null,
+                  participants: [],
                   priority: (formData.get('priority') as 'P1' | 'P2' | 'P3') || 'P2',
                   progress: 0,
                   department: formData.get('department') as string || '',

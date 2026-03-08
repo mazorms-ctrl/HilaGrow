@@ -10,6 +10,8 @@ export interface MedicalTask {
   category: string;
   color: string;
   owner: string;
+  assignedTo: string | null;   // UUID of assigned profile
+  participants: string[];      // Array of profile UUIDs
   priority: 'P1' | 'P2' | 'P3';
   progress: number;
   department: string;
@@ -29,6 +31,14 @@ export interface MedicalTask {
   milestones: Array<{ text: string; done: boolean }>;
 }
 
+// ── Profile types ──────────────────────────────────────────────────────────────
+
+export interface ProfileSummary {
+  id: string;
+  full_name: string | null;
+  email: string;
+}
+
 // Database row types
 interface TaskRow {
   id: string;
@@ -36,6 +46,7 @@ interface TaskRow {
   title: string;
   description: string | null;
   owner_name: string | null;
+  assigned_to: string | null;
   priority: 'P1' | 'P2' | 'P3' | null;
   progress_mode: 'auto' | 'manual';
   progress_manual: number | null;
@@ -71,7 +82,8 @@ export interface ProjectSummary {
 function dbRowToMedicalTask(
   taskRow: TaskRow,
   groupRow: GroupRow,
-  milestones: MilestoneRow[]
+  milestones: MilestoneRow[],
+  participantIds: string[] = []
 ): MedicalTask {
   const metadata = taskRow.metadata || {};
 
@@ -90,6 +102,8 @@ function dbRowToMedicalTask(
     category: groupRow.name,
     color: groupRow.color || '#7dd3fc',
     owner: taskRow.owner_name || '',
+    assignedTo: taskRow.assigned_to || null,
+    participants: participantIds,
     priority: taskRow.priority || 'P2',
     progress,
     department: metadata.department || '',
@@ -177,6 +191,166 @@ export async function createProject(name: string, description?: string): Promise
   return data.id;
 }
 
+// ── useProfiles ───────────────────────────────────────────────────────────────
+
+/**
+ * Fetches all user profiles (for dropdowns/selects).
+ * Requires the profiles table to have a SELECT policy for authenticated users.
+ */
+export function useProfiles() {
+  const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    supabase
+      .from('profiles')
+      .select('id, full_name, email')
+      .order('full_name', { ascending: true })
+      .then(({ data, error }) => {
+        if (error) console.error('Error fetching profiles:', error);
+        else setProfiles(data || []);
+        setLoading(false);
+      });
+  }, []);
+
+  return { profiles, loading };
+}
+
+// ── useMyTasks ────────────────────────────────────────────────────────────────
+
+export interface MyTaskSummary {
+  id: string;
+  title: string;
+  priority: 'P1' | 'P2' | 'P3';
+  projectId: string;
+  projectName: string;
+  category: string;
+  dueDate: string;
+  progress: number;
+}
+
+/**
+ * Fetches tasks where the current user is either assigned_to or a participant.
+ * Crosses project boundaries — requires updated RLS (see migration notes).
+ */
+export function useMyTasks() {
+  const [myTasks, setMyTasks] = useState<MyTaskSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchMyTasks = useCallback(async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) { setLoading(false); return; }
+
+    try {
+      // Fetch tasks directly assigned to this user
+      const { data: assignedRows } = await supabase
+        .from('tasks')
+        .select('id, title, priority, metadata, progress_mode, progress_manual, group_id')
+        .eq('assigned_to', user.id);
+
+      // Fetch task IDs where this user is a participant
+      const { data: participantLinks } = await supabase
+        .from('task_participants')
+        .select('task_id')
+        .eq('profile_id', user.id);
+
+      // Collect additional task IDs (participant but not already assigned)
+      const assignedIds = new Set((assignedRows || []).map(t => t.id));
+      const extraIds = (participantLinks || [])
+        .map(p => p.task_id)
+        .filter(id => !assignedIds.has(id));
+
+      let allTaskRows = [...(assignedRows || [])];
+
+      if (extraIds.length > 0) {
+        const { data: extraRows } = await supabase
+          .from('tasks')
+          .select('id, title, priority, metadata, progress_mode, progress_manual, group_id')
+          .in('id', extraIds);
+        allTaskRows = [...allTaskRows, ...(extraRows || [])];
+      }
+
+      if (allTaskRows.length === 0) {
+        setMyTasks([]);
+        setLoading(false);
+        return;
+      }
+
+      // Fetch groups for all task's group_ids
+      const groupIds = [...new Set(allTaskRows.map(t => t.group_id))];
+      const { data: groups } = await supabase
+        .from('groups')
+        .select('id, name, project_id')
+        .in('id', groupIds);
+
+      // Fetch projects for all group's project_ids
+      const projectIds = [...new Set((groups || []).map(g => g.project_id))];
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id, name')
+        .in('id', projectIds);
+
+      // Build lookup maps
+      const groupMap = new Map((groups || []).map(g => [g.id, g]));
+      const projectMap = new Map((projects || []).map(p => [p.id, p]));
+
+      // Also fetch milestones for auto-progress tasks
+      const autoIds = allTaskRows.filter(t => t.progress_mode === 'auto').map(t => t.id);
+      const milestoneCountByTask = new Map<string, { total: number; done: number }>();
+      if (autoIds.length > 0) {
+        const { data: milestones } = await supabase
+          .from('milestones')
+          .select('task_id, done')
+          .in('task_id', autoIds);
+        (milestones || []).forEach(m => {
+          const cur = milestoneCountByTask.get(m.task_id) || { total: 0, done: 0 };
+          milestoneCountByTask.set(m.task_id, {
+            total: cur.total + 1,
+            done: cur.done + (m.done ? 1 : 0),
+          });
+        });
+      }
+
+      const result: MyTaskSummary[] = [];
+      for (const task of allTaskRows) {
+        const group = groupMap.get(task.group_id);
+        const project = group ? projectMap.get(group.project_id) : null;
+        if (!group || !project) continue;
+
+        let progress = 0;
+        if (task.progress_mode === 'auto') {
+          const counts = milestoneCountByTask.get(task.id);
+          progress = counts && counts.total > 0
+            ? Math.round((counts.done / counts.total) * 100) : 0;
+        } else {
+          progress = task.progress_manual || 0;
+        }
+
+        result.push({
+          id: task.id,
+          title: task.title,
+          priority: task.priority || 'P2',
+          projectId: project.id,
+          projectName: project.name,
+          category: group.name,
+          dueDate: task.metadata?.dueDate || '',
+          progress,
+        });
+      }
+
+      setMyTasks(result);
+    } catch (err) {
+      console.error('Error fetching my tasks:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchMyTasks(); }, [fetchMyTasks]);
+
+  return { myTasks, loading, refetch: fetchMyTasks };
+}
+
 // ── useTasks ──────────────────────────────────────────────────────────────────
 
 /**
@@ -217,14 +391,22 @@ export function useTasks(projectId: string | null) {
 
       if (tasksError) throw tasksError;
 
+      const taskIds = tasksData?.map(t => t.id) || [];
+
       // Fetch all milestones for those tasks
       const { data: milestones, error: milestonesError } = await supabase
         .from('milestones')
         .select('*')
-        .in('task_id', tasksData?.map(t => t.id) || [])
+        .in('task_id', taskIds)
         .order('order', { ascending: true });
 
       if (milestonesError) throw milestonesError;
+
+      // Fetch all task_participants for those tasks
+      const { data: participantRows } = await supabase
+        .from('task_participants')
+        .select('task_id, profile_id')
+        .in('task_id', taskIds);
 
       // Group milestones by task_id
       const milestonesByTask = new Map<string, MilestoneRow[]>();
@@ -235,13 +417,23 @@ export function useTasks(projectId: string | null) {
         milestonesByTask.get(m.task_id)!.push(m);
       });
 
+      // Group participant UUIDs by task_id
+      const participantsByTask = new Map<string, string[]>();
+      participantRows?.forEach(p => {
+        if (!participantsByTask.has(p.task_id)) {
+          participantsByTask.set(p.task_id, []);
+        }
+        participantsByTask.get(p.task_id)!.push(p.profile_id);
+      });
+
       // Convert to MedicalTask format
       const medicalTasks: MedicalTask[] = [];
       tasksData?.forEach(task => {
         const group = groups?.find(g => g.id === task.group_id);
         if (group) {
           const taskMilestones = milestonesByTask.get(task.id) || [];
-          medicalTasks.push(dbRowToMedicalTask(task, group, taskMilestones));
+          const taskParticipants = participantsByTask.get(task.id) || [];
+          medicalTasks.push(dbRowToMedicalTask(task, group, taskMilestones, taskParticipants));
         }
       });
 
@@ -333,6 +525,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
       title: task.title,
       description: task.description,
       owner_name: task.owner,
+      assigned_to: task.assignedTo || null,
       priority: task.priority,
       metadata,
     })
@@ -344,6 +537,15 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
   if (!updatedTask) throw new Error(`Task not found (id: ${task.id}).`);
 
   const confirmedUuid = updatedTask.id;
+
+  // Sync task_participants (delete all, re-insert)
+  await supabase.from('task_participants').delete().eq('task_id', confirmedUuid);
+  if (task.participants.length > 0) {
+    const { error: participantsError } = await supabase.from('task_participants').insert(
+      task.participants.map(profileId => ({ task_id: confirmedUuid, profile_id: profileId }))
+    );
+    if (participantsError) throw participantsError;
+  }
 
   // Only re-sync milestones if they changed
   const { data: currentMilestones } = await supabase
@@ -441,6 +643,7 @@ export async function createTask(
       title: task.title,
       description: task.description,
       owner_name: task.owner,
+      assigned_to: task.assignedTo || null,
       priority: task.priority,
       progress_mode: 'auto',
       metadata,
@@ -450,6 +653,13 @@ export async function createTask(
     .single();
 
   if (taskError) throw taskError;
+
+  if (task.participants.length > 0) {
+    const { error: participantsError } = await supabase.from('task_participants').insert(
+      task.participants.map(profileId => ({ task_id: newTask.id, profile_id: profileId }))
+    );
+    if (participantsError) throw participantsError;
+  }
 
   if (task.milestones.length > 0) {
     const { error: milestonesError } = await supabase.from('milestones').insert(
@@ -475,7 +685,7 @@ export async function createTask(
     .eq('task_id', newTask.id)
     .order('order');
 
-  return dbRowToMedicalTask(newTask, groups!, milestones || []);
+  return dbRowToMedicalTask(newTask, groups!, milestones || [], task.participants);
 }
 
 // ── deleteTask ────────────────────────────────────────────────────────────────

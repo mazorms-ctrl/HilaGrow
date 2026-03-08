@@ -1,17 +1,15 @@
-import { useState, useEffect } from 'react';
-import { FolderOpen, FolderPlus, Plus, LogOut, ChevronRight, Layers } from 'lucide-react';
-import { useProjects, createProject } from '@/lib/supabase-hooks';
+import { LogOut, ChevronRight, ClipboardList, AlertCircle } from 'lucide-react';
+import { useMyTasks, type MyTaskSummary } from '@/lib/supabase-hooks';
 import type { User } from '@supabase/supabase-js';
 import type { Profile } from '@/contexts/AuthContext';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  bg:          '#1c2333',   // charcoal-blue base
-  bgHeader:    '#212840',   // slightly lighter for user card
-  bgActive:    'rgba(99,102,241,0.18)',
+  bg:          '#1c2333',
+  bgHeader:    '#212840',
   bgHover:     'rgba(255,255,255,0.06)',
   border:      'rgba(255,255,255,0.07)',
-  accent:      '#6366f1',   // indigo
+  accent:      '#6366f1',
   accentLight: '#818cf8',
   text:        '#e2e8f0',
   textMuted:   'rgba(226,232,240,0.45)',
@@ -20,9 +18,16 @@ const C = {
   dangerBg:    'rgba(239,68,68,0.12)',
 };
 
+const PRIORITY = {
+  P1: { bg: 'rgba(239,68,68,0.18)',  text: '#f87171',  label: 'P1' },
+  P2: { bg: 'rgba(249,115,22,0.18)', text: '#fb923c',  label: 'P2' },
+  P3: { bg: 'rgba(99,102,241,0.18)', text: '#818cf8',  label: 'P3' },
+};
+
 interface Props {
   selectedProjectId: string | null;
   onSelectProject: (id: string) => void;
+  onOpenTask: (projectId: string, taskId: string) => void;
   user: User;
   profile: Profile | null;
   onSignOut: () => void;
@@ -30,45 +35,138 @@ interface Props {
   onToggleCollapse: () => void;
 }
 
+function isOverdue(dueDate: string) {
+  return dueDate ? new Date(dueDate) < new Date() : false;
+}
+
+function ProgressBar({ value }: { value: number }) {
+  return (
+    <div style={{
+      width: '100%',
+      height: '3px',
+      background: 'rgba(255,255,255,0.08)',
+      borderRadius: '2px',
+      marginTop: '5px',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        height: '100%',
+        width: `${value}%`,
+        background: value === 100
+          ? '#34d399'
+          : `linear-gradient(90deg, ${C.accent}, ${C.accentLight})`,
+        borderRadius: '2px',
+        transition: 'width 0.3s ease',
+      }} />
+    </div>
+  );
+}
+
+function TaskCard({ task, onClick }: { task: MyTaskSummary; onClick: () => void }) {
+  const p = PRIORITY[task.priority];
+  const overdue = isOverdue(task.dueDate);
+
+  return (
+    <button
+      onClick={onClick}
+      title={task.title}
+      style={{
+        width: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '5px',
+        padding: '10px 12px',
+        borderRadius: '10px',
+        border: '1px solid transparent',
+        background: 'rgba(255,255,255,0.04)',
+        cursor: 'pointer',
+        textAlign: 'right',
+        fontFamily: 'inherit',
+        transition: 'background 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={e => {
+        e.currentTarget.style.background = C.bgHover;
+        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.10)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
+        e.currentTarget.style.borderColor = 'transparent';
+      }}
+    >
+      {/* Priority badge + title */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+        <span style={{
+          display: 'inline-block',
+          padding: '2px 7px',
+          borderRadius: '5px',
+          fontSize: '10px',
+          fontWeight: '700',
+          letterSpacing: '0.5px',
+          background: p.bg,
+          color: p.text,
+          flexShrink: 0,
+          marginTop: '1px',
+        }}>
+          {task.priority}
+        </span>
+        <span style={{
+          fontSize: '13px',
+          fontWeight: '500',
+          color: C.text,
+          lineHeight: '1.45',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical' as const,
+          flex: 1,
+          direction: 'rtl',
+          textAlign: 'right',
+        }}>
+          {task.title}
+        </span>
+      </div>
+
+      {/* Project name + overdue indicator */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        direction: 'rtl',
+      }}>
+        <span style={{ fontSize: '11px', color: C.textMuted }}>{task.projectName}</span>
+        {overdue && (
+          <span style={{
+            fontSize: '10px',
+            color: '#f87171',
+            fontWeight: '600',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '2px',
+          }}>
+            <AlertCircle size={10} />
+            פג תוקף
+          </span>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      {task.progress > 0 && <ProgressBar value={task.progress} />}
+    </button>
+  );
+}
+
 export function Sidebar({
   selectedProjectId,
   onSelectProject,
+  onOpenTask,
   user,
   profile,
   onSignOut,
   collapsed,
   onToggleCollapse,
 }: Props) {
-  const { projects, loading, refetch } = useProjects();
-  const [newProjectName, setNewProjectName] = useState('');
-  const [showNewProject, setShowNewProject] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [createError, setCreateError] = useState<string | null>(null);
-
-  // Auto-select the first project when the list loads
-  useEffect(() => {
-    if (projects.length > 0 && !selectedProjectId) {
-      onSelectProject(projects[0].id);
-    }
-  }, [projects, selectedProjectId, onSelectProject]);
-
-  async function handleCreateProject(e: React.FormEvent) {
-    e.preventDefault();
-    if (!newProjectName.trim()) return;
-    setCreating(true);
-    setCreateError(null);
-    try {
-      const id = await createProject(newProjectName.trim());
-      await refetch();
-      onSelectProject(id);
-      setNewProjectName('');
-      setShowNewProject(false);
-    } catch (err) {
-      setCreateError(err instanceof Error ? err.message : 'שגיאה ביצירת פרויקט');
-    } finally {
-      setCreating(false);
-    }
-  }
+  const { myTasks, loading } = useMyTasks();
 
   const displayName = profile?.full_name || user.email || '';
   const emailDisplay = profile?.full_name ? user.email : undefined;
@@ -79,7 +177,20 @@ export function Sidebar({
     .join('')
     .toUpperCase();
 
-  const w = collapsed ? '60px' : '256px';
+  // Sort: P1 first, then P2, then P3
+  const sorted = [...myTasks].sort((a, b) => {
+    const order = { P1: 0, P2: 1, P3: 2 };
+    return order[a.priority] - order[b.priority];
+  });
+
+  const handleTaskClick = (task: MyTaskSummary) => {
+    if (selectedProjectId !== task.projectId) {
+      onSelectProject(task.projectId);
+    }
+    onOpenTask(task.projectId, task.id);
+  };
+
+  const w = collapsed ? '64px' : '272px';
 
   return (
     <aside
@@ -92,41 +203,38 @@ export function Sidebar({
         color: C.text,
         display: 'flex',
         flexDirection: 'column',
-        // Shadow on the LEFT edge (between sidebar and main content)
         borderLeft: `1px solid ${C.border}`,
         boxShadow: '-6px 0 24px rgba(0,0,0,0.22)',
         transition: 'width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1)',
         overflow: 'hidden',
         flexShrink: 0,
-        position: 'relative',
       }}
     >
-      {/* ── User profile card ─────────────────────────────────────── */}
+      {/* ── User profile card ──────────────────────────────────────── */}
       <div style={{
         background: C.bgHeader,
-        padding: collapsed ? '20px 0 16px' : '20px 16px 16px',
+        padding: collapsed ? '16px 0' : '16px 14px',
         borderBottom: `1px solid ${C.border}`,
         display: 'flex',
         flexDirection: collapsed ? 'column' : 'row',
         alignItems: 'center',
-        gap: collapsed ? '0' : '12px',
+        gap: collapsed ? '0' : '10px',
+        flexShrink: 0,
       }}>
-        {/* Avatar */}
         <div style={{
-          width: '40px',
-          height: '40px',
-          minWidth: '40px',
-          borderRadius: '12px',
+          width: '38px',
+          height: '38px',
+          minWidth: '38px',
+          borderRadius: '10px',
           background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           fontWeight: '700',
-          fontSize: '15px',
+          fontSize: '14px',
           color: 'white',
           flexShrink: 0,
-          boxShadow: '0 2px 8px rgba(99,102,241,0.4)',
-          letterSpacing: '0.5px',
+          boxShadow: '0 2px 8px rgba(99,102,241,0.35)',
         }}>
           {initials}
         </div>
@@ -134,14 +242,14 @@ export function Sidebar({
         {!collapsed && (
           <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: '14px',
+              fontSize: '13.5px',
               fontWeight: '600',
               color: C.text,
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              lineHeight: '1.3',
               textAlign: 'right',
+              lineHeight: '1.3',
             }}>
               {displayName}
             </div>
@@ -162,265 +270,161 @@ export function Sidebar({
         )}
       </div>
 
-      {/* ── Projects section ──────────────────────────────────────── */}
-      <div style={{
-        flex: 1,
-        padding: collapsed ? '16px 8px' : '16px 10px',
-        overflowY: 'auto',
-        overflowX: 'hidden',
-      }}>
-
-        {/* Section label */}
-        {!collapsed && (
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '0 6px',
-            marginBottom: '10px',
+      {/* ── "My Tasks" section label ───────────────────────────────── */}
+      {!collapsed && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '13px 16px 6px',
+          flexShrink: 0,
+        }}>
+          <ClipboardList size={12} style={{ color: C.textDim }} />
+          <span style={{
+            fontSize: '10px',
+            fontWeight: '700',
+            color: C.textDim,
+            textTransform: 'uppercase',
+            letterSpacing: '1.4px',
           }}>
-            <Layers size={12} style={{ color: C.textDim, flexShrink: 0 }} />
+            המשימות שלי
+          </span>
+          {myTasks.length > 0 && (
             <span style={{
+              marginRight: 'auto',
+              background: 'rgba(99,102,241,0.22)',
+              color: C.accentLight,
               fontSize: '10px',
               fontWeight: '700',
-              color: C.textDim,
-              textTransform: 'uppercase',
-              letterSpacing: '1.4px',
+              padding: '1px 7px',
+              borderRadius: '10px',
             }}>
-              פרויקטים
+              {myTasks.length}
             </span>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* Project list */}
+      {/* ── Task list ──────────────────────────────────────────────── */}
+      <div style={{
+        flex: 1,
+        overflowY: 'auto',
+        overflowX: 'hidden',
+        padding: collapsed ? '10px 6px' : '4px 10px 16px',
+        // Custom scrollbar
+        scrollbarWidth: 'thin',
+        scrollbarColor: `rgba(255,255,255,0.1) transparent`,
+      }}>
+        <style>{`
+          aside::-webkit-scrollbar { width: 4px; }
+          aside::-webkit-scrollbar-track { background: transparent; }
+          aside::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+        `}</style>
+
         {loading ? (
-          <div style={{
-            padding: '10px 6px',
-            color: C.textMuted,
-            fontSize: '12px',
-            textAlign: 'center',
-          }}>
-            {collapsed ? '…' : 'טוען פרויקטים...'}
-          </div>
-        ) : projects.length === 0 && !showNewProject ? (
-          !collapsed && (
+          /* Loading spinner */
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
             <div style={{
-              padding: '20px 8px',
-              color: C.textMuted,
-              fontSize: '12px',
-              textAlign: 'center',
-              lineHeight: '1.7',
-            }}>
-              אין פרויקטים עדיין.
-              <br />
-              צור את הראשון!
+              width: '20px',
+              height: '20px',
+              border: `2px solid rgba(255,255,255,0.08)`,
+              borderTopColor: C.accent,
+              borderRadius: '50%',
+              animation: 'sidebar-spin 0.8s linear infinite',
+            }} />
+            <style>{`@keyframes sidebar-spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+
+        ) : sorted.length === 0 ? (
+          /* Empty state */
+          !collapsed && (
+            <div style={{ padding: '20px 8px', textAlign: 'center' }}>
+              <div style={{
+                width: '42px',
+                height: '42px',
+                borderRadius: '12px',
+                background: 'rgba(99,102,241,0.10)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                margin: '0 auto 10px',
+              }}>
+                <ClipboardList size={18} style={{ color: C.textDim }} />
+              </div>
+              <p style={{ fontSize: '12px', color: C.textMuted, margin: 0, lineHeight: '1.7' }}>
+                אין משימות משויכות אליך
+              </p>
             </div>
           )
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-            {projects.map(project => {
-              const isSelected = selectedProjectId === project.id;
+
+        ) : collapsed ? (
+          /* Collapsed: small priority squares */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+            {sorted.map(task => {
+              const p = PRIORITY[task.priority];
               return (
                 <button
-                  key={project.id}
-                  onClick={() => onSelectProject(project.id)}
-                  title={collapsed ? project.name : undefined}
+                  key={task.id}
+                  title={`${task.title}\n${task.projectName}`}
+                  onClick={() => handleTaskClick(task)}
                   style={{
-                    width: '100%',
+                    width: '38px',
+                    height: '38px',
+                    borderRadius: '8px',
+                    background: p.bg,
+                    border: 'none',
+                    cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '10px',
-                    padding: collapsed ? '10px 0' : '10px 12px',
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    borderRadius: '8px',
-                    border: isSelected ? `1px solid rgba(99,102,241,0.35)` : '1px solid transparent',
-                    background: isSelected ? C.bgActive : 'transparent',
-                    color: isSelected ? C.accentLight : C.textMuted,
-                    cursor: 'pointer',
-                    fontSize: '13.5px',
-                    fontWeight: isSelected ? '600' : '400',
-                    fontFamily: 'inherit',
-                    transition: 'all 0.15s ease',
-                    textAlign: 'right',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'opacity 0.15s, transform 0.15s',
                   }}
                   onMouseEnter={e => {
-                    if (!isSelected) {
-                      e.currentTarget.style.background = C.bgHover;
-                      e.currentTarget.style.color = C.text;
-                    }
+                    e.currentTarget.style.opacity = '0.72';
+                    e.currentTarget.style.transform = 'scale(0.95)';
                   }}
                   onMouseLeave={e => {
-                    if (!isSelected) {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.color = C.textMuted;
-                    }
+                    e.currentTarget.style.opacity = '1';
+                    e.currentTarget.style.transform = 'none';
                   }}
                 >
-                  <FolderOpen
-                    size={15}
-                    style={{
-                      flexShrink: 0,
-                      color: isSelected ? C.accent : C.textDim,
-                    }}
-                  />
-                  {!collapsed && (
-                    <span style={{
-                      flex: 1,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      direction: 'rtl',
-                      textAlign: 'right',
-                    }}>
-                      {project.name}
+                  {isOverdue(task.dueDate) ? (
+                    <AlertCircle size={13} style={{ color: p.text }} />
+                  ) : (
+                    <span style={{ fontSize: '9px', fontWeight: '800', color: p.text, letterSpacing: '0.3px' }}>
+                      {task.priority}
                     </span>
                   )}
                 </button>
               );
             })}
           </div>
+
+        ) : (
+          /* Expanded: full task cards */
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {sorted.map(task => (
+              <TaskCard
+                key={task.id}
+                task={task}
+                onClick={() => handleTaskClick(task)}
+              />
+            ))}
+          </div>
         )}
-
-        {/* ── New project ─────────────────────────────────────────── */}
-        <div style={{ marginTop: projects.length > 0 ? '8px' : '0' }}>
-          {!collapsed && (
-            showNewProject ? (
-              <form onSubmit={handleCreateProject}>
-                <input
-                  autoFocus
-                  value={newProjectName}
-                  onChange={e => setNewProjectName(e.target.value)}
-                  placeholder="שם הפרויקט..."
-                  dir="rtl"
-                  style={{
-                    width: '100%',
-                    padding: '9px 12px',
-                    background: 'rgba(255,255,255,0.08)',
-                    border: `1px solid ${C.accent}`,
-                    borderRadius: '8px',
-                    color: C.text,
-                    fontSize: '13px',
-                    fontFamily: 'inherit',
-                    marginBottom: '8px',
-                    boxSizing: 'border-box',
-                    outline: 'none',
-                    textAlign: 'right',
-                  }}
-                  onKeyDown={e => {
-                    if (e.key === 'Escape') { setShowNewProject(false); setCreateError(null); }
-                  }}
-                />
-                {createError && (
-                  <div style={{ fontSize: '11px', color: C.danger, marginBottom: '6px', textAlign: 'right' }}>
-                    {createError}
-                  </div>
-                )}
-                <div style={{ display: 'flex', gap: '6px' }}>
-                  <button
-                    type="submit"
-                    disabled={creating || !newProjectName.trim()}
-                    style={{
-                      flex: 1,
-                      padding: '8px',
-                      background: `linear-gradient(135deg, ${C.accent}, #8b5cf6)`,
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '600',
-                      cursor: creating ? 'not-allowed' : 'pointer',
-                      opacity: creating ? 0.65 : 1,
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    {creating ? 'יוצר...' : 'צור פרויקט'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setShowNewProject(false); setCreateError(null); }}
-                    style={{
-                      padding: '8px 14px',
-                      background: 'transparent',
-                      color: C.textMuted,
-                      border: `1px solid ${C.border}`,
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      cursor: 'pointer',
-                      fontFamily: 'inherit',
-                    }}
-                  >
-                    ביטול
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <button
-                onClick={() => setShowNewProject(true)}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'flex-start',
-                  gap: '10px',
-                  padding: '10px 12px',
-                  border: `1px dashed rgba(99,102,241,0.35)`,
-                  borderRadius: '8px',
-                  background: 'transparent',
-                  color: C.textMuted,
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontFamily: 'inherit',
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={e => {
-                  e.currentTarget.style.borderColor = C.accent;
-                  e.currentTarget.style.color = C.accentLight;
-                  e.currentTarget.style.background = 'rgba(99,102,241,0.08)';
-                }}
-                onMouseLeave={e => {
-                  e.currentTarget.style.borderColor = 'rgba(99,102,241,0.35)';
-                  e.currentTarget.style.color = C.textMuted;
-                  e.currentTarget.style.background = 'transparent';
-                }}
-              >
-                <FolderPlus size={15} style={{ flexShrink: 0 }} />
-                <span>פרויקט חדש</span>
-              </button>
-            )
-          )}
-
-          {/* Collapsed: just the + icon */}
-          {collapsed && (
-            <button
-              onClick={() => { onToggleCollapse(); setTimeout(() => setShowNewProject(true), 260); }}
-              title="פרויקט חדש"
-              style={{
-                width: '100%',
-                display: 'flex',
-                justifyContent: 'center',
-                padding: '10px 0',
-                border: `1px dashed rgba(99,102,241,0.35)`,
-                borderRadius: '8px',
-                background: 'transparent',
-                color: C.textMuted,
-                cursor: 'pointer',
-              }}
-            >
-              <Plus size={14} />
-            </button>
-          )}
-        </div>
       </div>
 
-      {/* ── Footer: collapse toggle + sign out ───────────────────── */}
+      {/* ── Footer ─────────────────────────────────────────────────── */}
       <div style={{
         borderTop: `1px solid ${C.border}`,
-        padding: collapsed ? '10px 8px' : '10px 10px',
+        padding: collapsed ? '10px 6px' : '10px',
         display: 'flex',
         flexDirection: 'column',
         gap: '4px',
+        flexShrink: 0,
       }}>
-        {/* Collapse toggle */}
+        {/* Collapse / Expand toggle */}
         <button
           onClick={onToggleCollapse}
           title={collapsed ? 'הרחב תפריט' : 'כווץ תפריט'}
@@ -449,13 +453,17 @@ export function Sidebar({
             e.currentTarget.style.color = C.textDim;
           }}
         >
-          {/* Right sidebar: ChevronRight = "collapse rightward", rotated = "expand leftward" */}
+          {/*
+            Right-side sidebar in RTL layout:
+            - Expanded: ChevronRight (→) = "push sidebar inward to the right" = collapse
+            - Collapsed: ChevronRight rotated 180° (←) = "expand sidebar outward to the left"
+          */}
           <ChevronRight
             size={15}
             style={{
               flexShrink: 0,
               transform: collapsed ? 'rotate(180deg)' : 'none',
-              transition: 'transform 0.25s',
+              transition: 'transform 0.25s cubic-bezier(.4,0,.2,1)',
             }}
           />
           {!collapsed && <span>כווץ תפריט</span>}
