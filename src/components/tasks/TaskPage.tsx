@@ -1,7 +1,6 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Calendar, Flag, Users, User, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
 import { useTasks, useProfiles, updateTask, type MedicalTask } from '@/lib/supabase-hooks';
-import { useAuth } from '@/contexts/AuthContext';
 import { useState } from 'react';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -19,11 +18,10 @@ function formatDate(dateStr: string) {
 }
 
 function isOverdue(dateStr: string) {
-  if (!dateStr) return false;
-  return new Date(dateStr) < new Date();
+  return dateStr ? new Date(dateStr) < new Date() : false;
 }
 
-// ── Metadata card ─────────────────────────────────────────────────────────────
+// ── Sub-components ────────────────────────────────────────────────────────────
 function MetaRow({ icon, label, children }: {
   icon: React.ReactNode;
   label: string;
@@ -32,18 +30,11 @@ function MetaRow({ icon, label, children }: {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
       <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        fontSize: '11px',
-        fontWeight: '700',
-        color: '#94a3b8',
-        textTransform: 'uppercase',
-        letterSpacing: '0.8px',
-        direction: 'rtl',
+        display: 'flex', alignItems: 'center', gap: '6px',
+        fontSize: '11px', fontWeight: '700', color: '#94a3b8',
+        textTransform: 'uppercase', letterSpacing: '0.8px', direction: 'rtl',
       }}>
-        {icon}
-        {label}
+        {icon}{label}
       </div>
       <div style={{ fontSize: '14px', color: '#1e293b', direction: 'rtl' }}>
         {children}
@@ -57,101 +48,79 @@ function ProgressRing({ value }: { value: number }) {
   const circ = 2 * Math.PI * r;
   const offset = circ - (value / 100) * circ;
   const color = value === 100 ? '#10b981' : value >= 60 ? '#6366f1' : '#f59e0b';
-
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', direction: 'rtl' }}>
       <svg width="48" height="48" viewBox="0 0 48 48" style={{ transform: 'rotate(-90deg)' }}>
         <circle cx="24" cy="24" r={r} fill="none" stroke="#e2e8f0" strokeWidth="4" />
-        <circle
-          cx="24" cy="24" r={r} fill="none" stroke={color} strokeWidth="4"
-          strokeDasharray={circ} strokeDashoffset={offset}
-          strokeLinecap="round"
-          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
-        />
+        <circle cx="24" cy="24" r={r} fill="none" stroke={color} strokeWidth="4"
+          strokeDasharray={circ} strokeDashoffset={offset} strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 0.5s ease' }} />
       </svg>
       <span style={{ fontSize: '20px', fontWeight: '700', color }}>{value}%</span>
     </div>
   );
 }
 
-// ── Main component ────────────────────────────────────────────────────────────
-export function TaskPage() {
-  const { projectId, taskId } = useParams<{ projectId: string; taskId: string }>();
+// ── TaskPageContent — renders INSIDE the app's existing layout shell ───────────
+// Props come from App.tsx (via useMatch), not from URL params directly.
+export function TaskPageContent({
+  projectId,
+  taskId,
+}: {
+  projectId: string;
+  taskId: string;
+}) {
   const navigate = useNavigate();
-  const { user } = useAuth();
-  const { tasks, loading } = useTasks(projectId ?? null);
+  const { tasks, loading } = useTasks(projectId);
   const { profiles } = useProfiles();
   const [saving, setSaving] = useState(false);
   const [localTask, setLocalTask] = useState<MedicalTask | null>(null);
 
   const task = localTask ?? tasks.find(t => t.id === taskId) ?? null;
 
-  // Redirect to home if not authenticated
-  if (!user) {
-    navigate('/', { replace: true });
-    return null;
-  }
-
-  const goBack = () => navigate(`/`);
-
   const toggleMilestone = async (idx: number) => {
-    if (!task || !projectId) return;
+    if (!task) return;
     const updated: MedicalTask = {
       ...task,
-      milestones: task.milestones.map((m, i) =>
-        i === idx ? { ...m, done: !m.done } : m
-      ),
+      milestones: task.milestones.map((m, i) => i === idx ? { ...m, done: !m.done } : m),
     };
     const doneCount = updated.milestones.filter(m => m.done).length;
     updated.progress = updated.milestones.length > 0
-      ? Math.round((doneCount / updated.milestones.length) * 100)
-      : 0;
+      ? Math.round((doneCount / updated.milestones.length) * 100) : 0;
     setLocalTask(updated);
     setSaving(true);
-    try {
-      await updateTask(updated, projectId);
-    } catch (e) {
-      console.error('Error saving milestone:', e);
-    } finally {
-      setSaving(false);
-    }
+    try { await updateTask(updated, projectId); }
+    catch (e) { console.error('Error saving milestone:', e); }
+    finally { setSaving(false); }
   };
 
-  // ── Loading state ───────────────────────────────────────────────────────────
+  // Loading
   if (loading) {
     return (
-      <div dir="rtl" style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f8fafc',
-      }}>
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '40vh' }}>
         <div style={{
-          width: '32px', height: '32px',
+          width: '28px', height: '28px',
           border: '3px solid #e2e8f0', borderTopColor: '#6366f1',
-          borderRadius: '50%', animation: 'spin 0.8s linear infinite',
+          borderRadius: '50%', animation: 'tp-spin 0.8s linear infinite',
         }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <style>{`@keyframes tp-spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     );
   }
 
-  // ── Task not found ──────────────────────────────────────────────────────────
+  // Not found
   if (!task) {
     return (
       <div dir="rtl" style={{
-        minHeight: '100vh', display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center', gap: '16px',
-        background: '#f8fafc', color: '#64748b',
+        display: 'flex', flexDirection: 'column', alignItems: 'center',
+        justifyContent: 'center', gap: '16px', minHeight: '40vh', color: '#64748b',
       }}>
-        <AlertCircle size={40} style={{ color: '#f87171' }} />
-        <h2 style={{ margin: 0, fontSize: '20px', fontWeight: '700', color: '#1e293b' }}>
+        <AlertCircle size={36} style={{ color: '#f87171' }} />
+        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '700', color: '#1e293b' }}>
           המשימה לא נמצאה
         </h2>
-        <button onClick={goBack} style={backBtnStyle}>
-          <ArrowRight size={16} />
-          חזרה ללוח
+        <button onClick={() => navigate('/')} style={backBtnStyle}>
+          <ArrowRight size={15} /> חזרה ללוח
         </button>
       </div>
     );
@@ -159,80 +128,55 @@ export function TaskPage() {
 
   const ps = PRIORITY_STYLES[task.priority];
   const overdue = isOverdue(task.dueDate);
-  const assignedProfile = task.assignedTo ? profiles.find(p => p.id === task.assignedTo) : null;
+  const assignedProfile = task.assignedTo
+    ? profiles.find(p => p.id === task.assignedTo) : null;
 
   return (
-    <div dir="rtl" style={{ minHeight: '100vh', background: '#f8fafc', fontFamily: 'inherit' }}>
+    <div dir="rtl" style={{ fontFamily: 'inherit' }}>
 
-      {/* ── Top bar ──────────────────────────────────────────────── */}
+      {/* ── Back bar ──────────────────────────────────────────────── */}
       <div style={{
-        background: 'white',
-        borderBottom: '1px solid #e2e8f0',
-        padding: '0 24px',
-        display: 'flex',
-        alignItems: 'center',
-        height: '56px',
-        gap: '16px',
-        position: 'sticky',
-        top: 0,
-        zIndex: 10,
+        display: 'flex', alignItems: 'center', gap: '12px',
+        marginBottom: '24px', flexWrap: 'wrap',
       }}>
-        <button onClick={goBack} style={backBtnStyle}>
-          <ArrowRight size={15} />
-          חזרה ללוח
+        <button onClick={() => navigate('/')} style={backBtnStyle}>
+          <ArrowRight size={15} /> חזרה ללוח
         </button>
-
         {/* Category breadcrumb */}
-        <div style={{
-          display: 'flex', alignItems: 'center', gap: '8px',
-          fontSize: '13px', color: '#94a3b8',
-        }}>
-          <span style={{
-            width: '8px', height: '8px', borderRadius: '50%',
-            background: task.color, flexShrink: 0,
-          }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '13px', color: '#94a3b8' }}>
+          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: task.color, flexShrink: 0, display: 'inline-block' }} />
           {task.category}
         </div>
-
-        {saving && (
-          <span style={{ fontSize: '12px', color: '#94a3b8', marginRight: 'auto' }}>
-            שומר...
-          </span>
-        )}
+        {saving && <span style={{ fontSize: '12px', color: '#94a3b8', marginRight: 'auto' }}>שומר...</span>}
       </div>
 
-      {/* ── Page body ────────────────────────────────────────────── */}
+      {/* ── 2-column body ─────────────────────────────────────────── */}
       <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto',
-        padding: '32px 24px',
         display: 'flex',
-        gap: '32px',
+        gap: '28px',
         alignItems: 'flex-start',
         direction: 'rtl',
       }}>
 
-        {/* ── Right metadata sidebar ─────────────────────────────── */}
+        {/* ── RIGHT: Metadata sidebar ───────────────────────────── */}
         <aside style={{
-          width: '280px',
+          width: '260px',
           flexShrink: 0,
           background: 'white',
           borderRadius: '16px',
           border: '1px solid #e2e8f0',
-          padding: '24px',
+          padding: '20px',
           display: 'flex',
           flexDirection: 'column',
-          gap: '24px',
+          gap: '20px',
           position: 'sticky',
-          top: '80px',
+          top: '24px',
+          boxShadow: '0 1px 4px rgba(0,0,0,0.06)',
         }}>
 
           {/* Progress */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            <div style={{
-              fontSize: '11px', fontWeight: '700', color: '#94a3b8',
-              textTransform: 'uppercase', letterSpacing: '0.8px',
-            }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px' }}>
               התקדמות
             </div>
             <ProgressRing value={task.progress} />
@@ -243,13 +187,8 @@ export function TaskPage() {
           {/* Priority */}
           <MetaRow icon={<Flag size={12} />} label="דחיפות">
             <span style={{
-              display: 'inline-block',
-              padding: '4px 12px',
-              borderRadius: '6px',
-              background: ps.bg,
-              color: ps.text,
-              fontSize: '13px',
-              fontWeight: '700',
+              display: 'inline-block', padding: '4px 12px', borderRadius: '6px',
+              background: ps.bg, color: ps.text, fontSize: '13px', fontWeight: '700',
             }}>
               {ps.label}
             </span>
@@ -259,11 +198,10 @@ export function TaskPage() {
           <MetaRow icon={<Calendar size={12} />} label="תאריך יעד">
             <span style={{ color: overdue ? '#dc2626' : '#1e293b', fontWeight: overdue ? '600' : '400' }}>
               {task.dueDate ? formatDate(task.dueDate) : '—'}
-              {overdue && <span style={{ marginRight: '6px', fontSize: '12px' }}>⚠ פג תוקף</span>}
+              {overdue && <span style={{ marginRight: '6px', fontSize: '11px' }}>⚠ פג תוקף</span>}
             </span>
           </MetaRow>
 
-          {/* Start Date */}
           {task.startDate && (
             <MetaRow icon={<Calendar size={12} />} label="תאריך התחלה">
               {formatDate(task.startDate)}
@@ -272,15 +210,15 @@ export function TaskPage() {
 
           <div style={{ height: '1px', background: '#f1f5f9' }} />
 
-          {/* Lead (אחראי) */}
+          {/* Lead */}
           <MetaRow icon={<User size={12} />} label="אחראי">
             {assignedProfile ? (
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{
-                  width: '28px', height: '28px', borderRadius: '8px', flexShrink: 0,
+                  width: '26px', height: '26px', borderRadius: '7px', flexShrink: 0,
                   background: 'linear-gradient(135deg, #6366f1, #8b5cf6)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '11px', fontWeight: '700', color: 'white',
+                  fontSize: '10px', fontWeight: '700', color: 'white',
                 }}>
                   {(assignedProfile.full_name || assignedProfile.email || '?')
                     .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()}
@@ -294,21 +232,20 @@ export function TaskPage() {
             )}
           </MetaRow>
 
-          {/* Participants (משתתפים) */}
-          {task.participants && task.participants.length > 0 && (
+          {/* Participants */}
+          {(task.participants ?? []).length > 0 && (
             <MetaRow icon={<Users size={12} />} label="משתתפים">
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                {task.participants.map(id => {
+                {(task.participants ?? []).map(id => {
                   const p = profiles.find(pr => pr.id === id);
                   const name = p ? (p.full_name || p.email) : id;
                   const initials = name.split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase();
                   return (
                     <div key={id} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{
-                        width: '24px', height: '24px', borderRadius: '6px', flexShrink: 0,
-                        background: '#e0e7ff',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        fontSize: '10px', fontWeight: '700', color: '#4f46e5',
+                        width: '22px', height: '22px', borderRadius: '6px', flexShrink: 0,
+                        background: '#e0e7ff', display: 'flex', alignItems: 'center',
+                        justifyContent: 'center', fontSize: '9px', fontWeight: '700', color: '#4f46e5',
                       }}>
                         {initials}
                       </div>
@@ -320,14 +257,12 @@ export function TaskPage() {
             </MetaRow>
           )}
 
-          {/* Department */}
           {task.department && (
             <MetaRow icon={<span style={{ fontSize: '12px' }}>🏥</span>} label="מחלקה">
               {task.department}
             </MetaRow>
           )}
 
-          {/* Category */}
           <MetaRow icon={
             <span style={{
               width: '10px', height: '10px', borderRadius: '3px',
@@ -338,57 +273,38 @@ export function TaskPage() {
           </MetaRow>
         </aside>
 
-        {/* ── Main content ──────────────────────────────────────── */}
-        <main style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '28px' }}>
+        {/* ── LEFT: Main content ───────────────────────────────── */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
           {/* Title */}
-          <div>
-            <h1 style={{
-              fontSize: 'clamp(24px, 4vw, 36px)',
-              fontWeight: '800',
-              color: '#0f172a',
-              margin: 0,
-              lineHeight: '1.25',
-              direction: 'rtl',
-              textAlign: 'right',
-            }}>
-              {task.title}
-            </h1>
-          </div>
+          <h1 style={{
+            fontSize: 'clamp(22px, 3.5vw, 34px)',
+            fontWeight: '800', color: '#0f172a',
+            margin: 0, lineHeight: '1.25',
+            direction: 'rtl', textAlign: 'right',
+          }}>
+            {task.title}
+          </h1>
 
           {/* Description */}
           {task.description && (
             <section style={sectionStyle}>
               <h2 style={sectionTitleStyle}>תיאור</h2>
-              <p style={{
-                fontSize: '15px',
-                lineHeight: '1.8',
-                color: '#334155',
-                margin: 0,
-                whiteSpace: 'pre-wrap',
-                direction: 'rtl',
-                textAlign: 'right',
-              }}>
-                {task.description}
-              </p>
+              <p style={bodyTextStyle}>{task.description}</p>
             </section>
           )}
 
           {/* Goal / Problem */}
           {(task.goal || task.problemStatement) && (
             <section style={sectionStyle}>
-              {task.problemStatement && (
-                <>
-                  <h2 style={sectionTitleStyle}>בעיה / הזדמנות</h2>
-                  <p style={bodyTextStyle}>{task.problemStatement}</p>
-                </>
-              )}
-              {task.goal && (
-                <>
-                  <h2 style={{ ...sectionTitleStyle, marginTop: task.problemStatement ? '16px' : 0 }}>מטרה</h2>
-                  <p style={bodyTextStyle}>{task.goal}</p>
-                </>
-              )}
+              {task.problemStatement && <>
+                <h2 style={sectionTitleStyle}>בעיה / הזדמנות</h2>
+                <p style={bodyTextStyle}>{task.problemStatement}</p>
+              </>}
+              {task.goal && <>
+                <h2 style={{ ...sectionTitleStyle, marginTop: task.problemStatement ? '16px' : 0 }}>מטרה</h2>
+                <p style={bodyTextStyle}>{task.goal}</p>
+              </>}
             </section>
           )}
 
@@ -398,49 +314,38 @@ export function TaskPage() {
               <h2 style={sectionTitleStyle}>
                 אבני דרך
                 <span style={{
-                  marginRight: '10px',
-                  fontSize: '12px',
-                  fontWeight: '500',
-                  color: '#94a3b8',
-                  background: '#f1f5f9',
-                  padding: '2px 8px',
-                  borderRadius: '10px',
+                  marginRight: '10px', fontSize: '12px', fontWeight: '500',
+                  color: '#94a3b8', background: '#f1f5f9',
+                  padding: '2px 8px', borderRadius: '10px',
                 }}>
                   {task.milestones.filter(m => m.done).length} / {task.milestones.length}
                 </span>
               </h2>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '4px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '7px', marginTop: '4px' }}>
                 {task.milestones.map((m, idx) => (
                   <button
                     key={idx}
                     onClick={() => toggleMilestone(idx)}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '12px',
-                      padding: '12px 16px',
-                      borderRadius: '10px',
-                      border: '1px solid',
-                      borderColor: m.done ? '#d1fae5' : '#e2e8f0',
+                      display: 'flex', alignItems: 'center', gap: '12px',
+                      padding: '11px 16px', borderRadius: '10px',
+                      border: `1px solid ${m.done ? '#d1fae5' : '#e2e8f0'}`,
                       background: m.done ? '#f0fdf4' : 'white',
-                      cursor: 'pointer',
-                      textAlign: 'right',
-                      fontFamily: 'inherit',
+                      cursor: 'pointer', textAlign: 'right',
+                      fontFamily: 'inherit', direction: 'rtl',
                       transition: 'all 0.15s ease',
-                      direction: 'rtl',
                     }}
                     onMouseEnter={e => { e.currentTarget.style.borderColor = m.done ? '#6ee7b7' : '#c7d2fe'; }}
                     onMouseLeave={e => { e.currentTarget.style.borderColor = m.done ? '#d1fae5' : '#e2e8f0'; }}
                   >
                     {m.done
-                      ? <CheckCircle2 size={20} style={{ color: '#10b981', flexShrink: 0 }} />
-                      : <Circle size={20} style={{ color: '#cbd5e1', flexShrink: 0 }} />
+                      ? <CheckCircle2 size={19} style={{ color: '#10b981', flexShrink: 0 }} />
+                      : <Circle size={19} style={{ color: '#cbd5e1', flexShrink: 0 }} />
                     }
                     <span style={{
-                      fontSize: '14px',
+                      fontSize: '14px', flex: 1,
                       color: m.done ? '#059669' : '#334155',
                       textDecoration: m.done ? 'line-through' : 'none',
-                      flex: 1,
                     }}>
                       {m.text}
                     </span>
@@ -456,60 +361,49 @@ export function TaskPage() {
               <h2 style={sectionTitleStyle}>מדד הצלחה (KPI)</h2>
               <div style={{
                 display: 'grid',
-                gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
-                gap: '12px',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+                gap: '10px',
               }}>
                 {[
                   { label: 'שם ה-KPI', value: task.kpiName },
-                  { label: 'בסיס (Baseline)', value: task.baseline },
-                  { label: 'יעד (Target)', value: task.target },
-                  { label: 'תדירות מדידה', value: task.measurementCadence },
-                ].filter(item => item.value).map(item => (
+                  { label: 'בסיס', value: task.baseline },
+                  { label: 'יעד', value: task.target },
+                  { label: 'תדירות', value: task.measurementCadence },
+                ].filter(i => i.value).map(item => (
                   <div key={item.label} style={{
-                    background: '#f8fafc',
-                    borderRadius: '10px',
-                    padding: '14px',
-                    border: '1px solid #e2e8f0',
-                    direction: 'rtl',
-                    textAlign: 'right',
+                    background: '#f8fafc', borderRadius: '10px',
+                    padding: '12px', border: '1px solid #e2e8f0',
+                    direction: 'rtl', textAlign: 'right',
                   }}>
                     <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', marginBottom: '4px' }}>
                       {item.label}
                     </div>
-                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>
-                      {item.value}
-                    </div>
+                    <div style={{ fontSize: '15px', fontWeight: '700', color: '#1e293b' }}>{item.value}</div>
                   </div>
                 ))}
               </div>
             </section>
           )}
 
-          {/* Risks & Dependencies */}
+          {/* Risks / Dependencies / Links */}
           {(task.risksBlockers || task.dependencies || task.links) && (
             <section style={sectionStyle}>
               <h2 style={sectionTitleStyle}>סיכונים ותלויות</h2>
               {task.risksBlockers && (
                 <div style={{ marginBottom: '12px', direction: 'rtl' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '4px' }}>
-                    סיכונים / חסמים
-                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '4px' }}>סיכונים / חסמים</div>
                   <p style={bodyTextStyle}>{task.risksBlockers}</p>
                 </div>
               )}
               {task.dependencies && (
                 <div style={{ marginBottom: '12px', direction: 'rtl' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '4px' }}>
-                    תלויות
-                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '4px' }}>תלויות</div>
                   <p style={bodyTextStyle}>{task.dependencies}</p>
                 </div>
               )}
               {task.links && (
                 <div style={{ direction: 'rtl' }}>
-                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '4px' }}>
-                    קישורים
-                  </div>
+                  <div style={{ fontSize: '12px', fontWeight: '700', color: '#94a3b8', marginBottom: '4px' }}>קישורים</div>
                   <p style={{ ...bodyTextStyle, wordBreak: 'break-all' }}>{task.links}</p>
                 </div>
               )}
@@ -523,20 +417,15 @@ export function TaskPage() {
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', direction: 'rtl' }}>
                 {task.stakeholders.map((s, i) => (
                   <span key={i} style={{
-                    padding: '4px 12px',
-                    borderRadius: '20px',
-                    background: '#ede9fe',
-                    color: '#6d28d9',
-                    fontSize: '13px',
-                    fontWeight: '500',
-                  }}>
-                    {s}
-                  </span>
+                    padding: '4px 12px', borderRadius: '20px',
+                    background: '#ede9fe', color: '#6d28d9',
+                    fontSize: '13px', fontWeight: '500',
+                  }}>{s}</span>
                 ))}
               </div>
             </section>
           )}
-        </main>
+        </div>
       </div>
     </div>
   );
@@ -544,46 +433,30 @@ export function TaskPage() {
 
 // ── Shared styles ─────────────────────────────────────────────────────────────
 const backBtnStyle: React.CSSProperties = {
-  display: 'inline-flex',
-  alignItems: 'center',
-  gap: '6px',
-  padding: '7px 14px',
-  borderRadius: '8px',
-  border: '1px solid #e2e8f0',
-  background: 'white',
-  color: '#475569',
-  fontSize: '13px',
-  fontWeight: '600',
-  cursor: 'pointer',
-  fontFamily: 'inherit',
+  display: 'inline-flex', alignItems: 'center', gap: '6px',
+  padding: '7px 14px', borderRadius: '8px',
+  border: '1px solid #e2e8f0', background: 'white',
+  color: '#475569', fontSize: '13px', fontWeight: '600',
+  cursor: 'pointer', fontFamily: 'inherit',
   transition: 'background 0.15s, border-color 0.15s',
 };
 
 const sectionStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: '16px',
-  border: '1px solid #e2e8f0',
-  padding: '24px',
+  background: 'white', borderRadius: '14px',
+  border: '1px solid #e2e8f0', padding: '20px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
 };
 
 const sectionTitleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  fontWeight: '700',
-  color: '#64748b',
-  margin: '0 0 12px 0',
-  textTransform: 'uppercase',
-  letterSpacing: '0.6px',
-  direction: 'rtl',
-  textAlign: 'right',
-  display: 'flex',
-  alignItems: 'center',
+  fontSize: '12px', fontWeight: '700', color: '#64748b',
+  margin: '0 0 12px 0', textTransform: 'uppercase',
+  letterSpacing: '0.6px', direction: 'rtl', textAlign: 'right',
+  display: 'flex', alignItems: 'center',
 };
 
 const bodyTextStyle: React.CSSProperties = {
-  fontSize: '14px',
-  lineHeight: '1.75',
-  color: '#334155',
-  margin: 0,
-  direction: 'rtl',
-  textAlign: 'right',
+  fontSize: '14px', lineHeight: '1.75',
+  color: '#334155', margin: 0,
+  direction: 'rtl', textAlign: 'right',
+  whiteSpace: 'pre-wrap',
 };

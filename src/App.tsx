@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useMatch } from 'react-router-dom';
 import { TreePine, X, Cloud, CheckCircle2, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
@@ -8,6 +8,7 @@ import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
+import { TaskPageContent } from './components/tasks/TaskPage';
 import { WorkItemRow } from './components/ui/WorkItemRow';
 import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 
@@ -279,6 +280,8 @@ const initialTasks = [
 function App() {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
+  // Detect task page route — renders TaskPageContent inside the normal layout
+  const taskMatch = useMatch('/project/:projectId/task/:taskId');
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   // ── Project workspace state ────────────────────────────────────────────────
@@ -1755,7 +1758,7 @@ function App() {
         `}</style>
 
           {/* Empty state: logged in but no project selected yet */}
-          {user && !selectedProjectId && (
+          {user && !selectedProjectId && !taskMatch && (
             <div style={{
               display: 'flex',
               flexDirection: 'column',
@@ -1782,8 +1785,16 @@ function App() {
             </div>
           )}
 
-          {/* Main views — shown when guest OR when a project is selected */}
-          {(!user || selectedProjectId) && (
+          {/* Task page — renders TaskPageContent inside the normal layout shell */}
+          {taskMatch && taskMatch.params.projectId && taskMatch.params.taskId && (
+            <TaskPageContent
+              projectId={taskMatch.params.projectId}
+              taskId={taskMatch.params.taskId}
+            />
+          )}
+
+          {/* Main views — shown when guest OR when a project is selected (and not on task page) */}
+          {!taskMatch && (!user || selectedProjectId) && (
           <>
 
           {/* Dashboard View - Hybrid Dashboard */}

@@ -1,7 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import App from './App';
-import { TaskPage } from './components/tasks/TaskPage';
 
 export function AppRouter() {
   const { loading } = useAuth();
@@ -28,9 +27,11 @@ export function AppRouter() {
     );
   }
 
+  // All routes go through App — it owns the layout (header + sidebar).
+  // App uses useMatch internally to detect /project/:id/task/:id
+  // and renders TaskPageContent inside the existing main area.
   return (
     <Routes>
-      <Route path="/project/:projectId/task/:taskId" element={<TaskPage />} />
       <Route path="/*" element={<App />} />
     </Routes>
   );
