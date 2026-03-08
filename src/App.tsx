@@ -2126,7 +2126,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 onAddCategory={addCategory}
                 onUpdateCategoryColor={updateCategoryColor}
                 onRequestAddTask={user ? () => setShowNewTaskModal(true) : undefined}
-                isAuthenticated={!!user}
                 owners={owners}
                 onAddOwner={addOwner}
                 onRenameOwner={renameOwner}
@@ -3612,8 +3611,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       const completedMilestones = Array.isArray(t.milestones)
                         ? t.milestones.filter((m) => m.done).length
                         : 0;
-                      const openCount = safeTotal - completedMilestones;
-
                       // Compute reason badges if filter is active
                       const reasons: string[] = [];
                       if (categoryModalFilter) {
@@ -3691,27 +3688,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                               setEditingTask(t);
                               closeCategoryModal();
                             }}
-                            onEdit={() => {
-                              setSelectedTask(t);
-                              setEditingTask(t);
-                              closeCategoryModal();
-                            }}
                             className="cursor-pointer"
-                            description={t.description}
-                            department={t.department}
-                            processName={t.processName}
-                            problemStatement={t.problemStatement}
-                            goal={t.goal}
-                            kpiName={t.kpiName}
-                            baseline={t.baseline}
-                            target={t.target}
-                            measurementCadence={t.measurementCadence}
-                            startDate={t.startDate}
-                            dueDate={t.dueDate}
-                            stakeholders={t.stakeholders}
-                            risksBlockers={t.risksBlockers}
-                            dependencies={t.dependencies}
-                            links={t.links}
                           />
                         </div>
                       );
