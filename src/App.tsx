@@ -300,7 +300,7 @@ function App() {
   const effectiveProjectId = user && projects.length > 0 ? projects[0].id : null;
 
   // Load tasks from Supabase for the effective project (null = no fetch)
-  const { tasks: supabaseTasks, loading: tasksLoading } = useTasks(user ? effectiveProjectId : null);
+  const { tasks: supabaseTasks } = useTasks(user ? effectiveProjectId : null);
 
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
