@@ -1,4 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
@@ -130,127 +131,84 @@ function dbRowToMedicalTask(
 
 /**
  * Fetches a single task by ID, resolving its group + project context.
- * Used by TaskPageContent so the URL only needs /task/:taskId.
+ * Cached by React Query — navigating back is instant.
+ * 2 sequential round-trips: (task+group joined) → parallel(milestones, participants).
  */
 export function useTaskById(taskId: string | null) {
-  const [task, setTask] = useState<MedicalTask | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    if (!taskId) { setLoading(false); return; }
-    let cancelled = false;
-    setLoading(true);
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['task', taskId],
+    enabled: !!taskId,
+    staleTime: 15_000,
+    queryFn: async () => {
+      // task + group in one query via foreign key join
+      const { data: taskRow, error } = await supabase
+        .from('tasks')
+        .select('*, group:groups!inner(id, name, color, order, project_id)')
+        .eq('id', taskId!)
+        .single();
 
-    async function load() {
-      try {
-        const { data: taskRow, error } = await supabase
-          .from('tasks')
-          .select('*')
-          .eq('id', taskId)
-          .single();
+      if (error || !taskRow) throw error ?? new Error('Task not found');
 
-        if (error || !taskRow || cancelled) return;
+      const group = taskRow.group as GroupRow & { project_id: string };
 
-        const { data: group } = await supabase
-          .from('groups')
-          .select('id, name, color, order, project_id')
-          .eq('id', taskRow.group_id)
-          .single();
+      // milestones + participants in parallel
+      const [{ data: milestones }, { data: participantRows }] = await Promise.all([
+        supabase.from('milestones').select('*').eq('task_id', taskId!).order('order'),
+        supabase.from('task_participants').select('profile_id').eq('task_id', taskId!),
+      ]);
 
-        if (!group || cancelled) return;
+      const participants = (participantRows || []).map((p: { profile_id: string }) => p.profile_id);
+      return {
+        task: dbRowToMedicalTask(taskRow as unknown as TaskRow, group, milestones || [], participants),
+        projectId: group.project_id,
+      };
+    },
+  });
 
-        const { data: projectRow } = await supabase
-          .from('projects')
-          .select('id')
-          .eq('id', group.project_id)
-          .single();
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ['task', taskId] });
 
-        const { data: milestones } = await supabase
-          .from('milestones')
-          .select('*')
-          .eq('task_id', taskId)
-          .order('order');
-
-        const { data: participantRows } = await supabase
-          .from('task_participants')
-          .select('profile_id')
-          .eq('task_id', taskId);
-
-        if (cancelled) return;
-
-        const participants = (participantRows || []).map((p: { profile_id: string }) => p.profile_id);
-        setTask(dbRowToMedicalTask(taskRow, group, milestones || [], participants));
-        setProjectId(projectRow?.id ?? group.project_id);
-      } catch (err) {
-        console.error('Error fetching task by id:', err);
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
-  }, [taskId]);
-
-  const refetch = useCallback(async () => {
-    if (!taskId) return;
-    const { data: taskRow } = await supabase.from('tasks').select('*').eq('id', taskId).single();
-    if (!taskRow) return;
-    const { data: group } = await supabase.from('groups').select('id, name, color, order, project_id').eq('id', taskRow.group_id).single();
-    if (!group) return;
-    const { data: milestones } = await supabase.from('milestones').select('*').eq('task_id', taskId).order('order');
-    const { data: participantRows } = await supabase.from('task_participants').select('profile_id').eq('task_id', taskId);
-    const participants = (participantRows || []).map((p: { profile_id: string }) => p.profile_id);
-    setTask(dbRowToMedicalTask(taskRow, group, milestones || [], participants));
-  }, [taskId]);
-
-  return { task, projectId, loading, refetch };
+  return {
+    task: data?.task ?? null,
+    projectId: data?.projectId ?? null,
+    loading,
+    refetch,
+  };
 }
 
 // ── useProjects ───────────────────────────────────────────────────────────────
 
 /**
- * Fetches and real-time-syncs the current user's projects.
+ * Fetches and real-time-syncs the current user's projects (cached by React Query).
  */
 export function useProjects() {
-  const [projects, setProjects] = useState<ProjectSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
 
-  const fetchProjects = useCallback(async () => {
-    try {
+  const { data: projects = [], isLoading: loading } = useQuery({
+    queryKey: ['projects'],
+    staleTime: 30_000,
+    queryFn: async () => {
       const { data, error } = await supabase
         .from('projects')
         .select('id, name, description')
         .order('created_at', { ascending: true });
-
       if (error) throw error;
-      setProjects(data || []);
-    } catch (err) {
-      console.error('Error fetching projects:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+      return (data || []) as ProjectSummary[];
+    },
+  });
 
   useEffect(() => {
     const channel = supabase
-      .channel('projects-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'projects' },
-        () => { fetchProjects(); }
-      )
+      .channel('projects-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+      })
       .subscribe();
-
     return () => { supabase.removeChannel(channel); };
-  }, [fetchProjects]);
+  }, [queryClient]);
 
-  return { projects, loading, refetch: fetchProjects };
+  return { projects, loading };
 }
 
 // ── createProject ─────────────────────────────────────────────────────────────
@@ -276,26 +234,23 @@ export async function createProject(name: string, description?: string): Promise
 // ── useProfiles ───────────────────────────────────────────────────────────────
 
 /**
- * Fetches all user profiles (for dropdowns/selects).
- * Requires the profiles table to have a SELECT policy for authenticated users.
+ * Fetches all user profiles (for dropdowns/selects). Cached for 5 min.
  */
 export function useProfiles() {
-  const [profiles, setProfiles] = useState<ProfileSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: profiles = [] } = useQuery({
+    queryKey: ['profiles'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .order('full_name', { ascending: true });
+      if (error) throw error;
+      return (data || []) as ProfileSummary[];
+    },
+  });
 
-  useEffect(() => {
-    supabase
-      .from('profiles')
-      .select('id, full_name, email')
-      .order('full_name', { ascending: true })
-      .then(({ data, error }) => {
-        if (error) console.error('Error fetching profiles:', error);
-        else setProfiles(data || []);
-        setLoading(false);
-      });
-  }, []);
-
-  return { profiles, loading };
+  return { profiles };
 }
 
 // ── useMyTasks ────────────────────────────────────────────────────────────────
@@ -313,30 +268,28 @@ export interface MyTaskSummary {
 
 /**
  * Fetches tasks where the current user is either assigned_to or a participant.
- * Crosses project boundaries — requires updated RLS (see migration notes).
+ * Cached by React Query — sidebar re-renders are instant on section switches.
  */
 export function useMyTasks() {
-  const [myTasks, setMyTasks] = useState<MyTaskSummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data: myTasks = [], isLoading: loading } = useQuery({
+    queryKey: ['myTasks'],
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [] as MyTaskSummary[];
 
-  const fetchMyTasks = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) { setLoading(false); return; }
+      // assigned tasks + participant links in parallel
+      const [{ data: assignedRows }, { data: participantLinks }] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('id, title, priority, metadata, progress_mode, progress_manual, group_id')
+          .eq('assigned_to', user.id),
+        supabase
+          .from('task_participants')
+          .select('task_id')
+          .eq('profile_id', user.id),
+      ]);
 
-    try {
-      // Fetch tasks directly assigned to this user
-      const { data: assignedRows } = await supabase
-        .from('tasks')
-        .select('id, title, priority, metadata, progress_mode, progress_manual, group_id')
-        .eq('assigned_to', user.id);
-
-      // Fetch task IDs where this user is a participant
-      const { data: participantLinks } = await supabase
-        .from('task_participants')
-        .select('task_id')
-        .eq('profile_id', user.id);
-
-      // Collect additional task IDs (participant but not already assigned)
       const assignedIds = new Set((assignedRows || []).map(t => t.id));
       const extraIds = (participantLinks || [])
         .map(p => p.task_id)
@@ -352,46 +305,33 @@ export function useMyTasks() {
         allTaskRows = [...allTaskRows, ...(extraRows || [])];
       }
 
-      if (allTaskRows.length === 0) {
-        setMyTasks([]);
-        setLoading(false);
-        return;
-      }
+      if (allTaskRows.length === 0) return [] as MyTaskSummary[];
 
-      // Fetch groups for all task's group_ids
       const groupIds = [...new Set(allTaskRows.map(t => t.group_id))];
-      const { data: groups } = await supabase
-        .from('groups')
-        .select('id, name, project_id')
-        .in('id', groupIds);
+      const autoIds = allTaskRows.filter(t => t.progress_mode === 'auto').map(t => t.id);
 
-      // Fetch projects for all group's project_ids
+      // groups + milestones in parallel
+      const [{ data: groups }, { data: milestones }] = await Promise.all([
+        supabase.from('groups').select('id, name, project_id').in('id', groupIds),
+        autoIds.length > 0
+          ? supabase.from('milestones').select('task_id, done').in('task_id', autoIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
       const projectIds = [...new Set((groups || []).map(g => g.project_id))];
       const { data: projects } = await supabase
         .from('projects')
         .select('id, name')
         .in('id', projectIds);
 
-      // Build lookup maps
       const groupMap = new Map((groups || []).map(g => [g.id, g]));
       const projectMap = new Map((projects || []).map(p => [p.id, p]));
 
-      // Also fetch milestones for auto-progress tasks
-      const autoIds = allTaskRows.filter(t => t.progress_mode === 'auto').map(t => t.id);
       const milestoneCountByTask = new Map<string, { total: number; done: number }>();
-      if (autoIds.length > 0) {
-        const { data: milestones } = await supabase
-          .from('milestones')
-          .select('task_id, done')
-          .in('task_id', autoIds);
-        (milestones || []).forEach(m => {
-          const cur = milestoneCountByTask.get(m.task_id) || { total: 0, done: 0 };
-          milestoneCountByTask.set(m.task_id, {
-            total: cur.total + 1,
-            done: cur.done + (m.done ? 1 : 0),
-          });
-        });
-      }
+      (milestones || []).forEach(m => {
+        const cur = milestoneCountByTask.get(m.task_id) || { total: 0, done: 0 };
+        milestoneCountByTask.set(m.task_id, { total: cur.total + 1, done: cur.done + (m.done ? 1 : 0) });
+      });
 
       const result: MyTaskSummary[] = [];
       for (const task of allTaskRows) {
@@ -402,8 +342,7 @@ export function useMyTasks() {
         let progress = 0;
         if (task.progress_mode === 'auto') {
           const counts = milestoneCountByTask.get(task.id);
-          progress = counts && counts.total > 0
-            ? Math.round((counts.done / counts.total) * 100) : 0;
+          progress = counts && counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
         } else {
           progress = task.progress_manual || 0;
         }
@@ -420,17 +359,11 @@ export function useMyTasks() {
         });
       }
 
-      setMyTasks(result);
-    } catch (err) {
-      console.error('Error fetching my tasks:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return result;
+    },
+  });
 
-  useEffect(() => { fetchMyTasks(); }, [fetchMyTasks]);
-
-  return { myTasks, loading, refetch: fetchMyTasks };
+  return { myTasks, loading };
 }
 
 // ── useTasks ──────────────────────────────────────────────────────────────────
@@ -440,125 +373,91 @@ export function useMyTasks() {
  * Pass null to skip fetching (e.g. when no project is selected).
  */
 export function useTasks(projectId: string | null) {
-  const [tasks, setTasks] = useState<MedicalTask[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const fetchTasks = useCallback(async () => {
-    if (!projectId) {
-      setTasks([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch groups (categories) for this project
-      const { data: groups, error: groupsError } = await supabase
+  const {
+    data: tasks = [],
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['tasks', projectId],
+    enabled: !!projectId,
+    staleTime: 10_000,
+    queryFn: async () => {
+      // Groups + tasks in a single nested Supabase query (saves 1 sequential round-trip)
+      const { data: groupsWithTasks, error: gError } = await supabase
         .from('groups')
-        .select('*')
-        .eq('project_id', projectId)
+        .select('*, tasks(*)')
+        .eq('project_id', projectId!)
         .order('order', { ascending: true });
 
-      if (groupsError) throw groupsError;
+      if (gError) throw gError;
 
-      // Fetch tasks belonging to these groups
-      const { data: tasksData, error: tasksError } = await supabase
-        .from('tasks')
-        .select('*')
-        .in('group_id', groups?.map(g => g.id) || [])
-        .order('order', { ascending: true });
+      // Flatten and build a group lookup map
+      type GroupWithTasks = GroupRow & { tasks: TaskRow[] };
+      const allTaskRows: TaskRow[] = [];
+      const groupMap = new Map<string, GroupRow>();
 
-      if (tasksError) throw tasksError;
+      (groupsWithTasks as GroupWithTasks[] || []).forEach(g => {
+        const { tasks: groupTasks, ...groupRow } = g;
+        groupMap.set(g.id, groupRow as GroupRow);
+        (groupTasks || []).forEach(t => allTaskRows.push(t));
+      });
 
-      const taskIds = tasksData?.map(t => t.id) || [];
+      const taskIds = allTaskRows.map(t => t.id);
+      if (taskIds.length === 0) return [] as MedicalTask[];
 
-      // Fetch milestones and participants in parallel (both only depend on taskIds)
-      const [
-        { data: milestones, error: milestonesError },
-        { data: participantRows },
-      ] = await Promise.all([
-        supabase
-          .from('milestones')
-          .select('*')
-          .in('task_id', taskIds)
-          .order('order', { ascending: true }),
-        supabase
-          .from('task_participants')
-          .select('task_id, profile_id')
-          .in('task_id', taskIds),
+      // Milestones + participants in parallel
+      const [{ data: milestones, error: mError }, { data: participantRows }] = await Promise.all([
+        supabase.from('milestones').select('*').in('task_id', taskIds).order('order', { ascending: true }),
+        supabase.from('task_participants').select('task_id, profile_id').in('task_id', taskIds),
       ]);
 
-      if (milestonesError) throw milestonesError;
+      if (mError) throw mError;
 
-      // Group milestones by task_id
       const milestonesByTask = new Map<string, MilestoneRow[]>();
-      milestones?.forEach(m => {
-        if (!milestonesByTask.has(m.task_id)) {
-          milestonesByTask.set(m.task_id, []);
-        }
+      (milestones || []).forEach(m => {
+        if (!milestonesByTask.has(m.task_id)) milestonesByTask.set(m.task_id, []);
         milestonesByTask.get(m.task_id)!.push(m);
       });
 
-      // Group participant UUIDs by task_id
       const participantsByTask = new Map<string, string[]>();
-      participantRows?.forEach(p => {
-        if (!participantsByTask.has(p.task_id)) {
-          participantsByTask.set(p.task_id, []);
-        }
+      (participantRows || []).forEach(p => {
+        if (!participantsByTask.has(p.task_id)) participantsByTask.set(p.task_id, []);
         participantsByTask.get(p.task_id)!.push(p.profile_id);
       });
 
-      // Convert to MedicalTask format
-      const medicalTasks: MedicalTask[] = [];
-      tasksData?.forEach(task => {
-        const group = groups?.find(g => g.id === task.group_id);
-        if (group) {
-          const taskMilestones = milestonesByTask.get(task.id) || [];
-          const taskParticipants = participantsByTask.get(task.id) || [];
-          medicalTasks.push(dbRowToMedicalTask(task, group, taskMilestones, taskParticipants));
-        }
-      });
+      return allTaskRows
+        .map(task => {
+          const group = groupMap.get(task.group_id);
+          if (!group) return null;
+          return dbRowToMedicalTask(task, group, milestonesByTask.get(task.id) || [], participantsByTask.get(task.id) || []);
+        })
+        .filter(Boolean) as MedicalTask[];
+    },
+  });
 
-      setTasks(medicalTasks);
-    } catch (err) {
-      console.error('Error fetching tasks:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
-    } finally {
-      setLoading(false);
-    }
-  }, [projectId]);
-
-  useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
-
-  // Real-time subscriptions — only active when a project is selected
+  // Real-time: invalidate cache instead of manually re-fetching
   useEffect(() => {
     if (!projectId) return;
 
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
     const channels: RealtimeChannel[] = [];
 
     const tasksChannel = supabase
-      .channel(`tasks-changes-${projectId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
-        fetchTasks();
-      })
+      .channel(`tasks-rt-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidate)
       .subscribe();
 
     const milestonesChannel = supabase
-      .channel(`milestones-changes-${projectId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, () => {
-        fetchTasks();
-      })
+      .channel(`milestones-rt-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, invalidate)
       .subscribe();
 
     const groupsChannel = supabase
-      .channel(`groups-changes-${projectId}`)
+      .channel(`groups-rt-${projectId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, () => {
-        fetchTasks();
+        invalidate();
       })
       .subscribe();
 
@@ -567,9 +466,12 @@ export function useTasks(projectId: string | null) {
     return () => {
       channels.forEach(channel => { supabase.removeChannel(channel); });
     };
-  }, [fetchTasks, projectId]);
+  }, [projectId, queryClient]);
 
-  return { tasks, loading, error, refetch: fetchTasks };
+  const error = queryError instanceof Error ? queryError.message : null;
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+
+  return { tasks, loading, error, refetch };
 }
 
 // ── updateTask ────────────────────────────────────────────────────────────────
