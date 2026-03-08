@@ -30,6 +30,8 @@ export interface MedicalTask {
   dependencies: string;
   links: string;
   milestones: Array<{ text: string; done: boolean }>;
+  status: 'open' | 'in_progress' | 'blocked' | 'done';
+  currentState: string;  // נקודת האפס — stored in metadata JSON
 }
 
 // ── Profile types ──────────────────────────────────────────────────────────────
@@ -121,6 +123,8 @@ function dbRowToMedicalTask(
     risksBlockers: metadata.risksBlockers || '',
     dependencies: metadata.dependencies || '',
     links: metadata.links || '',
+    status: metadata.status || 'open',
+    currentState: metadata.currentState || '',
     milestones: milestones
       .sort((a, b) => a.order - b.order)
       .map(m => ({ text: m.title, done: m.done })),
@@ -504,6 +508,8 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     risksBlockers: task.risksBlockers,
     dependencies: task.dependencies,
     links: task.links,
+    status: task.status,
+    currentState: task.currentState,
   };
 
   const { data: updatedTask, error: taskError } = await supabase
@@ -621,6 +627,8 @@ export async function createTask(
     risksBlockers: task.risksBlockers,
     dependencies: task.dependencies,
     links: task.links,
+    status: task.status,
+    currentState: task.currentState,
   };
 
   const { data: newTask, error: taskError } = await supabase

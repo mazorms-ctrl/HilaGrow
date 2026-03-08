@@ -925,7 +925,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         risksBlockers: '',
         dependencies: '',
         links: '',
-        milestones: [{ text: 'שלב ראשון', done: false }]
+        milestones: [{ text: 'שלב ראשון', done: false }],
+        status: 'open',
+        currentState: '',
       };
       await createTask(newTask, effectiveProjectId);
       setExpandedCategories([...expandedCategories, name]);
@@ -4797,7 +4799,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   risksBlockers: formData.get('risksBlockers') as string || '',
                   dependencies: formData.get('dependencies') as string || '',
                   links: formData.get('links') as string || '',
-                  milestones: milestonesText.length > 0 ? milestonesText.map(text => ({ text, done: false })) : [{ text: 'שלב ראשון', done: false }]
+                  milestones: milestonesText.length > 0 ? milestonesText.map(text => ({ text, done: false })) : [{ text: 'שלב ראשון', done: false }],
+                  status: 'open' as const,
+                  currentState: '',
                 };
 
                 addNewTask(newTask);
