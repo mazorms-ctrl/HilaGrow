@@ -3683,7 +3683,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                             progress={{
                               current: completedMilestones,
                               total: safeTotal,
-                              openCount: openCount > 0 ? openCount : undefined,
                             }}
                             nextStep={t.goal || undefined}
                             milestones={t.milestones}

@@ -280,7 +280,7 @@ function ModalContent({ task, onClose }: { task: MedicalTask; onClose: () => voi
                           textDecoration: m.done ? 'line-through' : 'none',
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                         }}>
-                          {m.title || m.text}
+                          {m.text}
                         </span>
                       </div>
                     ))}

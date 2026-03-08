@@ -14,7 +14,6 @@ interface TasksDashboardProps {
   onAddCategory?: (name: string, color: string) => void;
   onUpdateCategoryColor?: (category: string, newColor: string) => void;
   onRequestAddTask?: () => void;
-  isAuthenticated?: boolean;
   owners?: string[];
   onAddOwner?: (name: string) => void;
   onRenameOwner?: (oldName: string, newName: string) => void;
@@ -27,7 +26,6 @@ export function TasksDashboard({
   onAddCategory,
   onUpdateCategoryColor,
   onRequestAddTask,
-  isAuthenticated = false,
   owners: ownersProp,
   onAddOwner,
   onRenameOwner,
