@@ -1478,8 +1478,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             <button
               onClick={exportData}
               style={getHeaderActionButtonStyle('export')}
-              onMouseEnter={(e) => { elevateHeaderButton(e, headerActionButtonSpec.export.hoverShadow); }}
-              onMouseLeave={(e) => { resetHeaderButton(e, headerActionButtonSpec.export.shadow); }}
+              onMouseEnter={(e) => { elevateHeaderButton(e, ''); }}
+              onMouseLeave={(e) => { resetHeaderButton(e, ''); }}
             >
               <span>ייצוא</span>
             </button>
@@ -1492,8 +1492,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 aria-pressed={!taskMatch && viewMode === mode}
                 style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
                 title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
-                onMouseEnter={(e) => { elevateHeaderButton(e, headerModeButtonSpec[mode].hoverShadow); }}
-                onMouseLeave={(e) => { resetHeaderButton(e, headerModeButtonSpec[mode].shadow); }}
+                onMouseEnter={(e) => { elevateHeaderButton(e, ''); }}
+                onMouseLeave={(e) => { resetHeaderButton(e, ''); }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {mode === 'tree' && <TreePine size={14} aria-hidden="true" />}
