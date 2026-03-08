@@ -2,33 +2,9 @@ import { WorkItemRow } from '@/components/ui/WorkItemRow';
 import { Drawer } from '@/components/ui/Drawer';
 import { cn } from '@/lib/utils';
 import { useMemo, useState } from 'react';
+import { type MedicalTask } from '@/lib/supabase-hooks';
 
-// Type definition for medical task from App.tsx
-export interface MedicalTask {
-  id: string; // UUID from Supabase
-  title: string;
-  description: string;
-  category: string;
-  color: string;
-  owner: string;
-  priority: 'P1' | 'P2' | 'P3';
-  progress: number;
-  department: string;
-  processName: string;
-  problemStatement: string;
-  goal: string;
-  kpiName: string;
-  baseline: string;
-  target: string;
-  measurementCadence: string;
-  startDate: string;
-  dueDate: string;
-  stakeholders: string[];
-  risksBlockers: string;
-  dependencies: string;
-  links: string;
-  milestones: Array<{ text: string; done: boolean }>;
-}
+export type { MedicalTask };
 
 interface TasksDashboardProps {
   tasks: MedicalTask[];
