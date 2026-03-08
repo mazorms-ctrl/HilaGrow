@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TreePine, X, Cloud, CheckCircle2, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
@@ -8,7 +9,7 @@ import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, useProfiles, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
+import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -277,18 +278,19 @@ const initialTasks = [
 
 function App() {
   const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   // ── Project workspace state ────────────────────────────────────────────────
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  // Task to open after project switch (sidebar navigation)
-  const [pendingTaskId, setPendingTaskId] = useState<string | null>(null);
 
   // Load tasks from Supabase for the selected project (null = no fetch)
   const { tasks: supabaseTasks, loading: tasksLoading } = useTasks(user ? selectedProjectId : null);
   // Load all profiles for assignment dropdowns (only when logged in)
   const { profiles } = useProfiles();
+  // Load projects for auth-redirect auto-selection
+  const { projects } = useProjects();
 
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
@@ -341,32 +343,16 @@ function App() {
     localStorage.setItem('grow.projectName', projectName);
   }, [projectName]);
 
-  // Open a pending task once tasks finish loading (after a project switch from sidebar)
+  // Auth redirect: when user logs in and projects load, auto-select first project
   useEffect(() => {
-    if (!pendingTaskId || supabaseTasks.length === 0) return;
-    const task = supabaseTasks.find(t => t.id === pendingTaskId);
-    if (task) {
-      setSelectedTask(task);
-      setEditingTask(task);
-      setPendingTaskId(null);
+    if (user && projects.length > 0 && !selectedProjectId) {
+      setSelectedProjectId(projects[0].id);
     }
-  }, [supabaseTasks, pendingTaskId]);
+  }, [user, projects, selectedProjectId]);
 
-  // Handle sidebar task click: switch project if needed, then open the drawer
+  // Handle sidebar task click: navigate to full-page task view
   const handleOpenTask = (projectId: string, taskId: string) => {
-    if (selectedProjectId === projectId) {
-      // Tasks already loaded — open immediately
-      const task = supabaseTasks.find(t => t.id === taskId);
-      if (task) {
-        setSelectedTask(task);
-        setEditingTask(task);
-        setActiveStep(0);
-      }
-    } else {
-      // Switch project first; task will open once tasks load
-      setSelectedProjectId(projectId);
-      setPendingTaskId(taskId);
-    }
+    navigate(`/project/${projectId}/task/${taskId}`);
   };
 
   const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
@@ -1210,7 +1196,7 @@ function App() {
                       <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                         {idx === 0 && <div style={{ width: '2px', height: '20px', background: color }} />}
                         <div
-                          onClick={() => { setSelectedTask(task); setEditingTask(task); }}
+                          onClick={() => selectedProjectId && navigate(`/project/${selectedProjectId}/task/${task.id}`)}
                           onMouseEnter={() => setHoveredTaskInTree(task)}
                           onMouseLeave={() => setHoveredTaskInTree(null)}
                           style={{
@@ -2112,14 +2098,8 @@ function App() {
                         }}
                         nextStep={task.goal || undefined}
                         milestones={task.milestones}
-                        onClick={() => {
-                          setSelectedTask(task);
-                          setEditingTask(task);
-                        }}
-                        onEdit={() => {
-                          setSelectedTask(task);
-                          setEditingTask(task);
-                        }}
+                        onClick={() => selectedProjectId && navigate(`/project/${selectedProjectId}/task/${task.id}`)}
+                        onEdit={() => selectedProjectId && navigate(`/project/${selectedProjectId}/task/${task.id}`)}
                         className="cursor-pointer"
                         description={task.description}
                         department={task.department}
@@ -2147,8 +2127,7 @@ function App() {
               <TasksDashboard 
                 tasks={tasks}
                 onSelectTask={(task) => {
-                  setSelectedTask(task);
-                  setEditingTask(task);
+                  if (selectedProjectId) navigate(`/project/${selectedProjectId}/task/${task.id}`);
                 }}
                 onRenameCategory={renameCategory}
                 onAddCategory={addCategory}
@@ -2816,8 +2795,7 @@ function App() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedTask(task);
-                                    setEditingTask(task);
+                                    if (selectedProjectId) navigate(`/project/${selectedProjectId}/task/${task.id}`);
                                   }}
                                   style={{
                                     padding: '8px 16px',
