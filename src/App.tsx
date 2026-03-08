@@ -292,7 +292,7 @@ function App() {
   // Load all profiles for assignment dropdowns (only when logged in)
   const { profiles } = useProfiles();
   // Load projects — must be before useTasks so we can derive effectiveProjectId first
-  const { projects, loading: projectsLoading } = useProjects();
+  const { projects, loading: projectsLoading } = useProjects(user?.id);
 
   // Derive the active project without waiting for a useEffect → setState round-trip.
   // If the user has manually picked a project, use that; otherwise fall back to the first
@@ -1301,19 +1301,20 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     );
   };
 
-  // Header button styles: fixed colors regardless of "selected/pressed" state
+  // Header button styles: Soft Glass squircle design
   const headerButtonCommon = {
-    borderRadius: '10px',
+    borderRadius: '16px',
     cursor: 'pointer',
     fontFamily: 'inherit',
-    fontSize: '12px',
+    fontSize: '13px',
     fontWeight: '700',
     transition: 'all 0.15s ease',
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '6px',
     whiteSpace: 'nowrap',
     userSelect: 'none',
+    border: 'none',
   } as const;
 
   const elevateHeaderButton = (e: any, _shadow: string) => {
@@ -1327,22 +1328,21 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   const headerActionButtonSpec = {
-    newTask: { color: '#16a34a', tint: 'rgba(22,163,74,0.08)',   shadow: '', hoverShadow: '' },
-    export:  { color: '#7c3aed', tint: 'rgba(124,58,237,0.08)', shadow: '', hoverShadow: '' },
+    newTask: { color: '#16a34a', tint: 'rgba(22,163,74,0.10)',   tintHover: 'rgba(22,163,74,0.17)'  },
+    export:  { color: '#7c3aed', tint: 'rgba(124,58,237,0.10)',  tintHover: 'rgba(124,58,237,0.17)' },
   } as const;
 
   const headerModeButtonSpec = {
-    dashboard: { color: '#0ea5e9', tint: 'rgba(14,165,233,0.08)',  tintActive: 'rgba(14,165,233,0.15)',  shadow: '', hoverShadow: '' },
-    rows:      { color: '#6366f1', tint: 'rgba(99,102,241,0.08)',  tintActive: 'rgba(99,102,241,0.15)',  shadow: '', hoverShadow: '' },
-    tree:      { color: '#16a34a', tint: 'rgba(22,163,74,0.08)',   tintActive: 'rgba(22,163,74,0.15)',   shadow: '', hoverShadow: '' },
+    dashboard: { color: '#0ea5e9', tint: 'rgba(14,165,233,0.10)',  tintActive: 'rgba(14,165,233,0.20)'  },
+    rows:      { color: '#6366f1', tint: 'rgba(99,102,241,0.10)',  tintActive: 'rgba(99,102,241,0.20)'  },
+    tree:      { color: '#16a34a', tint: 'rgba(22,163,74,0.10)',   tintActive: 'rgba(22,163,74,0.20)'   },
   } as const;
 
   const getHeaderActionButtonStyle = (kind: keyof typeof headerActionButtonSpec) => {
     const { color, tint } = headerActionButtonSpec[kind];
     return {
       ...headerButtonCommon,
-      padding: '6px 14px',
-      border: 'none',
+      padding: '8px 18px',
       color,
       background: tint,
       boxShadow: 'none',
@@ -1357,14 +1357,13 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     const { color, tint, tintActive } = headerModeButtonSpec[mode];
     return {
       ...headerButtonCommon,
-      padding: size === 'mobile' ? '12px 16px' : '6px 14px',
-      border: 'none',
+      padding: size === 'mobile' ? '12px 20px' : '8px 18px',
       color,
       background: isActive ? tintActive : tint,
       fontWeight: isActive ? '800' : '600',
-      boxShadow: 'none',
-      borderRadius: size === 'mobile' ? '12px' : '10px',
-      fontSize: size === 'mobile' ? '14px' : '12px',
+      boxShadow: isActive ? 'inset 0 1px 4px rgba(0,0,0,0.12)' : 'none',
+      borderRadius: size === 'mobile' ? '16px' : '16px',
+      fontSize: size === 'mobile' ? '14px' : '13px',
       justifyContent: size === 'mobile' ? 'center' : undefined,
     } as CSSProperties;
   };
@@ -1441,8 +1440,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   <>
                     <div style={{ position: 'fixed', inset: 0, zIndex: 39 }} onClick={() => setAvatarDropdownOpen(false)} />
                     <div style={{
-                      position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-                      zIndex: 40, minWidth: '180px',
+                      position: 'absolute', top: 'calc(100% + 8px)', right: 0,
+                      zIndex: 50, minWidth: '200px',
                       background: 'white', borderRadius: '14px',
                       border: '1px solid #e2e8f0',
                       boxShadow: '0 8px 32px rgba(0,0,0,0.12)',

@@ -21,11 +21,11 @@ const C = {
   dangerBg:    'rgba(239,68,68,0.10)',
 };
 
-// Priority soft-tint tokens — light bg + vibrant text on dark surface
+// Priority soft-tint tokens — Soft Glass style matching header
 const PRIORITY = {
-  P1: { bg: 'rgba(239,68,68,0.12)',  activeBg: 'rgba(239,68,68,0.20)', text: '#f87171',  badgeBg: 'rgba(239,68,68,0.18)',  label: 'P1' },
-  P2: { bg: 'rgba(249,115,22,0.10)', activeBg: 'rgba(249,115,22,0.18)', text: '#fb923c',  badgeBg: 'rgba(249,115,22,0.18)', label: 'P2' },
-  P3: { bg: 'rgba(99,102,241,0.10)', activeBg: 'rgba(99,102,241,0.18)', text: '#818cf8',  badgeBg: 'rgba(99,102,241,0.18)', label: 'P3' },
+  P1: { bg: 'rgba(239,68,68,0.10)',  activeBg: 'rgba(239,68,68,0.20)', text: '#f87171',  badgeBg: 'rgba(239,68,68,0.18)',  label: 'P1' },
+  P2: { bg: 'rgba(249,115,22,0.10)', activeBg: 'rgba(249,115,22,0.20)', text: '#fb923c',  badgeBg: 'rgba(249,115,22,0.18)', label: 'P2' },
+  P3: { bg: 'rgba(99,102,241,0.10)', activeBg: 'rgba(99,102,241,0.20)', text: '#818cf8',  badgeBg: 'rgba(99,102,241,0.18)', label: 'P3' },
 };
 
 interface Props {
@@ -72,16 +72,16 @@ function TaskCard({
         display: 'flex',
         flexDirection: 'column',
         gap: '4px',
-        padding: '10px 12px',
-        borderRadius: '10px',
+        padding: '10px 14px',
+        borderRadius: '14px',
         border: isActive ? `1px solid ${p.text}33` : '1px solid transparent',
         background: isActive ? p.activeBg : p.bg,
         cursor: 'pointer',
         textAlign: 'right',
         fontFamily: 'inherit',
-        transition: 'background 0.15s, border-color 0.15s',
+        transition: 'background 0.15s, border-color 0.15s, box-shadow 0.15s',
         position: 'relative',
-        boxShadow: isActive ? `0 0 0 1px ${p.text}22` : 'none',
+        boxShadow: isActive ? `inset 0 1px 4px rgba(0,0,0,0.12), 0 0 0 1px ${p.text}22` : 'none',
       }}
       onClick={onClick}
       onMouseEnter={e => {
@@ -194,6 +194,8 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
       style={{
         width: w, minWidth: w, maxWidth: w,
         background: C.bg,
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         color: C.text,
         display: 'flex',
         flexDirection: 'column',

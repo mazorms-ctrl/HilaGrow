@@ -186,11 +186,12 @@ export function useTaskById(taskId: string | null) {
 /**
  * Fetches and real-time-syncs the current user's projects (cached by React Query).
  */
-export function useProjects() {
+export function useProjects(userId?: string) {
   const queryClient = useQueryClient();
 
   const { data: projects = [], isLoading: loading } = useQuery({
-    queryKey: ['projects'],
+    queryKey: ['projects', userId],
+    enabled: !!userId,
     staleTime: 30_000,
     queryFn: async () => {
       const { data, error } = await supabase
