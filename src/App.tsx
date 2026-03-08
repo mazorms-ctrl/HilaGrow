@@ -337,8 +337,6 @@ function App() {
   const [categoryModalFilter, setCategoryModalFilter] = useState<null | 'p1' | 'overdue' | 'blockers' | 'unassigned' | 'kpi'>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   
-  // Auto-save status tracking
-  const [showSavedIndicator, setShowSavedIndicator] = useState(false);
   const [avatarDropdownOpen, setAvatarDropdownOpen] = useState(false);
 
   // Project name state with localStorage persistence
@@ -510,18 +508,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     });
   }, [tasks]);
 
-  // 💾 AUTO-SAVE: Now handled by Supabase real-time sync
-  // Show saved indicator when Supabase tasks update
-  useEffect(() => {
-    if (supabaseTasks.length > 0 && !tasksLoading) {
-      setShowSavedIndicator(true);
-      console.log('💾 Synced with Supabase at', new Date().toLocaleTimeString('he-IL'));
-      
-      // Hide "saved" indicator after 2 seconds
-      const timer = setTimeout(() => setShowSavedIndicator(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [supabaseTasks, tasksLoading]);
 
   // Auto-set active step to first incomplete when opening drawer
   useEffect(() => {
