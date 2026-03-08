@@ -1341,32 +1341,24 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   const headerActionButtonSpec = {
-    newTask: {
-      color: '#16a34a',
-      shadow: '',
-      hoverShadow: ''
-    },
-    export: {
-      color: '#7c3aed',
-      shadow: '',
-      hoverShadow: ''
-    }
+    newTask: { color: '#16a34a', tint: 'rgba(22,163,74,0.08)',   shadow: '', hoverShadow: '' },
+    export:  { color: '#7c3aed', tint: 'rgba(124,58,237,0.08)', shadow: '', hoverShadow: '' },
   } as const;
 
   const headerModeButtonSpec = {
-    dashboard: { color: '#0ea5e9', shadow: '', hoverShadow: '' },
-    rows:      { color: '#6366f1', shadow: '', hoverShadow: '' },
-    tree:      { color: '#16a34a', shadow: '', hoverShadow: '' },
+    dashboard: { color: '#0ea5e9', tint: 'rgba(14,165,233,0.08)',  tintActive: 'rgba(14,165,233,0.15)',  shadow: '', hoverShadow: '' },
+    rows:      { color: '#6366f1', tint: 'rgba(99,102,241,0.08)',  tintActive: 'rgba(99,102,241,0.15)',  shadow: '', hoverShadow: '' },
+    tree:      { color: '#16a34a', tint: 'rgba(22,163,74,0.08)',   tintActive: 'rgba(22,163,74,0.15)',   shadow: '', hoverShadow: '' },
   } as const;
 
   const getHeaderActionButtonStyle = (kind: keyof typeof headerActionButtonSpec) => {
-    const { color } = headerActionButtonSpec[kind];
+    const { color, tint } = headerActionButtonSpec[kind];
     return {
       ...headerButtonCommon,
       padding: '6px 14px',
-      border: `1.5px solid ${color}`,
+      border: 'none',
       color,
-      background: 'transparent',
+      background: tint,
       boxShadow: 'none',
     } as CSSProperties;
   };
@@ -1376,13 +1368,14 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     isActive: boolean,
     size: 'desktop' | 'mobile' = 'desktop'
   ) => {
-    const { color } = headerModeButtonSpec[mode];
+    const { color, tint, tintActive } = headerModeButtonSpec[mode];
     return {
       ...headerButtonCommon,
       padding: size === 'mobile' ? '12px 16px' : '6px 14px',
-      border: `1.5px solid ${color}`,
-      color: isActive ? 'white' : color,
-      background: isActive ? color : 'transparent',
+      border: 'none',
+      color,
+      background: isActive ? tintActive : tint,
+      fontWeight: isActive ? '800' : '600',
       boxShadow: 'none',
       borderRadius: size === 'mobile' ? '12px' : '10px',
       fontSize: size === 'mobile' ? '14px' : '12px',
@@ -1432,27 +1425,81 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         }}
         className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px] md:justify-between flex-nowrap"
         >
-          {/* Desktop Navigation - Left side on desktop */}
-          <div className="desktop-only" style={{ 
-            display: 'flex', 
-            gap: '8px', 
-            alignItems: 'center',
-            flexShrink: 0,
-            flex: 1,
-            justifyContent: 'flex-start'
-          }}>
+          {/* Desktop Left — Avatar + nav buttons */}
+          <div className="desktop-only" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flex: 1, justifyContent: 'flex-start' }}>
+
+            {/* Avatar dropdown — far left */}
+            {user ? (
+              <div style={{ position: 'relative', marginLeft: '4px', flexShrink: 0 }}>
+                <button
+                  onClick={() => setAvatarDropdownOpen(v => !v)}
+                  title={profile?.full_name ?? user.email ?? ''}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: '36px', height: '36px', borderRadius: '50%',
+                    background: colors.brand.primary, border: '2px solid #e2e8f0',
+                    cursor: 'pointer', color: 'white',
+                    fontSize: '14px', fontWeight: '700', fontFamily: 'inherit',
+                    flexShrink: 0, overflow: 'hidden', padding: 0,
+                    transition: 'border-color 0.12s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
+                >
+                  {profile?.avatar_url
+                    ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    : (profile?.full_name ?? user.email ?? '?')[0].toUpperCase()
+                  }
+                </button>
+                {avatarDropdownOpen && (
+                  <>
+                    <div style={{ position: 'fixed', inset: 0, zIndex: 39 }} onClick={() => setAvatarDropdownOpen(false)} />
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 8px)', left: 0,
+                      zIndex: 40, minWidth: '180px',
+                      background: 'white', borderRadius: '14px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                      overflow: 'hidden', direction: 'rtl',
+                    }}>
+                      <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '2px' }}>{profile?.full_name ?? ''}</div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', wordBreak: 'break-all' }}>{user.email}</div>
+                      </div>
+                      <button
+                        onClick={() => { setAvatarDropdownOpen(false); signOut(); }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '12px 16px', background: 'none', border: 'none',
+                          cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+                          color: '#64748b', fontFamily: 'inherit', textAlign: 'right',
+                          transition: 'background 0.1s, color 0.1s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#dc2626'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#64748b'; }}
+                      >
+                        <LogOut size={14} />יציאה
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ) : null}
+
+            {/* Divider */}
+            {user && <div style={{ width: '1px', height: '22px', background: '#e2e8f0', flexShrink: 0 }} />}
+
+            {/* Export */}
             <button
               onClick={exportData}
               style={getHeaderActionButtonStyle('export')}
-              onMouseEnter={(e) => {
-                elevateHeaderButton(e, headerActionButtonSpec.export.hoverShadow);
-              }}
-              onMouseLeave={(e) => {
-                resetHeaderButton(e, headerActionButtonSpec.export.shadow);
-              }}
+              onMouseEnter={(e) => { elevateHeaderButton(e, headerActionButtonSpec.export.hoverShadow); }}
+              onMouseLeave={(e) => { resetHeaderButton(e, headerActionButtonSpec.export.shadow); }}
             >
               <span>ייצוא</span>
             </button>
+
+            {/* View mode nav */}
             {(['dashboard', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
@@ -1460,12 +1507,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 aria-pressed={!taskMatch && viewMode === mode}
                 style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
                 title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
-                onMouseEnter={(e) => {
-                  elevateHeaderButton(e, headerModeButtonSpec[mode].hoverShadow);
-                }}
-                onMouseLeave={(e) => {
-                  resetHeaderButton(e, headerModeButtonSpec[mode].shadow);
-                }}
+                onMouseEnter={(e) => { elevateHeaderButton(e, headerModeButtonSpec[mode].hoverShadow); }}
+                onMouseLeave={(e) => { resetHeaderButton(e, headerModeButtonSpec[mode].shadow); }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {mode === 'tree' && <TreePine size={14} aria-hidden="true" />}
@@ -1537,78 +1580,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           </div>
 
 
-          {/* User avatar dropdown OR Sign In — desktop only */}
-          <div className="hidden md:flex items-center flex-shrink-0" style={{ position: 'relative' }}>
-            {user ? (
-              <>
-                <button
-                  onClick={() => setAvatarDropdownOpen(v => !v)}
-                  title={profile?.full_name ?? user.email ?? ''}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: '36px', height: '36px', borderRadius: '50%',
-                    background: colors.brand.primary, border: '2px solid #e2e8f0',
-                    cursor: 'pointer', color: 'white',
-                    fontSize: '14px', fontWeight: '700', fontFamily: 'inherit',
-                    flexShrink: 0, overflow: 'hidden', padding: 0,
-                    transition: 'border-color 0.12s',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
-                >
-                  {profile?.avatar_url ? (
-                    <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    (profile?.full_name ?? user.email ?? '?')[0].toUpperCase()
-                  )}
-                </button>
-
-                {avatarDropdownOpen && (
-                  <>
-                    {/* Click-away backdrop */}
-                    <div
-                      style={{ position: 'fixed', inset: 0, zIndex: 39 }}
-                      onClick={() => setAvatarDropdownOpen(false)}
-                    />
-                    {/* Dropdown card */}
-                    <div style={{
-                      position: 'absolute', top: 'calc(100% + 8px)', left: 0,
-                      zIndex: 40, minWidth: '180px',
-                      background: 'white', borderRadius: '14px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                      overflow: 'hidden', direction: 'rtl',
-                    }}>
-                      {/* User info */}
-                      <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '2px' }}>
-                          {profile?.full_name ?? ''}
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', wordBreak: 'break-all' }}>
-                          {user.email}
-                        </div>
-                      </div>
-                      {/* Logout */}
-                      <button
-                        onClick={() => { setAvatarDropdownOpen(false); signOut(); }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
-                          padding: '12px 16px', background: 'none', border: 'none',
-                          cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-                          color: '#64748b', fontFamily: 'inherit', textAlign: 'right',
-                          transition: 'background 0.1s, color 0.1s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#dc2626'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#64748b'; }}
-                      >
-                        <LogOut size={14} />
-                        יציאה
-                      </button>
-                    </div>
-                  </>
-                )}
-              </>
-            ) : (
+          {/* Right spacer — centers the logo; shows Sign In for guests */}
+          <div className="desktop-only" style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
+            {!user && (
               <button
                 onClick={() => setShowLoginModal(true)}
                 title="כניסה"
@@ -1645,8 +1619,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             {isMobileMenuOpen ? '✕' : '☰'}
           </button>
 
-          {/* Right flex spacer — keeps logo centered */}
-          <div className="desktop-only" style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end' }} />
         </div>
 
         {/* Mobile Menu Dropdown */}

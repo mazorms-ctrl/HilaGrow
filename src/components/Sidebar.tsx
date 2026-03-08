@@ -1,5 +1,5 @@
 import { LogOut, ChevronRight, ClipboardList, AlertCircle, Eye } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useMyTasks, type MyTaskSummary } from '@/lib/supabase-hooks';
 import { QuickViewModalById } from '@/components/tasks/QuickViewModal';
 import { useState } from 'react';
@@ -8,23 +8,24 @@ import type { Profile } from '@/contexts/AuthContext';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  bg:          '#1c2333',
-  bgHeader:    '#212840',
-  bgHover:     'rgba(255,255,255,0.06)',
-  border:      'rgba(255,255,255,0.07)',
+  bg:          '#111827',   // deep gray-900 — premium, neutral
+  bgCard:      '#1a2235',   // card base on dark bg
+  bgHover:     '#1e2d45',
+  border:      'rgba(255,255,255,0.06)',
   accent:      '#6366f1',
   accentLight: '#818cf8',
   text:        '#e2e8f0',
-  textMuted:   'rgba(226,232,240,0.45)',
+  textMuted:   'rgba(226,232,240,0.50)',
   textDim:     'rgba(226,232,240,0.28)',
   danger:      '#f87171',
-  dangerBg:    'rgba(239,68,68,0.12)',
+  dangerBg:    'rgba(239,68,68,0.10)',
 };
 
+// Priority soft-tint tokens — light bg + vibrant text on dark surface
 const PRIORITY = {
-  P1: { bg: 'rgba(239,68,68,0.18)',  text: '#f87171',  label: 'P1' },
-  P2: { bg: 'rgba(249,115,22,0.18)', text: '#fb923c',  label: 'P2' },
-  P3: { bg: 'rgba(99,102,241,0.18)', text: '#818cf8',  label: 'P3' },
+  P1: { bg: 'rgba(239,68,68,0.12)',  activeBg: 'rgba(239,68,68,0.20)', text: '#f87171',  badgeBg: 'rgba(239,68,68,0.18)',  label: 'P1' },
+  P2: { bg: 'rgba(249,115,22,0.10)', activeBg: 'rgba(249,115,22,0.18)', text: '#fb923c',  badgeBg: 'rgba(249,115,22,0.18)', label: 'P2' },
+  P3: { bg: 'rgba(99,102,241,0.10)', activeBg: 'rgba(99,102,241,0.18)', text: '#818cf8',  badgeBg: 'rgba(99,102,241,0.18)', label: 'P3' },
 };
 
 interface Props {
@@ -39,30 +40,28 @@ function isOverdue(dueDate: string) {
   return dueDate ? new Date(dueDate) < new Date() : false;
 }
 
-function ProgressBar({ value }: { value: number }) {
+function ProgressBar({ value, color }: { value: number; color: string }) {
   return (
     <div style={{
-      width: '100%',
-      height: '3px',
-      background: 'rgba(255,255,255,0.08)',
-      borderRadius: '2px',
-      marginTop: '5px',
-      overflow: 'hidden',
+      width: '100%', height: '3px',
+      background: 'rgba(255,255,255,0.07)',
+      borderRadius: '2px', marginTop: '6px', overflow: 'hidden',
     }}>
       <div style={{
         height: '100%',
         width: `${value}%`,
-        background: value === 100
-          ? '#34d399'
-          : `linear-gradient(90deg, ${C.accent}, ${C.accentLight})`,
+        background: value === 100 ? '#34d399' : color,
         borderRadius: '2px',
         transition: 'width 0.3s ease',
+        opacity: 0.85,
       }} />
     </div>
   );
 }
 
-function TaskCard({ task, onClick, onQuickView }: { task: MyTaskSummary; onClick: () => void; onQuickView: () => void }) {
+function TaskCard({
+  task, isActive, onClick, onQuickView,
+}: { task: MyTaskSummary; isActive: boolean; onClick: () => void; onQuickView: () => void }) {
   const p = PRIORITY[task.priority];
   const overdue = isOverdue(task.dueDate);
 
@@ -72,37 +71,42 @@ function TaskCard({ task, onClick, onQuickView }: { task: MyTaskSummary; onClick
         width: '100%',
         display: 'flex',
         flexDirection: 'column',
-        gap: '5px',
+        gap: '4px',
         padding: '10px 12px',
         borderRadius: '10px',
-        border: '1px solid transparent',
-        background: 'rgba(255,255,255,0.04)',
+        border: isActive ? `1px solid ${p.text}33` : '1px solid transparent',
+        background: isActive ? p.activeBg : p.bg,
         cursor: 'pointer',
         textAlign: 'right',
         fontFamily: 'inherit',
         transition: 'background 0.15s, border-color 0.15s',
         position: 'relative',
+        boxShadow: isActive ? `0 0 0 1px ${p.text}22` : 'none',
       }}
       onClick={onClick}
       onMouseEnter={e => {
-        e.currentTarget.style.background = C.bgHover;
-        e.currentTarget.style.borderColor = 'rgba(255,255,255,0.10)';
+        if (!isActive) {
+          e.currentTarget.style.background = p.activeBg;
+          e.currentTarget.style.borderColor = `${p.text}22`;
+        }
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.background = 'rgba(255,255,255,0.04)';
-        e.currentTarget.style.borderColor = 'transparent';
+        if (!isActive) {
+          e.currentTarget.style.background = p.bg;
+          e.currentTarget.style.borderColor = 'transparent';
+        }
       }}
     >
       {/* Priority badge + title */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '7px' }}>
         <span style={{
           display: 'inline-block',
-          padding: '2px 7px',
+          padding: '2px 6px',
           borderRadius: '5px',
           fontSize: '10px',
-          fontWeight: '700',
-          letterSpacing: '0.5px',
-          background: p.bg,
+          fontWeight: '800',
+          letterSpacing: '0.4px',
+          background: p.badgeBg,
           color: p.text,
           flexShrink: 0,
           marginTop: '1px',
@@ -110,7 +114,7 @@ function TaskCard({ task, onClick, onQuickView }: { task: MyTaskSummary; onClick
           {task.priority}
         </span>
         <span style={{
-          fontSize: '13px',
+          fontSize: '12.5px',
           fontWeight: '500',
           color: C.text,
           lineHeight: '1.45',
@@ -127,72 +131,49 @@ function TaskCard({ task, onClick, onQuickView }: { task: MyTaskSummary; onClick
         </span>
       </div>
 
-      {/* Project name + overdue indicator */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '6px',
-        direction: 'rtl',
-      }}>
-        <span style={{ fontSize: '11px', color: C.textMuted }}>{task.projectName}</span>
+      {/* Category + overdue */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', direction: 'rtl' }}>
+        <span style={{ fontSize: '10.5px', color: C.textMuted, fontWeight: '500' }}>
+          {task.category}
+        </span>
         {overdue && (
-          <span style={{
-            fontSize: '10px',
-            color: '#f87171',
-            fontWeight: '600',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '2px',
-          }}>
-            <AlertCircle size={10} />
+          <span style={{ fontSize: '10px', color: '#f87171', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '2px' }}>
+            <AlertCircle size={9} />
             פג תוקף
           </span>
         )}
       </div>
 
-      {/* Progress bar */}
-      {task.progress > 0 && <ProgressBar value={task.progress} />}
+      {/* Progress */}
+      {task.progress > 0 && <ProgressBar value={task.progress} color={p.text} />}
 
-      {/* Eye icon — quick view (stop propagation so card click doesn't fire) */}
+      {/* Quick-view eye */}
       <button
         onClick={e => { e.stopPropagation(); onQuickView(); }}
         title="תצוגה מהירה"
         style={{
           position: 'absolute', top: '8px', left: '8px',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          width: '22px', height: '22px', borderRadius: '6px',
+          width: '20px', height: '20px', borderRadius: '5px',
           background: 'transparent', border: 'none',
           cursor: 'pointer', color: C.textDim,
           transition: 'background 0.12s, color 0.12s',
         }}
-        onMouseEnter={e => {
-          e.currentTarget.style.background = 'rgba(255,255,255,0.10)';
-          e.currentTarget.style.color = C.accentLight;
-        }}
-        onMouseLeave={e => {
-          e.currentTarget.style.background = 'transparent';
-          e.currentTarget.style.color = C.textDim;
-        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; e.currentTarget.style.color = C.accentLight; }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.textDim; }}
       >
-        <Eye size={12} />
+        <Eye size={11} />
       </button>
     </div>
   );
 }
 
-export function Sidebar({
-  user,
-  profile,
-  onSignOut,
-  collapsed,
-  onToggleCollapse,
-}: Props) {
+export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse }: Props) {
   const { myTasks, loading } = useMyTasks();
   const navigate = useNavigate();
+  const location = useLocation();
   const [quickViewTaskId, setQuickViewTaskId] = useState<string | null>(null);
 
-  const displayName = profile?.full_name || user.email || '';
-  const emailDisplay = profile?.full_name ? user.email : undefined;
   const initials = (profile?.full_name || user.email || '?')
     .split(' ')
     .map(w => w[0])
@@ -200,40 +181,33 @@ export function Sidebar({
     .join('')
     .toUpperCase();
 
-  // Sort: P1 first, then P2, then P3
   const sorted = [...myTasks].sort((a, b) => {
     const order = { P1: 0, P2: 1, P3: 2 };
     return order[a.priority] - order[b.priority];
   });
 
-  const handleTaskClick = (task: MyTaskSummary) => {
-    navigate(`/task/${task.id}`);
-  };
-
-  const w = collapsed ? '64px' : '272px';
+  const w = collapsed ? '60px' : '268px';
 
   return (<>
     <aside
       dir="rtl"
       style={{
-        width: w,
-        minWidth: w,
-        maxWidth: w,
+        width: w, minWidth: w, maxWidth: w,
         background: C.bg,
         color: C.text,
         display: 'flex',
         flexDirection: 'column',
         borderLeft: `1px solid ${C.border}`,
-        boxShadow: '-6px 0 24px rgba(0,0,0,0.22)',
+        boxShadow: '-4px 0 20px rgba(0,0,0,0.30)',
         transition: 'width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1)',
         overflow: 'hidden',
         flexShrink: 0,
       }}
     >
-      {/* ── User profile card ──────────────────────────────────────── */}
+      {/* ── User profile card ──────────────────────────────────── */}
       <div style={{
-        background: C.bgHeader,
-        padding: collapsed ? '16px 0' : '16px 14px',
+        background: 'rgba(255,255,255,0.03)',
+        padding: collapsed ? '14px 0' : '14px 12px',
         borderBottom: `1px solid ${C.border}`,
         display: 'flex',
         flexDirection: collapsed ? 'column' : 'row',
@@ -242,82 +216,62 @@ export function Sidebar({
         flexShrink: 0,
       }}>
         <div style={{
-          width: '38px',
-          height: '38px',
-          minWidth: '38px',
+          width: '36px', height: '36px', minWidth: '36px',
           borderRadius: '10px',
           background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontWeight: '700',
-          fontSize: '14px',
-          color: 'white',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: '700', fontSize: '13px', color: 'white',
           flexShrink: 0,
-          boxShadow: '0 2px 8px rgba(99,102,241,0.35)',
+          boxShadow: '0 2px 8px rgba(99,102,241,0.30)',
         }}>
-          {initials}
+          {profile?.avatar_url
+            ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '10px' }} />
+            : initials
+          }
         </div>
 
         {!collapsed && (
           <div style={{ overflow: 'hidden', flex: 1, minWidth: 0 }}>
             <div style={{
-              fontSize: '13.5px',
-              fontWeight: '600',
-              color: C.text,
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              textAlign: 'right',
-              lineHeight: '1.3',
+              fontSize: '13px', fontWeight: '600', color: C.text,
+              whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+              textAlign: 'right', lineHeight: '1.3',
             }}>
-              {displayName}
+              {profile?.full_name || user.email || ''}
             </div>
-            {emailDisplay && (
+            {profile?.full_name && (
               <div style={{
-                fontSize: '11px',
-                color: C.textMuted,
-                whiteSpace: 'nowrap',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                marginTop: '2px',
-                textAlign: 'right',
+                fontSize: '10.5px', color: C.textMuted,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                marginTop: '2px', textAlign: 'right',
               }}>
-                {emailDisplay}
+                {user.email}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* ── "My Tasks" section label ───────────────────────────────── */}
+      {/* ── "My Tasks" section label ──────────────────────────── */}
       {!collapsed && (
         <div style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: '6px',
-          padding: '13px 16px 6px',
+          display: 'flex', alignItems: 'center', gap: '6px',
+          padding: '12px 14px 5px',
           flexShrink: 0,
         }}>
-          <ClipboardList size={12} style={{ color: C.textDim }} />
+          <ClipboardList size={11} style={{ color: C.textDim }} />
           <span style={{
-            fontSize: '10px',
-            fontWeight: '700',
-            color: C.textDim,
-            textTransform: 'uppercase',
-            letterSpacing: '1.4px',
+            fontSize: '9.5px', fontWeight: '700', color: C.textDim,
+            textTransform: 'uppercase', letterSpacing: '1.5px',
           }}>
             המשימות שלי
           </span>
           {myTasks.length > 0 && (
             <span style={{
               marginRight: 'auto',
-              background: 'rgba(99,102,241,0.22)',
-              color: C.accentLight,
-              fontSize: '10px',
-              fontWeight: '700',
-              padding: '1px 7px',
-              borderRadius: '10px',
+              background: 'rgba(99,102,241,0.20)', color: C.accentLight,
+              fontSize: '10px', fontWeight: '700',
+              padding: '1px 7px', borderRadius: '10px',
             }}>
               {myTasks.length}
             </span>
@@ -325,51 +279,40 @@ export function Sidebar({
         </div>
       )}
 
-      {/* ── Task list ──────────────────────────────────────────────── */}
+      {/* ── Task list ─────────────────────────────────────────── */}
       <div style={{
         flex: 1,
-        overflowY: 'auto',
-        overflowX: 'hidden',
-        padding: collapsed ? '10px 6px' : '4px 10px 16px',
-        // Custom scrollbar
+        overflowY: 'auto', overflowX: 'hidden',
+        padding: collapsed ? '8px 6px' : '4px 9px 14px',
         scrollbarWidth: 'thin',
-        scrollbarColor: `rgba(255,255,255,0.1) transparent`,
+        scrollbarColor: 'rgba(255,255,255,0.08) transparent',
       }}>
         <style>{`
-          aside::-webkit-scrollbar { width: 4px; }
+          aside::-webkit-scrollbar { width: 3px; }
           aside::-webkit-scrollbar-track { background: transparent; }
-          aside::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
+          aside::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
         `}</style>
 
         {loading ? (
-          /* Loading spinner */
           <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
             <div style={{
-              width: '20px',
-              height: '20px',
-              border: `2px solid rgba(255,255,255,0.08)`,
-              borderTopColor: C.accent,
-              borderRadius: '50%',
-              animation: 'sidebar-spin 0.8s linear infinite',
+              width: '18px', height: '18px',
+              border: '2px solid rgba(255,255,255,0.08)', borderTopColor: C.accent,
+              borderRadius: '50%', animation: 'sb-spin 0.8s linear infinite',
             }} />
-            <style>{`@keyframes sidebar-spin { to { transform: rotate(360deg); } }`}</style>
+            <style>{`@keyframes sb-spin { to { transform: rotate(360deg); } }`}</style>
           </div>
 
         ) : sorted.length === 0 ? (
-          /* Empty state */
           !collapsed && (
             <div style={{ padding: '20px 8px', textAlign: 'center' }}>
               <div style={{
-                width: '42px',
-                height: '42px',
-                borderRadius: '12px',
-                background: 'rgba(99,102,241,0.10)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                width: '40px', height: '40px', borderRadius: '12px',
+                background: 'rgba(99,102,241,0.08)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
                 margin: '0 auto 10px',
               }}>
-                <ClipboardList size={18} style={{ color: C.textDim }} />
+                <ClipboardList size={17} style={{ color: C.textDim }} />
               </div>
               <p style={{ fontSize: '12px', color: C.textMuted, margin: 0, lineHeight: '1.7' }}>
                 אין משימות משויכות אליך
@@ -378,57 +321,44 @@ export function Sidebar({
           )
 
         ) : collapsed ? (
-          /* Collapsed: small priority squares */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center' }}>
             {sorted.map(task => {
               const p = PRIORITY[task.priority];
+              const active = location.pathname === `/task/${task.id}`;
               return (
                 <button
                   key={task.id}
-                  title={`${task.title}\n${task.projectName}`}
-                  onClick={() => handleTaskClick(task)}
+                  title={`${task.title}\n${task.category}`}
+                  onClick={() => navigate(`/task/${task.id}`)}
                   style={{
-                    width: '38px',
-                    height: '38px',
-                    borderRadius: '8px',
-                    background: p.bg,
-                    border: 'none',
+                    width: '36px', height: '36px', borderRadius: '8px',
+                    background: active ? p.activeBg : p.bg,
+                    border: active ? `1px solid ${p.text}44` : '1px solid transparent',
                     cursor: 'pointer',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
                     flexShrink: 0,
-                    transition: 'opacity 0.15s, transform 0.15s',
+                    transition: 'background 0.15s, border-color 0.15s',
                   }}
-                  onMouseEnter={e => {
-                    e.currentTarget.style.opacity = '0.72';
-                    e.currentTarget.style.transform = 'scale(0.95)';
-                  }}
-                  onMouseLeave={e => {
-                    e.currentTarget.style.opacity = '1';
-                    e.currentTarget.style.transform = 'none';
-                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = p.activeBg; }}
+                  onMouseLeave={e => { if (!active) e.currentTarget.style.background = p.bg; }}
                 >
-                  {isOverdue(task.dueDate) ? (
-                    <AlertCircle size={13} style={{ color: p.text }} />
-                  ) : (
-                    <span style={{ fontSize: '9px', fontWeight: '800', color: p.text, letterSpacing: '0.3px' }}>
-                      {task.priority}
-                    </span>
-                  )}
+                  {isOverdue(task.dueDate)
+                    ? <AlertCircle size={12} style={{ color: p.text }} />
+                    : <span style={{ fontSize: '9px', fontWeight: '800', color: p.text, letterSpacing: '0.3px' }}>{task.priority}</span>
+                  }
                 </button>
               );
             })}
           </div>
 
         ) : (
-          /* Expanded: full task cards */
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
             {sorted.map(task => (
               <TaskCard
                 key={task.id}
                 task={task}
-                onClick={() => handleTaskClick(task)}
+                isActive={location.pathname === `/task/${task.id}`}
+                onClick={() => navigate(`/task/${task.id}`)}
                 onQuickView={() => setQuickViewTaskId(task.id)}
               />
             ))}
@@ -436,57 +366,29 @@ export function Sidebar({
         )}
       </div>
 
-      {/* ── Footer ─────────────────────────────────────────────────── */}
+      {/* ── Footer ───────────────────────────────────────────── */}
       <div style={{
         borderTop: `1px solid ${C.border}`,
-        padding: collapsed ? '10px 6px' : '10px',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: '4px',
+        padding: collapsed ? '8px 6px' : '8px',
+        display: 'flex', flexDirection: 'column', gap: '2px',
         flexShrink: 0,
       }}>
-        {/* Collapse / Expand toggle */}
+        {/* Collapse toggle */}
         <button
           onClick={onToggleCollapse}
           title={collapsed ? 'הרחב תפריט' : 'כווץ תפריט'}
           style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: collapsed ? '9px 0' : '9px 12px',
+            width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+            padding: collapsed ? '8px 0' : '8px 10px',
             justifyContent: collapsed ? 'center' : 'flex-start',
-            background: 'transparent',
-            color: C.textDim,
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '12px',
-            fontFamily: 'inherit',
-            transition: 'background 0.15s, color 0.15s',
+            background: 'transparent', color: C.textDim, border: 'none',
+            borderRadius: '6px', cursor: 'pointer', fontSize: '12px',
+            fontFamily: 'inherit', transition: 'background 0.15s, color 0.15s',
           }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = C.bgHover;
-            e.currentTarget.style.color = C.textMuted;
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = C.textDim;
-          }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = C.textMuted; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.textDim; }}
         >
-          {/*
-            Right-side sidebar in RTL layout:
-            - Expanded: ChevronRight (→) = "push sidebar inward to the right" = collapse
-            - Collapsed: ChevronRight rotated 180° (←) = "expand sidebar outward to the left"
-          */}
-          <ChevronRight
-            size={15}
-            style={{
-              flexShrink: 0,
-              transform: collapsed ? 'rotate(180deg)' : 'none',
-              transition: 'transform 0.25s cubic-bezier(.4,0,.2,1)',
-            }}
-          />
+          <ChevronRight size={14} style={{ flexShrink: 0, transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s cubic-bezier(.4,0,.2,1)' }} />
           {!collapsed && <span>כווץ תפריט</span>}
         </button>
 
@@ -495,40 +397,22 @@ export function Sidebar({
           onClick={onSignOut}
           title="יציאה"
           style={{
-            width: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '10px',
-            padding: collapsed ? '9px 0' : '9px 12px',
+            width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+            padding: collapsed ? '8px 0' : '8px 10px',
             justifyContent: collapsed ? 'center' : 'flex-start',
-            background: 'transparent',
-            color: C.textDim,
-            border: 'none',
-            borderRadius: '6px',
-            cursor: 'pointer',
-            fontSize: '13px',
-            fontFamily: 'inherit',
-            transition: 'background 0.15s, color 0.15s',
+            background: 'transparent', color: C.textDim, border: 'none',
+            borderRadius: '6px', cursor: 'pointer', fontSize: '12px',
+            fontFamily: 'inherit', transition: 'background 0.15s, color 0.15s',
           }}
-          onMouseEnter={e => {
-            e.currentTarget.style.background = C.dangerBg;
-            e.currentTarget.style.color = C.danger;
-          }}
-          onMouseLeave={e => {
-            e.currentTarget.style.background = 'transparent';
-            e.currentTarget.style.color = C.textDim;
-          }}
+          onMouseEnter={e => { e.currentTarget.style.background = C.dangerBg; e.currentTarget.style.color = C.danger; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.textDim; }}
         >
-          <LogOut size={14} style={{ flexShrink: 0 }} />
+          <LogOut size={13} style={{ flexShrink: 0 }} />
           {!collapsed && <span>יציאה</span>}
         </button>
       </div>
     </aside>
 
-    {/* Quick View Modal — rendered outside <aside> so z-index stacking works */}
-    <QuickViewModalById
-      taskId={quickViewTaskId}
-      onClose={() => setQuickViewTaskId(null)}
-    />
+    <QuickViewModalById taskId={quickViewTaskId} onClose={() => setQuickViewTaskId(null)} />
   </>);
 }
