@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { TreePine, X, Cloud, CheckCircle2, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
+import { Sidebar } from './components/Sidebar';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
@@ -303,11 +304,18 @@ function App() {
   const { user, profile, signOut } = useAuth();
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  // Load tasks from Supabase with real-time sync
-  const { tasks: supabaseTasks, loading: tasksLoading } = useTasks();
-  
-  // Use Supabase tasks or fallback to initial tasks while loading
-  const tasks = supabaseTasks.length > 0 ? supabaseTasks : (tasksLoading ? [] : initialTasks as MedicalTask[]);
+  // ── Project workspace state ────────────────────────────────────────────────
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Load tasks from Supabase for the selected project (null = no fetch)
+  const { tasks: supabaseTasks, loading: tasksLoading } = useTasks(user ? selectedProjectId : null);
+
+  // Guest view (not logged in) → show mock data.
+  // User view (logged in) → show their project's tasks from Supabase.
+  const tasks = user
+    ? supabaseTasks
+    : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('dashboard');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
@@ -606,11 +614,13 @@ function App() {
 
     // Update tasks in Supabase
     const tasksToUpdate = tasks.filter(t => normalizeOwnerName(t.owner) === from);
-    Promise.all(tasksToUpdate.map(task => updateTask({ ...task, owner: to })))
-      .catch(error => {
-        console.error('Error updating owner in tasks:', error);
-        showToast('שגיאה בעדכון האחראי במשימות', 'error');
-      });
+    if (selectedProjectId) {
+      Promise.all(tasksToUpdate.map(task => updateTask({ ...task, owner: to }, selectedProjectId)))
+        .catch(error => {
+          console.error('Error updating owner in tasks:', error);
+          showToast('שגיאה בעדכון האחראי במשימות', 'error');
+        });
+    }
     
     setSelectedTask((prev) => (prev && normalizeOwnerName(prev.owner) === from ? { ...prev, owner: to } : prev));
     setEditingTask((prev) => (prev && normalizeOwnerName(prev.owner) === from ? { ...prev, owner: to } : prev));
@@ -745,11 +755,9 @@ function App() {
   };
 
   const handleSaveTask = async () => {
-    if (editingTask) {
+    if (editingTask && selectedProjectId) {
       try {
-        // Update in Supabase
-        await updateTask(editingTask);
-        // The real-time subscription will update the UI automatically
+        await updateTask(editingTask, selectedProjectId);
         setSelectedTask(editingTask);
         setEditingTask(null);
         showToast('השינויים נשמרו בהצלחה!', 'success');
@@ -809,10 +817,9 @@ function App() {
   };
 
   const addNewTask = async (newTask: typeof tasks[0]) => {
+    if (!selectedProjectId) return;
     try {
-      // Create in Supabase, stamping the current user as creator
-      await createTask(newTask, user?.id);
-      // The real-time subscription will update the UI automatically
+      await createTask(newTask, selectedProjectId, user?.id);
       setShowNewTaskModal(false);
       showToast('המשימה נוספה בהצלחה!', 'success');
     } catch (error) {
@@ -856,9 +863,9 @@ function App() {
   };
 
   const updateCategoryColor = async (categoryName: string, newColor: string) => {
+    if (!selectedProjectId) return;
     try {
-      // Update the category color directly in the database
-      await updateCategoryColorInDB(categoryName, newColor);
+      await updateCategoryColorInDB(categoryName, newColor, selectedProjectId);
       showToast('צבע הקטגוריה עודכן', 'success');
     } catch (error) {
       console.error('Error updating category color:', error);
@@ -867,14 +874,13 @@ function App() {
   };
 
   const renameCategory = async (oldName: string, newName: string) => {
-    if (!newName.trim() || oldName === newName) return;
+    if (!newName.trim() || oldName === newName || !selectedProjectId) return;
     if (categories.includes(newName)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
     }
     try {
-      // Rename the category directly in the database
-      await renameCategoryInDB(oldName, newName);
+      await renameCategoryInDB(oldName, newName, selectedProjectId);
       setExpandedCategories(prev => prev.map(c => c === oldName ? newName : c));
       setEditingCategory(null);
       showToast('שם הקטגוריה עודכן', 'success');
@@ -899,13 +905,12 @@ function App() {
   };
 
   const addCategory = async (name: string, color: string) => {
-    if (!name.trim()) return;
+    if (!name.trim() || !selectedProjectId) return;
     if (categories.includes(name)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
     }
     try {
-      // Add a dummy task to create the category
       const newTask: Omit<MedicalTask, 'id'> = {
         title: 'משימה ראשונה ב-' + name,
         description: 'תיאור המשימה',
@@ -930,7 +935,7 @@ function App() {
         links: '',
         milestones: [{ text: 'שלב ראשון', done: false }]
       };
-      await createTask(newTask);
+      await createTask(newTask, selectedProjectId);
       setExpandedCategories([...expandedCategories, name]);
       setShowAddCategory(false);
       showToast('קטגוריה חדשה נוספה', 'success');
@@ -1711,15 +1716,36 @@ function App() {
         )}
       </header>
 
+      {/* Body: Sidebar (when logged in) + Main content */}
+      {/* direction: rtl puts sidebar on the RIGHT, main content on the LEFT */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', direction: 'rtl' }}>
+
+      {/* Sidebar — visible only when authenticated, desktop only */}
+      {user && (
+        <div className="hidden md:flex">
+          <Sidebar
+            selectedProjectId={selectedProjectId}
+            onSelectProject={setSelectedProjectId}
+            user={user}
+            profile={profile}
+            onSignOut={signOut}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+          />
+        </div>
+      )}
+
       {/* Content */}
-      <main style={{ 
+      <main style={{
         width: '100%',
-        maxWidth: '1920px', 
-        margin: '0 auto', 
+        maxWidth: '1920px',
+        margin: '0 auto',
         padding: '16px',
         backgroundColor: 'rgba(255, 255, 255, 1)',
         boxShadow: 'inset 0px 4px 12px 0px rgba(0, 0, 0, 0.15)',
-        flex: 1
+        flex: 1,
+        overflow: 'auto',
+        direction: 'rtl',
       }}>
         <style>{`
           @media (min-width: 768px) {
@@ -1731,7 +1757,39 @@ function App() {
             main > div:not(.no-main-padding) { padding: 16px !important; }
           }
         `}</style>
-          
+
+          {/* Empty state: logged in but no project selected yet */}
+          {user && !selectedProjectId && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              minHeight: '60vh',
+              gap: '16px',
+              color: colors.text.secondary,
+              fontFamily: typography.fontFamily,
+              textAlign: 'center',
+              padding: spacing.xxl,
+            }}>
+              <div style={{ fontSize: '48px' }}>📂</div>
+              <h2 style={{ fontSize: typography.fontSize.h2, fontWeight: typography.fontWeight.bold, color: colors.text.primary, margin: 0 }}>
+                בחר פרויקט
+              </h2>
+              <p style={{ fontSize: typography.fontSize.base, margin: 0, maxWidth: '320px' }}>
+                בחר פרויקט מהסרגל הצדדי, או צור פרויקט חדש כדי להתחיל.
+              </p>
+              <p className="md:hidden" style={{ fontSize: typography.fontSize.sm, color: colors.text.tertiary, margin: 0 }}>
+                (הסרגל הצדדי זמין במסך גדול יותר)
+              </p>
+            </div>
+          )}
+
+          {/* Main views — shown when guest OR when a project is selected */}
+          {(!user || selectedProjectId) && (
+          <>
+
           {/* Dashboard View - Hybrid Dashboard */}
           {viewMode === 'dashboard' && (
             <div style={{ padding: spacing.xxl, maxWidth: '1600px', margin: '0 auto' }}>
@@ -3227,7 +3285,13 @@ function App() {
               )}
             </div>
           )}
+
+          </> /* end main views fragment */
+          )}
+
       </main>
+
+      </div>{/* end body flex wrapper */}
 
       {/* Category Details Modal */}
       {isCategoryModalOpen && selectedCategory && (() => {

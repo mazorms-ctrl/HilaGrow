@@ -29,7 +29,7 @@ export interface MedicalTask {
   milestones: Array<{ text: string; done: boolean }>;
 }
 
-// Database row type
+// Database row types
 interface TaskRow {
   id: string;
   group_id: string;
@@ -58,20 +58,23 @@ interface MilestoneRow {
   order: number;
 }
 
-// Default project ID (from seed.sql)
-const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
+// ── Project summary type (used by Sidebar) ────────────────────────────────────
 
-/**
- * Convert database rows to MedicalTask format
- */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+// ── Convert DB rows to MedicalTask ────────────────────────────────────────────
+
 function dbRowToMedicalTask(
   taskRow: TaskRow,
   groupRow: GroupRow,
   milestones: MilestoneRow[]
 ): MedicalTask {
   const metadata = taskRow.metadata || {};
-  
-  // Calculate progress from milestones if auto mode
+
   let progress = 0;
   if (taskRow.progress_mode === 'auto' && milestones.length > 0) {
     const completed = milestones.filter(m => m.done).length;
@@ -109,30 +112,103 @@ function dbRowToMedicalTask(
   };
 }
 
+// ── useProjects ───────────────────────────────────────────────────────────────
+
 /**
- * Hook to fetch and sync tasks from Supabase
+ * Fetches and real-time-syncs the current user's projects.
  */
-export function useTasks() {
-  const [tasks, setTasks] = useState<MedicalTask[]>([]);
+export function useProjects() {
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const fetchProjects = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, description')
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      setProjects(data || []);
+    } catch (err) {
+      console.error('Error fetching projects:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProjects();
+  }, [fetchProjects]);
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('projects-changes')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'projects' },
+        () => { fetchProjects(); }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [fetchProjects]);
+
+  return { projects, loading, refetch: fetchProjects };
+}
+
+// ── createProject ─────────────────────────────────────────────────────────────
+
+/**
+ * Creates a new project owned by the current user.
+ * Returns the new project's UUID.
+ */
+export async function createProject(name: string, description?: string): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({ name, description: description || null, user_id: user.id })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data.id;
+}
+
+// ── useTasks ──────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches and real-time-syncs tasks for a given project.
+ * Pass null to skip fetching (e.g. when no project is selected).
+ */
+export function useTasks(projectId: string | null) {
+  const [tasks, setTasks] = useState<MedicalTask[]>([]);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch tasks from database
   const fetchTasks = useCallback(async () => {
+    if (!projectId) {
+      setTasks([]);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
-      // Fetch groups (categories)
+      // Fetch groups (categories) for this project
       const { data: groups, error: groupsError } = await supabase
         .from('groups')
         .select('*')
-        .eq('project_id', DEFAULT_PROJECT_ID)
+        .eq('project_id', projectId)
         .order('order', { ascending: true });
 
       if (groupsError) throw groupsError;
 
-      // Fetch tasks
+      // Fetch tasks belonging to these groups
       const { data: tasksData, error: tasksError } = await supabase
         .from('tasks')
         .select('*')
@@ -141,7 +217,7 @@ export function useTasks() {
 
       if (tasksError) throw tasksError;
 
-      // Fetch all milestones
+      // Fetch all milestones for those tasks
       const { data: milestones, error: milestonesError } = await supabase
         .from('milestones')
         .select('*')
@@ -176,78 +252,57 @@ export function useTasks() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [projectId]);
 
-  // Initial fetch
   useEffect(() => {
     fetchTasks();
   }, [fetchTasks]);
 
-  // Set up real-time subscriptions
+  // Real-time subscriptions — only active when a project is selected
   useEffect(() => {
+    if (!projectId) return;
+
     const channels: RealtimeChannel[] = [];
 
-    // Subscribe to tasks changes
     const tasksChannel = supabase
-      .channel('tasks-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks' },
-        () => {
-          console.log('Tasks changed, refetching...');
-          fetchTasks();
-        }
-      )
+      .channel(`tasks-changes-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
+        fetchTasks();
+      })
       .subscribe();
 
-    // Subscribe to milestones changes
     const milestonesChannel = supabase
-      .channel('milestones-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'milestones' },
-        () => {
-          console.log('Milestones changed, refetching...');
-          fetchTasks();
-        }
-      )
+      .channel(`milestones-changes-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, () => {
+        fetchTasks();
+      })
       .subscribe();
 
-    // Subscribe to groups changes
     const groupsChannel = supabase
-      .channel('groups-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'groups' },
-        () => {
-          console.log('Groups changed, refetching...');
-          fetchTasks();
-        }
-      )
+      .channel(`groups-changes-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, () => {
+        fetchTasks();
+      })
       .subscribe();
 
     channels.push(tasksChannel, milestonesChannel, groupsChannel);
 
-    // Cleanup subscriptions
     return () => {
-      channels.forEach(channel => {
-        supabase.removeChannel(channel);
-      });
+      channels.forEach(channel => { supabase.removeChannel(channel); });
     };
-  }, [fetchTasks]);
+  }, [fetchTasks, projectId]);
 
   return { tasks, loading, error, refetch: fetchTasks };
 }
 
-/**
- * Function to update a task in Supabase
- */
-export async function updateTask(task: MedicalTask): Promise<void> {
-  // Find the task's group by category name
+// ── updateTask ────────────────────────────────────────────────────────────────
+
+export async function updateTask(task: MedicalTask, projectId: string): Promise<void> {
+  // Find the task's group by category name within the project
   const { data: groups } = await supabase
     .from('groups')
     .select('id')
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', task.category)
     .single();
 
@@ -255,7 +310,6 @@ export async function updateTask(task: MedicalTask): Promise<void> {
     throw new Error(`Group not found for category: ${task.category}`);
   }
 
-  // Prepare metadata
   const metadata = {
     department: task.department,
     processName: task.processName,
@@ -273,11 +327,6 @@ export async function updateTask(task: MedicalTask): Promise<void> {
     links: task.links,
   };
 
-  // Update task — select('id') returns the real UUID from Postgres so we
-  // never rely on the reconstructed taskUuid for child writes (fixes FK 23503
-  // for tasks created outside the seed data whose UUIDs don't follow the
-  // 20000000-… pattern). maybeSingle() returns null instead of erroring when
-  // no row is matched, so we can surface a clear message.
   const { data: updatedTask, error: taskError } = await supabase
     .from('tasks')
     .update({
@@ -294,11 +343,9 @@ export async function updateTask(task: MedicalTask): Promise<void> {
   if (taskError) throw taskError;
   if (!updatedTask) throw new Error(`Task not found (id: ${task.id}).`);
 
-  // Use the confirmed real UUID for all milestone operations.
   const confirmedUuid = updatedTask.id;
 
-  // Only re-sync milestones if they actually changed — skip the DB writes
-  // entirely when only basic task properties (name, owner, etc.) were edited.
+  // Only re-sync milestones if they changed
   const { data: currentMilestones } = await supabase
     .from('milestones')
     .select('title, done, order')
@@ -312,9 +359,8 @@ export async function updateTask(task: MedicalTask): Promise<void> {
     .map(m => `${m.order}|${m.title}|${m.done}`)
     .join('||');
 
-  if (incomingKey === existingKey) return; // Milestones unchanged — nothing more to do.
+  if (incomingKey === existingKey) return;
 
-  // Milestones changed: delete all then reinsert cleanly.
   const { error: deleteError } = await supabase
     .from('milestones')
     .delete()
@@ -335,28 +381,30 @@ export async function updateTask(task: MedicalTask): Promise<void> {
   }
 }
 
-/**
- * Function to create a new task in Supabase
- */
-export async function createTask(task: Omit<MedicalTask, 'id'>, createdBy?: string): Promise<MedicalTask> {
-  // Find or create the group (category)
+// ── createTask ────────────────────────────────────────────────────────────────
+
+export async function createTask(
+  task: Omit<MedicalTask, 'id'>,
+  projectId: string,
+  createdBy?: string
+): Promise<MedicalTask> {
+  // Find or create the group (category) within this project
   const { data: existingGroup } = await supabase
     .from('groups')
     .select('id')
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', task.category)
-    .single();
+    .maybeSingle();
 
   let groupId: string;
 
   if (existingGroup) {
     groupId = existingGroup.id;
   } else {
-    // Create new group
     const { data: newGroup, error: groupError } = await supabase
       .from('groups')
       .insert({
-        project_id: DEFAULT_PROJECT_ID,
+        project_id: projectId,
         name: task.category,
         color: task.color,
         order: 0,
@@ -369,7 +417,6 @@ export async function createTask(task: Omit<MedicalTask, 'id'>, createdBy?: stri
     groupId = newGroup.id;
   }
 
-  // Prepare metadata
   const metadata = {
     department: task.department,
     processName: task.processName,
@@ -387,7 +434,6 @@ export async function createTask(task: Omit<MedicalTask, 'id'>, createdBy?: stri
     links: task.links,
   };
 
-  // Create task
   const { data: newTask, error: taskError } = await supabase
     .from('tasks')
     .insert({
@@ -405,7 +451,6 @@ export async function createTask(task: Omit<MedicalTask, 'id'>, createdBy?: stri
 
   if (taskError) throw taskError;
 
-  // Create milestones
   if (task.milestones.length > 0) {
     const { error: milestonesError } = await supabase.from('milestones').insert(
       task.milestones.map((m, idx) => ({
@@ -415,11 +460,9 @@ export async function createTask(task: Omit<MedicalTask, 'id'>, createdBy?: stri
         order: idx,
       }))
     );
-
     if (milestonesError) throw milestonesError;
   }
 
-  // Fetch and return the created task
   const { data: groups } = await supabase
     .from('groups')
     .select('*')
@@ -435,36 +478,40 @@ export async function createTask(task: Omit<MedicalTask, 'id'>, createdBy?: stri
   return dbRowToMedicalTask(newTask, groups!, milestones || []);
 }
 
-/**
- * Function to delete a task from Supabase
- */
+// ── deleteTask ────────────────────────────────────────────────────────────────
+
 export async function deleteTask(taskId: string): Promise<void> {
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
-
   if (error) throw error;
 }
 
-/**
- * Function to rename a category/group in Supabase
- */
-export async function renameCategory(oldName: string, newName: string): Promise<void> {
+// ── renameCategory ────────────────────────────────────────────────────────────
+
+export async function renameCategory(
+  oldName: string,
+  newName: string,
+  projectId: string
+): Promise<void> {
   const { error } = await supabase
     .from('groups')
     .update({ name: newName })
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', oldName);
 
   if (error) throw error;
 }
 
-/**
- * Function to update a category/group color in Supabase
- */
-export async function updateCategoryColor(categoryName: string, color: string): Promise<void> {
+// ── updateCategoryColor ───────────────────────────────────────────────────────
+
+export async function updateCategoryColor(
+  categoryName: string,
+  color: string,
+  projectId: string
+): Promise<void> {
   const { error } = await supabase
     .from('groups')
     .update({ color })
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', categoryName);
 
   if (error) throw error;
