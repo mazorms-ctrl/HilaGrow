@@ -8,7 +8,7 @@ import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, useProfiles, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB } from './lib/supabase-hooks';
+import { useTasks, useProfiles, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -274,31 +274,6 @@ const initialTasks = [
 ];
 
 // Type for medical task to match TasksDashboard expectations
-interface MedicalTask {
-  id: string; // UUID from Supabase — never convert to/from integer
-  title: string;
-  description: string;
-  category: string;
-  color: string;
-  owner: string;
-  priority: 'P1' | 'P2' | 'P3';
-  progress: number;
-  department: string;
-  processName: string;
-  problemStatement: string;
-  goal: string;
-  kpiName: string;
-  baseline: string;
-  target: string;
-  measurementCadence: string;
-  startDate: string;
-  dueDate: string;
-  stakeholders: string[];
-  risksBlockers: string;
-  dependencies: string;
-  links: string;
-  milestones: Array<{ text: string; done: boolean }>;
-}
 
 function App() {
   const { user, profile, signOut } = useAuth();
