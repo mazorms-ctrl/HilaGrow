@@ -1468,9 +1468,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             {(['dashboard', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
-                onClick={() => setViewMode(mode)}
-                aria-pressed={viewMode === mode}
-                style={getHeaderModeButtonStyle(mode, 'desktop')}
+                onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
+                aria-pressed={!taskMatch && viewMode === mode}
+                style={getHeaderModeButtonStyle(taskMatch ? 'dashboard' : mode, 'desktop')}
                 title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
                 onMouseEnter={(e) => {
                   elevateHeaderButton(e, headerModeButtonSpec[mode].hoverShadow);
@@ -1696,9 +1696,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               {(['dashboard', 'rows', 'tree'] as const).map(mode => (
                 <button
                   key={mode}
-                  onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); }}
-                  aria-pressed={viewMode === mode}
-                  style={{...getHeaderModeButtonStyle(mode, 'mobile'), minHeight: '44px'}}
+                  onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
+                  aria-pressed={!taskMatch && viewMode === mode}
+                  style={{...getHeaderModeButtonStyle(taskMatch ? 'dashboard' : mode, 'mobile'), minHeight: '44px'}}
                   title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
