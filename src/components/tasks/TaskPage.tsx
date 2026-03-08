@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
-  BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle,
+  BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2,
 } from 'lucide-react';
-import { useTaskById, useProfiles, updateTask, type MedicalTask } from '@/lib/supabase-hooks';
+import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask } from '@/lib/supabase-hooks';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Toast } from '../Toast';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -195,6 +196,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
   const [localTask, setLocalTask] = useState<MedicalTask | null>(null);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeSection, setActiveSection] = useState<string>('foundations');
   const [participantSearch, setParticipantSearch] = useState('');
 
@@ -240,6 +243,23 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const patchLocal = useCallback(<K extends keyof MedicalTask>(key: K, value: MedicalTask[K]) => {
     setLocalTask(prev => prev ? { ...prev, [key]: value } : prev);
   }, []);
+
+  // ── Delete task ───────────────────────────────────────────────────────────────
+  const handleDelete = async () => {
+    if (!task) return;
+    const confirmed = window.confirm('האם אתה בטוח שברצונך למחוק את המשימה? פעולה זו אינה ניתנת לביטול.');
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await deleteTask(task.id);
+      setToast({ message: 'המשימה נמחקה בהצלחה', type: 'success' });
+      setTimeout(() => navigate(-1), 1500);
+    } catch (e) {
+      console.error('Delete error:', e);
+      setToast({ message: 'שגיאה במחיקת המשימה', type: 'error' });
+      setDeleting(false);
+    }
+  };
 
   // ── Tab switch ────────────────────────────────────────────────────────────────
   const switchTab = (id: string) => setActiveSection(id);
@@ -305,7 +325,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
       {/* ── Breadcrumb ───────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '8px', direction: 'rtl' }}>
-        <button onClick={() => navigate('/')} style={crumbLinkStyle}>לוח</button>
+        <button onClick={() => navigate(-1)} style={crumbLinkStyle}>לוח</button>
         <span style={{ color: '#cbd5e1', fontSize: '12px', lineHeight: 1 }}>›</span>
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#94a3b8' }}>
           <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: task.color, display: 'inline-block', flexShrink: 0 }} />
@@ -317,6 +337,25 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
             שומר...
           </span>
         )}
+        {/* Delete button */}
+        <button
+          onClick={handleDelete}
+          disabled={deleting}
+          title="מחק משימה"
+          style={{
+            marginRight: saving ? '0' : 'auto',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            width: '28px', height: '28px', borderRadius: '8px',
+            border: '1px solid #fecaca', background: '#fff5f5',
+            color: '#ef4444', cursor: deleting ? 'wait' : 'pointer',
+            transition: 'background 0.12s, border-color 0.12s',
+            flexShrink: 0, opacity: deleting ? 0.6 : 1,
+          }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#fff5f5'; e.currentTarget.style.borderColor = '#fecaca'; }}
+        >
+          <Trash2 size={13} />
+        </button>
       </div>
 
       {/* ── Title ────────────────────────────────────────────────────────────── */}
@@ -758,6 +797,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         </Section>}
 
       </div>
+
+      {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );
 }

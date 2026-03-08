@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
-import { X, ExternalLink, AlertCircle } from 'lucide-react';
-import { type MedicalTask, useTaskById, useProfiles } from '@/lib/supabase-hooks';
-import { useEffect } from 'react';
+import { X, ExternalLink, AlertCircle, Trash2 } from 'lucide-react';
+import { type MedicalTask, useTaskById, useProfiles, deleteTask } from '@/lib/supabase-hooks';
+import { useEffect, useState } from 'react';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -23,6 +23,20 @@ const PRIORITY_CONFIG = {
 function ModalContent({ task, onClose }: { task: MedicalTask; onClose: () => void }) {
   const navigate = useNavigate();
   const { profiles } = useProfiles();
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm('האם אתה בטוח שברצונך למחוק את המשימה? פעולה זו אינה ניתנת לביטול.');
+    if (!confirmed) return;
+    setDeleting(true);
+    try {
+      await deleteTask(task.id);
+      onClose();
+    } catch (e) {
+      console.error('Delete error:', e);
+      setDeleting(false);
+    }
+  };
 
   // Escape key
   useEffect(() => {
@@ -91,7 +105,7 @@ function ModalContent({ task, onClose }: { task: MedicalTask; onClose: () => voi
           {/* ── Header ─────────────────────────────────────────────────── */}
           <div style={{ padding: '28px 32px 0', flexShrink: 0 }}>
 
-            {/* Category row + close button */}
+            {/* Category row + action buttons */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '10px' }}>
               <span style={{
                 width: '8px', height: '8px', borderRadius: '50%',
@@ -100,10 +114,29 @@ function ModalContent({ task, onClose }: { task: MedicalTask; onClose: () => voi
               <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>
                 {task.category}
               </span>
+              {/* Delete button */}
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                title="מחק משימה"
+                style={{
+                  marginRight: 'auto',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  width: '30px', height: '30px', borderRadius: '8px',
+                  background: 'none', border: 'none',
+                  cursor: deleting ? 'wait' : 'pointer', color: '#94a3b8',
+                  transition: 'background 0.12s, color 0.12s',
+                  flexShrink: 0, opacity: deleting ? 0.5 : 1,
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#ef4444'; }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#94a3b8'; }}
+              >
+                <Trash2 size={15} />
+              </button>
+              {/* Close button */}
               <button
                 onClick={onClose}
                 style={{
-                  marginRight: 'auto',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   width: '30px', height: '30px', borderRadius: '8px',
                   background: 'none', border: 'none',
