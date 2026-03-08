@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useNavigate, useMatch } from 'react-router-dom';
-import { TreePine, X, Cloud, CheckCircle2, LogOut, LogIn } from 'lucide-react';
+import { TreePine, X, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { Sidebar } from './components/Sidebar';
@@ -339,6 +339,7 @@ function App() {
   
   // Auto-save status tracking
   const [showSavedIndicator, setShowSavedIndicator] = useState(false);
+  const [avatarDropdownOpen, setAvatarDropdownOpen] = useState(false);
 
   // Project name state with localStorage persistence
   const [projectName, setProjectName] = useState(() => {
@@ -1321,85 +1322,72 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     fontFamily: 'inherit',
     fontSize: '12px',
     fontWeight: '700',
-    transition: 'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease',
+    transition: 'all 0.15s ease',
     display: 'flex',
     alignItems: 'center',
     gap: '4px',
     whiteSpace: 'nowrap',
-    userSelect: 'none'
+    userSelect: 'none',
   } as const;
 
-  const elevateHeaderButton = (e: any, shadow: string) => {
+  const elevateHeaderButton = (e: any, _shadow: string) => {
     e.currentTarget.style.transform = 'translateY(-1px)';
-    e.currentTarget.style.boxShadow = shadow;
-    e.currentTarget.style.filter = 'brightness(1.03)';
+    e.currentTarget.style.opacity = '0.9';
   };
 
-  const resetHeaderButton = (e: any, shadow: string) => {
+  const resetHeaderButton = (e: any, _shadow: string) => {
     e.currentTarget.style.transform = 'translateY(0)';
-    e.currentTarget.style.boxShadow = shadow;
-    e.currentTarget.style.filter = 'brightness(1)';
+    e.currentTarget.style.opacity = '1';
   };
 
   const headerActionButtonSpec = {
     newTask: {
-      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-      shadow: '0 2px 8px rgba(34, 197, 94, 0.30)',
-      hoverShadow: '0 4px 12px rgba(34, 197, 94, 0.40)'
+      color: '#16a34a',
+      shadow: '',
+      hoverShadow: ''
     },
     export: {
-      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-      shadow: '0 2px 8px rgba(139, 92, 246, 0.30)',
-      hoverShadow: '0 4px 12px rgba(139, 92, 246, 0.40)'
+      color: '#7c3aed',
+      shadow: '',
+      hoverShadow: ''
     }
   } as const;
 
   const headerModeButtonSpec = {
-    dashboard: {
-      background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-      shadow: '0 2px 8px rgba(14, 165, 233, 0.26)',
-      hoverShadow: '0 4px 12px rgba(14, 165, 233, 0.36)'
-    },
-    rows: {
-      background: 'linear-gradient(135deg, #64748b, #475569)',
-      shadow: '0 2px 8px rgba(71, 85, 105, 0.24)',
-      hoverShadow: '0 4px 12px rgba(71, 85, 105, 0.34)'
-    },
-    tree: {
-      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-      shadow: '0 2px 8px rgba(34, 197, 94, 0.26)',
-      hoverShadow: '0 4px 12px rgba(34, 197, 94, 0.36)'
-    }
+    dashboard: { color: '#0ea5e9', shadow: '', hoverShadow: '' },
+    rows:      { color: '#6366f1', shadow: '', hoverShadow: '' },
+    tree:      { color: '#16a34a', shadow: '', hoverShadow: '' },
   } as const;
 
   const getHeaderActionButtonStyle = (kind: keyof typeof headerActionButtonSpec) => {
-    const spec = headerActionButtonSpec[kind];
+    const { color } = headerActionButtonSpec[kind];
     return {
       ...headerButtonCommon,
-      padding: '6px 12px',
-      border: 'none',
-      color: 'white',
-      background: spec.background,
-      boxShadow: spec.shadow
-    } as const;
+      padding: '6px 14px',
+      border: `1.5px solid ${color}`,
+      color,
+      background: 'transparent',
+      boxShadow: 'none',
+    } as CSSProperties;
   };
 
   const getHeaderModeButtonStyle = (
     mode: keyof typeof headerModeButtonSpec,
+    isActive: boolean,
     size: 'desktop' | 'mobile' = 'desktop'
   ) => {
-    const spec = headerModeButtonSpec[mode];
+    const { color } = headerModeButtonSpec[mode];
     return {
       ...headerButtonCommon,
-      padding: size === 'mobile' ? '12px' : '6px 12px',
-      border: 'none',
-      color: 'white',
-      background: spec.background,
-      boxShadow: spec.shadow,
+      padding: size === 'mobile' ? '12px 16px' : '6px 14px',
+      border: `1.5px solid ${color}`,
+      color: isActive ? 'white' : color,
+      background: isActive ? color : 'transparent',
+      boxShadow: 'none',
       borderRadius: size === 'mobile' ? '12px' : '10px',
       fontSize: size === 'mobile' ? '14px' : '12px',
-      justifyContent: size === 'mobile' ? 'center' : undefined
-    } as const;
+      justifyContent: size === 'mobile' ? 'center' : undefined,
+    } as CSSProperties;
   };
 
   return (
@@ -1470,7 +1458,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 key={mode}
                 onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
                 aria-pressed={!taskMatch && viewMode === mode}
-                style={getHeaderModeButtonStyle(taskMatch ? 'dashboard' : mode, 'desktop')}
+                style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
                 title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
                 onMouseEnter={(e) => {
                   elevateHeaderButton(e, headerModeButtonSpec[mode].hoverShadow);
@@ -1548,64 +1536,77 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             </div>
           </div>
 
-          {/* Auto-Save Indicator */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '6px',
-            borderRadius: '8px',
-            background: showSavedIndicator ? '#f0fdf4' : '#f8fafc',
-            border: showSavedIndicator ? '1px solid #86efac' : '1px solid #e2e8f0',
-            transition: 'all 0.3s ease',
-            fontSize: '13px',
-            fontWeight: '500',
-            color: showSavedIndicator ? '#16a34a' : '#64748b',
-            flexShrink: 0
-          }}
-          className="hidden md:flex lg:gap-2 lg:px-3"
-          title={showSavedIndicator ? 'נשמר' : 'שמירה אוטומטית מופעלת'}
-          >
-            {showSavedIndicator ? (
-              <>
-                <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
-                <span className="hidden lg:inline">נשמר</span>
-              </>
-            ) : (
-              <>
-                <Cloud size={16} style={{ color: '#94a3b8' }} />
-                <span className="hidden lg:inline">שמירה אוטומטית</span>
-              </>
-            )}
-          </div>
 
-          {/* User info + Logout OR Sign In — desktop only */}
-          <div className="hidden md:flex items-center gap-2 flex-shrink-0">
+          {/* User avatar dropdown OR Sign In — desktop only */}
+          <div className="hidden md:flex items-center flex-shrink-0" style={{ position: 'relative' }}>
             {user ? (
               <>
-                {profile?.avatar_url ? (
-                  <img
-                    src={profile.avatar_url}
-                    alt={profile.full_name ?? 'משתמש'}
-                    className="w-8 h-8 rounded-full object-cover border border-gray-200"
-                  />
-                ) : (
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-semibold flex-shrink-0"
-                    style={{ background: colors.brand.primary }}
-                    title={profile?.full_name ?? user.email ?? ''}
-                  >
-                    {(profile?.full_name ?? user.email ?? '?')[0].toUpperCase()}
-                  </div>
-                )}
                 <button
-                  onClick={signOut}
-                  title="יציאה"
-                  className="flex items-center gap-1 px-2 py-1.5 rounded-lg text-gray-500 hover:text-red-600 hover:bg-red-50 transition-colors text-xs"
+                  onClick={() => setAvatarDropdownOpen(v => !v)}
+                  title={profile?.full_name ?? user.email ?? ''}
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    width: '36px', height: '36px', borderRadius: '50%',
+                    background: colors.brand.primary, border: '2px solid #e2e8f0',
+                    cursor: 'pointer', color: 'white',
+                    fontSize: '14px', fontWeight: '700', fontFamily: 'inherit',
+                    flexShrink: 0, overflow: 'hidden', padding: 0,
+                    transition: 'border-color 0.12s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }}
+                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
                 >
-                  <LogOut size={14} />
-                  <span className="hidden lg:inline">יציאה</span>
+                  {profile?.avatar_url ? (
+                    <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    (profile?.full_name ?? user.email ?? '?')[0].toUpperCase()
+                  )}
                 </button>
+
+                {avatarDropdownOpen && (
+                  <>
+                    {/* Click-away backdrop */}
+                    <div
+                      style={{ position: 'fixed', inset: 0, zIndex: 39 }}
+                      onClick={() => setAvatarDropdownOpen(false)}
+                    />
+                    {/* Dropdown card */}
+                    <div style={{
+                      position: 'absolute', top: 'calc(100% + 8px)', left: 0,
+                      zIndex: 40, minWidth: '180px',
+                      background: 'white', borderRadius: '14px',
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+                      overflow: 'hidden', direction: 'rtl',
+                    }}>
+                      {/* User info */}
+                      <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
+                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '2px' }}>
+                          {profile?.full_name ?? ''}
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#94a3b8', wordBreak: 'break-all' }}>
+                          {user.email}
+                        </div>
+                      </div>
+                      {/* Logout */}
+                      <button
+                        onClick={() => { setAvatarDropdownOpen(false); signOut(); }}
+                        style={{
+                          width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                          padding: '12px 16px', background: 'none', border: 'none',
+                          cursor: 'pointer', fontSize: '13px', fontWeight: '600',
+                          color: '#64748b', fontFamily: 'inherit', textAlign: 'right',
+                          transition: 'background 0.1s, color 0.1s',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#dc2626'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#64748b'; }}
+                      >
+                        <LogOut size={14} />
+                        יציאה
+                      </button>
+                    </div>
+                  </>
+                )}
               </>
             ) : (
               <button
@@ -1644,8 +1645,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             {isMobileMenuOpen ? '✕' : '☰'}
           </button>
 
-          {/* Spacer for desktop to push logo to center */}
-          <div className="desktop-only" style={{ flex: 1, minWidth: 0 }} />
+          {/* Right flex spacer — keeps logo centered */}
+          <div className="desktop-only" style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end' }} />
         </div>
 
         {/* Mobile Menu Dropdown */}
@@ -1698,7 +1699,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   key={mode}
                   onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
                   aria-pressed={!taskMatch && viewMode === mode}
-                  style={{...getHeaderModeButtonStyle(taskMatch ? 'dashboard' : mode, 'mobile'), minHeight: '44px'}}
+                  style={{...getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'mobile'), minHeight: '44px'}}
                   title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -1707,6 +1708,25 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   </span>
                 </button>
               ))}
+
+              {user && (
+                <button
+                  onClick={() => { setIsMobileMenuOpen(false); signOut(); }}
+                  style={{
+                    padding: '16px', minHeight: '44px',
+                    background: '#fee2e2', color: '#dc2626',
+                    border: '1.5px solid #fca5a5',
+                    borderRadius: '12px', cursor: 'pointer',
+                    fontSize: '14px', fontWeight: '700',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '8px',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <LogOut size={16} />
+                  יציאה
+                </button>
+              )}
             </div>
           </div>
         )}
