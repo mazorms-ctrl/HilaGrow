@@ -1,5 +1,6 @@
 import { WorkItemRow } from '@/components/ui/WorkItemRow';
 import { Drawer } from '@/components/ui/Drawer';
+import { QuickViewModal } from '@/components/tasks/QuickViewModal';
 import { cn } from '@/lib/utils';
 import { useMemo, useState } from 'react';
 import { type MedicalTask } from '@/lib/supabase-hooks';
@@ -45,6 +46,7 @@ export function TasksDashboard({
   const [editingOwner, setEditingOwner] = useState<string | null>(null);
   const [editingOwnerDraft, setEditingOwnerDraft] = useState<string>('');
   const [isMobileFiltersOpen, setIsMobileFiltersOpen] = useState(false);
+  const [quickViewTask, setQuickViewTask] = useState<MedicalTask | null>(null);
 
   const getCategoryVariant = (color: string): 'purple' | 'blue' | 'green' => {
     if (color.includes('fc')) return 'purple';
@@ -577,7 +579,6 @@ export function TasksDashboard({
               // Calculate progress stats from milestones
               const completedMilestones = task.milestones.filter((m) => m.done).length;
               const totalMilestones = task.milestones.length;
-              const openCount = totalMilestones - completedMilestones;
 
               return (
                 <WorkItemRow
@@ -587,30 +588,11 @@ export function TasksDashboard({
                   category={{ label: task.category, variant: getCategoryVariant(categoryColor) }}
                   accentColor={categoryColor}
                   owner={task.owner}
-                  progress={{
-                    current: completedMilestones,
-                    total: totalMilestones,
-                    openCount: openCount > 0 ? openCount : undefined,
-                  }}
+                  progress={{ current: completedMilestones, total: totalMilestones }}
                   nextStep={task.goal || undefined}
                   milestones={task.milestones}
                   onClick={() => onSelectTask(task)}
-                  onEdit={isAuthenticated ? () => onSelectTask(task) : undefined}
-                  description={task.description}
-                  department={task.department}
-                  processName={task.processName}
-                  problemStatement={task.problemStatement}
-                  goal={task.goal}
-                  kpiName={task.kpiName}
-                  baseline={task.baseline}
-                  target={task.target}
-                  measurementCadence={task.measurementCadence}
-                  startDate={task.startDate}
-                  dueDate={task.dueDate}
-                  stakeholders={task.stakeholders}
-                  risksBlockers={task.risksBlockers}
-                  dependencies={task.dependencies}
-                  links={task.links}
+                  onQuickView={() => setQuickViewTask(task)}
                 />
               );
             })}
@@ -637,6 +619,11 @@ export function TasksDashboard({
           <div className="text-base sm:text-sm text-neutral-600">הושלמו</div>
         </div>
       </div>
+
+      {/* Quick View Modal */}
+      {quickViewTask && (
+        <QuickViewModal task={quickViewTask} onClose={() => setQuickViewTask(null)} />
+      )}
     </div>
   );
 }

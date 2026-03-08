@@ -9,6 +9,7 @@ import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { TaskPageContent } from './components/tasks/TaskPage';
+import { QuickViewModal } from './components/tasks/QuickViewModal';
 import { WorkItemRow } from './components/ui/WorkItemRow';
 import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 
@@ -283,6 +284,7 @@ function App() {
   // Detect task page route — renders TaskPageContent inside the normal layout
   const taskMatch = useMatch('/task/:taskId');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [quickViewTask, setQuickViewTask] = useState<MedicalTask | null>(null);
 
   // ── Project workspace state ────────────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -2085,7 +2087,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
                     const completedMilestones = task.milestones.filter(m => m.done).length;
                     const totalMilestones = task.milestones.length;
-                    const openCount = totalMilestones - completedMilestones;
 
                     return (
                       <WorkItemRow
@@ -2094,23 +2095,12 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                         priority={(task.priority || 'P2') as 'P1' | 'P2' | 'P3'}
                         category={{ label: task.category, variant: getCategoryVariant(task.color) }}
                         owner={task.owner}
-                        progress={{
-                          current: completedMilestones,
-                          total: totalMilestones,
-                          openCount: openCount > 0 ? openCount : undefined,
-                        }}
+                        progress={{ current: completedMilestones, total: totalMilestones }}
                         nextStep={task.goal || undefined}
                         milestones={task.milestones}
                         onClick={() => navigate(`/task/${task.id}`)}
-                        onEdit={() => navigate(`/task/${task.id}`)}
+                        onQuickView={() => setQuickViewTask(task)}
                         className="cursor-pointer"
-                        description={task.description}
-                        department={task.department}
-                        processName={task.processName}
-                        startDate={task.startDate}
-                        dueDate={task.dueDate}
-                        stakeholders={task.stakeholders}
-                        risksBlockers={task.risksBlockers}
                       />
                     );
                   })}
@@ -5478,6 +5468,11 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       {/* Login Modal */}
       {showLoginModal && (
         <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
+
+      {/* Quick View Modal — Work Queue section */}
+      {quickViewTask && (
+        <QuickViewModal task={quickViewTask} onClose={() => setQuickViewTask(null)} />
       )}
     </div>
   );

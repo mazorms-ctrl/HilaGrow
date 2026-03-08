@@ -1,6 +1,8 @@
-import { LogOut, ChevronRight, ClipboardList, AlertCircle } from 'lucide-react';
+import { LogOut, ChevronRight, ClipboardList, AlertCircle, Eye } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useMyTasks, type MyTaskSummary } from '@/lib/supabase-hooks';
+import { QuickViewModalById } from '@/components/tasks/QuickViewModal';
+import { useState } from 'react';
 import type { User } from '@supabase/supabase-js';
 import type { Profile } from '@/contexts/AuthContext';
 
@@ -60,14 +62,12 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function TaskCard({ task, onClick }: { task: MyTaskSummary; onClick: () => void }) {
+function TaskCard({ task, onClick, onQuickView }: { task: MyTaskSummary; onClick: () => void; onQuickView: () => void }) {
   const p = PRIORITY[task.priority];
   const overdue = isOverdue(task.dueDate);
 
   return (
-    <button
-      onClick={onClick}
-      title={task.title}
+    <div
       style={{
         width: '100%',
         display: 'flex',
@@ -81,7 +81,9 @@ function TaskCard({ task, onClick }: { task: MyTaskSummary; onClick: () => void 
         textAlign: 'right',
         fontFamily: 'inherit',
         transition: 'background 0.15s, border-color 0.15s',
+        position: 'relative',
       }}
+      onClick={onClick}
       onMouseEnter={e => {
         e.currentTarget.style.background = C.bgHover;
         e.currentTarget.style.borderColor = 'rgba(255,255,255,0.10)';
@@ -150,7 +152,31 @@ function TaskCard({ task, onClick }: { task: MyTaskSummary; onClick: () => void 
 
       {/* Progress bar */}
       {task.progress > 0 && <ProgressBar value={task.progress} />}
-    </button>
+
+      {/* Eye icon — quick view (stop propagation so card click doesn't fire) */}
+      <button
+        onClick={e => { e.stopPropagation(); onQuickView(); }}
+        title="תצוגה מהירה"
+        style={{
+          position: 'absolute', top: '8px', left: '8px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          width: '22px', height: '22px', borderRadius: '6px',
+          background: 'transparent', border: 'none',
+          cursor: 'pointer', color: C.textDim,
+          transition: 'background 0.12s, color 0.12s',
+        }}
+        onMouseEnter={e => {
+          e.currentTarget.style.background = 'rgba(255,255,255,0.10)';
+          e.currentTarget.style.color = C.accentLight;
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.background = 'transparent';
+          e.currentTarget.style.color = C.textDim;
+        }}
+      >
+        <Eye size={12} />
+      </button>
+    </div>
   );
 }
 
@@ -163,6 +189,7 @@ export function Sidebar({
 }: Props) {
   const { myTasks, loading } = useMyTasks();
   const navigate = useNavigate();
+  const [quickViewTaskId, setQuickViewTaskId] = useState<string | null>(null);
 
   const displayName = profile?.full_name || user.email || '';
   const emailDisplay = profile?.full_name ? user.email : undefined;
@@ -185,7 +212,7 @@ export function Sidebar({
 
   const w = collapsed ? '64px' : '272px';
 
-  return (
+  return (<>
     <aside
       dir="rtl"
       style={{
@@ -402,6 +429,7 @@ export function Sidebar({
                 key={task.id}
                 task={task}
                 onClick={() => handleTaskClick(task)}
+                onQuickView={() => setQuickViewTaskId(task.id)}
               />
             ))}
           </div>
@@ -496,5 +524,11 @@ export function Sidebar({
         </button>
       </div>
     </aside>
-  );
+
+    {/* Quick View Modal — rendered outside <aside> so z-index stacking works */}
+    <QuickViewModalById
+      taskId={quickViewTaskId}
+      onClose={() => setQuickViewTaskId(null)}
+    />
+  </>);
 }

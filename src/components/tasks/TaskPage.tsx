@@ -82,6 +82,13 @@ const backBtnStyle: React.CSSProperties = {
   transition: 'background 0.12s',
 };
 
+const crumbLinkStyle: React.CSSProperties = {
+  background: 'none', border: 'none', padding: 0,
+  fontSize: '12px', color: '#94a3b8', cursor: 'pointer',
+  fontFamily: 'inherit', fontWeight: '500',
+  textDecoration: 'none', lineHeight: 1,
+};
+
 // ── EditableArea — auto-growing transparent textarea ──────────────────────────
 
 function EditableArea({
@@ -189,6 +196,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [localTask, setLocalTask] = useState<MedicalTask | null>(null);
   const [saving, setSaving] = useState(false);
   const [activeSection, setActiveSection] = useState<string>('foundations');
+  const [participantSearch, setParticipantSearch] = useState('');
 
   // Always-current ref so onBlur handlers don't use stale closure values
   const taskRef = useRef<MedicalTask | null>(null);
@@ -288,39 +296,37 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div dir="rtl" style={{ fontFamily: 'inherit', maxWidth: '860px', margin: '0 auto', paddingBottom: '80px' }}>
+    <div dir="rtl" style={{ fontFamily: 'inherit', maxWidth: '860px', margin: '0 auto', paddingBottom: '48px' }}>
 
       <style>{`
         @keyframes tpSpin   { to { transform: rotate(360deg); } }
-        @keyframes tpFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes tpFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       `}</style>
 
-      {/* ── Back bar ─────────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
-        <button onClick={() => navigate('/')} style={backBtnStyle}>
-          <ArrowRight size={14} /> חזרה ללוח
-        </button>
-        <span style={{ color: '#cbd5e1' }}>›</span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '13px', color: '#64748b' }}>
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: task.color, display: 'inline-block', flexShrink: 0 }} />
-          {task.category}
+      {/* ── Breadcrumb ───────────────────────────────────────────────────────── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '8px', direction: 'rtl' }}>
+        <button onClick={() => navigate('/')} style={crumbLinkStyle}>לוח</button>
+        <span style={{ color: '#cbd5e1', fontSize: '12px', lineHeight: 1 }}>›</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#94a3b8' }}>
+          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: task.color, display: 'inline-block', flexShrink: 0 }} />
+          <span style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.category}</span>
         </span>
         {saving && (
-          <span style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '12px', color: '#94a3b8' }}>
-            <div style={{ width: '10px', height: '10px', border: '2px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite', flexShrink: 0 }} />
+          <span style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#94a3b8' }}>
+            <div style={{ width: '9px', height: '9px', border: '2px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite', flexShrink: 0 }} />
             שומר...
           </span>
         )}
       </div>
 
       {/* ── Title ────────────────────────────────────────────────────────────── */}
-      <div style={{ marginBottom: '14px' }}>
+      <div style={{ marginBottom: '12px' }}>
         <EditableArea
           value={task.title}
           onChange={v => patchLocal('title', v)}
           onBlur={saveLatest}
           placeholder="כותרת המשימה..."
-          style={{ fontSize: 'clamp(22px, 4vw, 34px)', fontWeight: '800', color: '#0f172a', lineHeight: '1.25' }}
+          style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: '800', color: '#0f172a', lineHeight: '1.3' }}
         />
       </div>
 
@@ -482,7 +488,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 value={task.description}
                 onChange={v => patchLocal('description', v)}
                 onBlur={saveLatest}
-                placeholder="הוסף תיאור כללי של המשימה..."
+                placeholder="תאר את ההתערבות הקלינית / התפעולית — מה מתבצע, בידי מי, ובאיזה אגף?"
                 minRows={2}
               />
             </Field>
@@ -491,7 +497,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 value={task.problemStatement}
                 onChange={v => patchLocal('problemStatement', v)}
                 onBlur={saveLatest}
-                placeholder="מה הבעיה שאנחנו פותרים? מה ההזדמנות שזיהינו?"
+                placeholder="מהו הכשל התפעולי? איפה הבזבוז, העיכוב, או הסיכון הקליני שמניע את הפרויקט?"
                 minRows={2}
               />
             </Field>
@@ -500,7 +506,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 value={task.goal}
                 onChange={v => patchLocal('goal', v)}
                 onBlur={saveLatest}
-                placeholder="מה אנחנו רוצים להשיג? מה הצלחה נראית כמו?"
+                placeholder="מה ישתנה בסיום הפרויקט? הגדר תוצאה מדידה — למשל: צמצום זמן המתנה ב-30%, הפחתת שגיאות תרופות ב-20%."
                 minRows={2}
               />
             </Field>
@@ -516,7 +522,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
             value={task.currentState}
             onChange={v => patchLocal('currentState', v)}
             onBlur={saveLatest}
-            placeholder={'לדוגמה:\n• ממוצע זמן המתנה נוכחי: X דקות\n• אחוז שגיאות בתהליך: Y%\n• עומס עובדים: Z משמרות בשבוע\n• כלים / מערכות קיימות: ...'}
+            placeholder={'מהו קו הבסיס התפעולי לפני ההתערבות?\n• זמן המתנה ממוצע נוכחי: ___ דקות\n• תפוסת מיטות / משאבים: ___\n• שגיאות / חריגות מדווחות: ___ לחודש\n• מערכות ותהליכים קיימים: ...'}
             minRows={4}
             style={{ fontSize: '14px' }}
           />
@@ -588,10 +594,10 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         {activeSection === 'kpi' && <Section icon={BarChart2} title="מדדי הצלחה — KPI">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {([
-              { key: 'kpiName',            label: 'שם המדד',            placeholder: 'לדוגמה: זמן המתנה ממוצע' },
-              { key: 'measurementCadence', label: 'תדירות מדידה',        placeholder: 'לדוגמה: שבועי / חודשי' },
-              { key: 'baseline',           label: 'בסיס — נקודת פתיחה', placeholder: 'ערך נוכחי...' },
-              { key: 'target',             label: 'יעד (Target)',         placeholder: 'ערך מטרה...' },
+              { key: 'kpiName',            label: 'שם המדד',            placeholder: 'לדוגמה: זמן המתנה לחדר מיון / שיעור זיהומים / עמידה ב-SLA' },
+              { key: 'measurementCadence', label: 'תדירות מדידה',        placeholder: 'לדוגמה: שבועי / חודשי / רבעוני' },
+              { key: 'baseline',           label: 'בסיס — נקודת פתיחה', placeholder: 'ערך נוכחי לפני ההתערבות...' },
+              { key: 'target',             label: 'יעד (Target)',         placeholder: 'ערך יעד בתום הפרויקט...' },
             ] as const).map(({ key, label, placeholder }) => (
               <div key={key} style={{ background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '14px', direction: 'rtl', textAlign: 'right' }}>
                 <div style={fieldLabelStyle}>{label}</div>
@@ -609,44 +615,121 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         {/* PARTICIPANTS */}
         {activeSection === 'participants' && <Section icon={Users} title="משתתפים">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', direction: 'rtl' }}>
-              <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', flexShrink: 0 }}>אחראי</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+            {/* Lead selector */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', direction: 'rtl' }}>
+              <span style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px', flexShrink: 0 }}>אחראי</span>
               <select
                 value={task.assignedTo || ''}
                 onChange={e => patch('assignedTo', e.target.value || null)}
-                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', color: '#334155', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}
+                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '5px 14px', fontSize: '13px', color: '#334155', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}
               >
                 <option value="">לא שויך</option>
                 {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
               </select>
             </div>
+
+            {/* Current participants as pills with X */}
             <div>
-              <div style={fieldLabelStyle}>משתתפים נוספים — לחץ להוספה / הסרה</div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', direction: 'rtl' }}>
-                {profiles.map(p => {
-                  const isIn = (task.participants || []).includes(p.id);
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => patch('participants', isIn ? task.participants.filter(id => id !== p.id) : [...(task.participants || []), p.id])}
-                      style={{
-                        display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
-                        fontFamily: 'inherit', fontSize: '12px', fontWeight: '500',
-                        border: `1px solid ${isIn ? '#6366f1' : '#e2e8f0'}`,
-                        background: isIn ? '#ede9fe' : 'white',
-                        color: isIn ? '#6366f1' : '#64748b', transition: 'all 0.12s',
-                      }}
-                    >
-                      {isIn && <CheckCircle2 size={11} />}
-                      {p.full_name || p.email}
-                    </button>
-                  );
-                })}
-                {profiles.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>טוען...</p>}
-              </div>
+              <div style={fieldLabelStyle}>משתתפים</div>
+              {(task.participants || []).length === 0 ? (
+                <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>אין משתתפים עדיין</p>
+              ) : (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', direction: 'rtl' }}>
+                  {(task.participants || []).map(pid => {
+                    const profile = profiles.find(p => p.id === pid);
+                    if (!profile) return null;
+                    return (
+                      <span
+                        key={pid}
+                        style={{
+                          display: 'inline-flex', alignItems: 'center', gap: '6px',
+                          padding: '4px 10px 4px 6px', borderRadius: '20px',
+                          background: '#ede9fe', border: '1px solid #c7d2fe',
+                          color: '#6d28d9', fontSize: '12px', fontWeight: '500',
+                        }}
+                      >
+                        {profile.full_name || profile.email}
+                        <button
+                          onClick={() => patch('participants', task.participants.filter(id => id !== pid))}
+                          title="הסר"
+                          style={{
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            width: '14px', height: '14px', borderRadius: '50%',
+                            background: 'rgba(109,40,217,0.15)', border: 'none',
+                            cursor: 'pointer', color: '#6d28d9', fontSize: '11px',
+                            fontWeight: '700', padding: 0, lineHeight: 1, fontFamily: 'inherit',
+                          }}
+                        >×</button>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
+
+            {/* Add participant — searchable */}
+            <div style={{ position: 'relative', direction: 'rtl' }}>
+              <div style={fieldLabelStyle}>הוסף משתתף</div>
+              <input
+                type="text"
+                value={participantSearch}
+                onChange={e => setParticipantSearch(e.target.value)}
+                placeholder="חיפוש לפי שם או אימייל..."
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  padding: '8px 14px', borderRadius: '20px',
+                  border: '1px solid #e2e8f0', outline: 'none',
+                  fontSize: '13px', color: '#334155',
+                  fontFamily: 'inherit', background: '#f8fafc',
+                  direction: 'rtl',
+                }}
+                onFocus={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }}
+                onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
+              />
+              {participantSearch.trim().length > 0 && (() => {
+                const q = participantSearch.trim().toLowerCase();
+                const opts = profiles.filter(p =>
+                  !(task.participants || []).includes(p.id) &&
+                  (p.full_name?.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q))
+                );
+                return (
+                  <div style={{
+                    position: 'absolute', top: 'calc(100% + 4px)', right: 0, left: 0, zIndex: 20,
+                    background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px',
+                    boxShadow: '0 4px 16px rgba(0,0,0,0.1)', overflow: 'hidden',
+                  }}>
+                    {opts.length === 0 ? (
+                      <div style={{ padding: '10px 16px', fontSize: '13px', color: '#94a3b8' }}>אין תוצאות</div>
+                    ) : (
+                      opts.slice(0, 6).map(p => (
+                        <button
+                          key={p.id}
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            patch('participants', [...(task.participants || []), p.id]);
+                            setParticipantSearch('');
+                          }}
+                          style={{
+                            width: '100%', display: 'flex', alignItems: 'center',
+                            padding: '10px 16px', background: 'none', border: 'none',
+                            cursor: 'pointer', fontSize: '13px', color: '#334155',
+                            fontFamily: 'inherit', textAlign: 'right', direction: 'rtl',
+                            borderBottom: '1px solid #f1f5f9',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                        >
+                          {p.full_name || p.email}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
           </div>
         </Section>}
 
@@ -654,10 +737,10 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         {activeSection === 'risks' && <Section icon={AlertTriangle} title="סיכונים ותלויות">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
             <Field label="סיכונים / חסמים">
-              <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="תאר סיכונים, חסמים ידועים..." minRows={2} />
+              <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="מה עלול לעכב? — התנגדות צוות, מגבלות רגולטוריות, תקציב, מחסור כוח אדם..." minRows={2} />
             </Field>
             <Field label="תלויות">
-              <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="מה תלוי בגורמים חיצוניים?" minRows={2} />
+              <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="אילו אגפים, מערכות IT, ספקים או אישורים נדרשים לפני שניתן להתקדם?" minRows={2} />
             </Field>
             <Field label="קישורים">
               <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
