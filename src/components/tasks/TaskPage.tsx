@@ -39,7 +39,6 @@ const cardStyle: React.CSSProperties = {
   border: '1px solid #e2e8f0',
   padding: '24px 28px',
   boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
-  scrollMarginTop: '76px',
 };
 
 const fieldLabelStyle: React.CSSProperties = {
@@ -151,15 +150,14 @@ function EditableArea({
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
-function Section({ id, icon: Icon, title, badge, children }: {
-  id: string;
+function Section({ icon: Icon, title, badge, children }: {
   icon: React.ElementType;
   title: string;
   badge?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <section id={id} style={cardStyle}>
+    <section style={cardStyle}>
       <div style={sectionHeadStyle}>
         <Icon size={13} />
         {title}
@@ -235,11 +233,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     setLocalTask(prev => prev ? { ...prev, [key]: value } : prev);
   }, []);
 
-  // ── Nav scroll ───────────────────────────────────────────────────────────────
-  const scrollTo = (id: string) => {
-    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    setActiveSection(id);
-  };
+  // ── Tab switch ────────────────────────────────────────────────────────────────
+  const switchTab = (id: string) => setActiveSection(id);
 
   // ── Milestone toggle ─────────────────────────────────────────────────────────
   const toggleMilestone = async (idx: number) => {
@@ -295,8 +290,10 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   return (
     <div dir="rtl" style={{ fontFamily: 'inherit', maxWidth: '860px', margin: '0 auto', paddingBottom: '80px' }}>
 
-      {/* Global spin keyframe */}
-      <style>{`@keyframes tpSpin { to { transform: rotate(360deg); } }`}</style>
+      <style>{`
+        @keyframes tpSpin   { to { transform: rotate(360deg); } }
+        @keyframes tpFadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
 
       {/* ── Back bar ─────────────────────────────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
@@ -432,17 +429,15 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         </span>
       </div>
 
-      {/* ── Sticky nav bar ───────────────────────────────────────────────────── */}
+      {/* ── Tab bar ──────────────────────────────────────────────────────────── */}
       <nav style={{
-        position: 'sticky', top: 0, zIndex: 20,
         display: 'flex', alignItems: 'center', gap: '2px',
-        padding: '8px 12px',
-        background: 'rgba(248,250,252,0.95)',
-        backdropFilter: 'blur(10px)',
-        borderRadius: '12px',
+        padding: '6px 8px',
+        background: 'white',
+        borderRadius: '14px',
         border: '1px solid #e2e8f0',
         marginBottom: '20px',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
         direction: 'rtl',
         flexWrap: 'wrap',
       }}>
@@ -451,22 +446,22 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           return (
             <button
               key={id}
-              onClick={() => scrollTo(id)}
+              onClick={() => switchTab(id)}
               style={{
                 display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '5px 11px', borderRadius: '8px',
+                padding: '7px 13px', borderRadius: '9px',
                 border: 'none', cursor: 'pointer', fontFamily: 'inherit',
                 fontSize: '12px', fontWeight: active ? '700' : '500',
                 color: active ? '#6366f1' : '#64748b',
                 background: active ? '#ede9fe' : 'transparent',
-                transition: 'all 0.12s',
+                transition: 'background 0.15s, color 0.15s',
                 whiteSpace: 'nowrap',
               }}
               onMouseEnter={e => {
                 if (!active) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#334155'; }
               }}
               onMouseLeave={e => {
-                if (!active) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#64748b'; }
+                if (!active) { e.currentTarget.style.background = active ? '#ede9fe' : 'transparent'; e.currentTarget.style.color = active ? '#6366f1' : '#64748b'; }
               }}
             >
               <Icon size={12} />
@@ -476,11 +471,11 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         })}
       </nav>
 
-      {/* ── Content sections ─────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+      {/* ── Tab panel — only the active section is rendered ─────────────────── */}
+      <div key={activeSection} style={{ animation: 'tpFadeIn 0.18s ease both' }}>
 
         {/* FOUNDATIONS — יסודות */}
-        <Section id="foundations" icon={BookOpen} title="יסודות">
+        {activeSection === 'foundations' && <Section icon={BookOpen} title="יסודות">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
             <Field label="תיאור">
               <EditableArea
@@ -510,67 +505,49 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               />
             </Field>
           </div>
-        </Section>
+        </Section>}
 
-        {/* CURRENT STATE — מצב נוכחי / נקודת האפס */}
-        <Section id="current-state" icon={Activity} title="מצב נוכחי — נקודת האפס">
-          <p style={{
-            fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0',
-            direction: 'rtl', textAlign: 'right', lineHeight: '1.6',
-          }}>
+        {/* CURRENT STATE */}
+        {activeSection === 'current-state' && <Section icon={Activity} title="מצב נוכחי — נקודת האפס">
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
             תעד נתוני בסיס, פערים תפעוליים וצילום מצב לפני תחילת הפרויקט. מידע זה ישמש להשוואה בסיום.
           </p>
           <EditableArea
             value={task.currentState}
             onChange={v => patchLocal('currentState', v)}
             onBlur={saveLatest}
-            placeholder={
-              'לדוגמה:\n• ממוצע זמן המתנה נוכחי: X דקות\n• אחוז שגיאות בתהליך: Y%\n• עומס עובדים: Z משמרות בשבוע\n• כלים / מערכות קיימות: ...'
-            }
+            placeholder={'לדוגמה:\n• ממוצע זמן המתנה נוכחי: X דקות\n• אחוז שגיאות בתהליך: Y%\n• עומס עובדים: Z משמרות בשבוע\n• כלים / מערכות קיימות: ...'}
             minRows={4}
             style={{ fontSize: '14px' }}
           />
-        </Section>
+        </Section>}
 
-        {/* SPEC — אפיון */}
-        <Section id="spec" icon={FileText} title="אפיון">
+        {/* SPEC */}
+        {activeSection === 'spec' && <Section icon={FileText} title="אפיון">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
             <Field label="שם התהליך">
-              <EditableArea
-                value={task.processName}
-                onChange={v => patchLocal('processName', v)}
-                onBlur={saveLatest}
-                placeholder="שם התהליך..."
-              />
+              <EditableArea value={task.processName} onChange={v => patchLocal('processName', v)} onBlur={saveLatest} placeholder="שם התהליך..." />
             </Field>
             <Field label="מחלקה">
-              <EditableArea
-                value={task.department}
-                onChange={v => patchLocal('department', v)}
-                onBlur={saveLatest}
-                placeholder="שם המחלקה..."
-              />
+              <EditableArea value={task.department} onChange={v => patchLocal('department', v)} onBlur={saveLatest} placeholder="שם המחלקה..." />
             </Field>
           </div>
-        </Section>
+        </Section>}
 
-        {/* TIMELINE — ציר זמן */}
-        <Section
-          id="timeline"
+        {/* TIMELINE */}
+        {activeSection === 'timeline' && <Section
           icon={ListChecks}
           title="ציר זמן — אבני דרך"
-          badge={
-            task.milestones.length > 0 ? (
-              <span style={{
-                marginRight: '6px', fontSize: '11px', fontWeight: '600',
-                color: milestonesDone === task.milestones.length ? '#10b981' : '#94a3b8',
-                background: milestonesDone === task.milestones.length ? '#d1fae5' : '#f1f5f9',
-                padding: '2px 8px', borderRadius: '10px',
-              }}>
-                {milestonesDone} / {task.milestones.length}
-              </span>
-            ) : null
-          }
+          badge={task.milestones.length > 0 ? (
+            <span style={{
+              marginRight: '6px', fontSize: '11px', fontWeight: '600',
+              color: milestonesDone === task.milestones.length ? '#10b981' : '#94a3b8',
+              background: milestonesDone === task.milestones.length ? '#d1fae5' : '#f1f5f9',
+              padding: '2px 8px', borderRadius: '10px',
+            }}>
+              {milestonesDone} / {task.milestones.length}
+            </span>
+          ) : null}
         >
           {task.milestones.length === 0 ? (
             <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, direction: 'rtl', textAlign: 'right' }}>
@@ -589,8 +566,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     background: m.done ? '#f0fdf4' : '#f8fafc',
                     cursor: 'pointer', textAlign: 'right',
                     fontFamily: 'inherit', direction: 'rtl',
-                    transition: 'all 0.15s',
-                    width: '100%',
+                    transition: 'all 0.15s', width: '100%',
                   }}
                   onMouseEnter={e => { e.currentTarget.style.borderColor = m.done ? '#6ee7b7' : '#c7d2fe'; }}
                   onMouseLeave={e => { e.currentTarget.style.borderColor = m.done ? '#d1fae5' : '#e2e8f0'; }}
@@ -599,21 +575,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     ? <CheckCircle2 size={18} style={{ color: '#10b981', flexShrink: 0 }} />
                     : <Circle size={18} style={{ color: '#cbd5e1', flexShrink: 0 }} />
                   }
-                  <span style={{
-                    fontSize: '14px', flex: 1,
-                    color: m.done ? '#059669' : '#334155',
-                    textDecoration: m.done ? 'line-through' : 'none',
-                  }}>
+                  <span style={{ fontSize: '14px', flex: 1, color: m.done ? '#059669' : '#334155', textDecoration: m.done ? 'line-through' : 'none' }}>
                     {m.text}
                   </span>
                 </button>
               ))}
             </div>
           )}
-        </Section>
+        </Section>}
 
         {/* KPI */}
-        <Section id="kpi" icon={BarChart2} title="מדדי הצלחה — KPI">
+        {activeSection === 'kpi' && <Section icon={BarChart2} title="מדדי הצלחה — KPI">
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
             {([
               { key: 'kpiName',            label: 'שם המדד',            placeholder: 'לדוגמה: זמן המתנה ממוצע' },
@@ -621,11 +593,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               { key: 'baseline',           label: 'בסיס — נקודת פתיחה', placeholder: 'ערך נוכחי...' },
               { key: 'target',             label: 'יעד (Target)',         placeholder: 'ערך מטרה...' },
             ] as const).map(({ key, label, placeholder }) => (
-              <div key={key} style={{
-                background: '#f8fafc', borderRadius: '10px',
-                border: '1px solid #e2e8f0', padding: '14px',
-                direction: 'rtl', textAlign: 'right',
-              }}>
+              <div key={key} style={{ background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '14px', direction: 'rtl', textAlign: 'right' }}>
                 <div style={fieldLabelStyle}>{label}</div>
                 <EditableArea
                   value={task[key] || ''}
@@ -637,120 +605,74 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               </div>
             ))}
           </div>
-        </Section>
+        </Section>}
 
-        {/* PARTICIPANTS — משתתפים */}
-        <Section id="participants" icon={Users} title="משתתפים">
+        {/* PARTICIPANTS */}
+        {activeSection === 'participants' && <Section icon={Users} title="משתתפים">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
-
-            {/* Lead row */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', direction: 'rtl' }}>
               <span style={{ fontSize: '12px', fontWeight: '700', color: '#64748b', flexShrink: 0 }}>אחראי</span>
               <select
                 value={task.assignedTo || ''}
                 onChange={e => patch('assignedTo', e.target.value || null)}
-                style={{
-                  background: '#f8fafc', border: '1px solid #e2e8f0',
-                  borderRadius: '8px', padding: '6px 10px',
-                  fontSize: '13px', color: '#334155',
-                  fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl',
-                }}
+                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '6px 10px', fontSize: '13px', color: '#334155', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}
               >
                 <option value="">לא שויך</option>
-                {profiles.map(p => (
-                  <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
-                ))}
+                {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
               </select>
             </div>
-
-            {/* Participants toggle buttons */}
             <div>
               <div style={fieldLabelStyle}>משתתפים נוספים — לחץ להוספה / הסרה</div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', direction: 'rtl' }}>
                 {profiles.map(p => {
-                  const active = (task.participants || []).includes(p.id);
+                  const isIn = (task.participants || []).includes(p.id);
                   return (
                     <button
                       key={p.id}
-                      onClick={() => {
-                        const next = active
-                          ? task.participants.filter(id => id !== p.id)
-                          : [...(task.participants || []), p.id];
-                        patch('participants', next);
-                      }}
+                      onClick={() => patch('participants', isIn ? task.participants.filter(id => id !== p.id) : [...(task.participants || []), p.id])}
                       style={{
                         display: 'inline-flex', alignItems: 'center', gap: '6px',
-                        padding: '5px 12px', borderRadius: '20px',
-                        cursor: 'pointer', fontFamily: 'inherit',
-                        fontSize: '12px', fontWeight: '500',
-                        border: `1px solid ${active ? '#6366f1' : '#e2e8f0'}`,
-                        background: active ? '#ede9fe' : 'white',
-                        color: active ? '#6366f1' : '#64748b',
-                        transition: 'all 0.12s',
+                        padding: '5px 12px', borderRadius: '20px', cursor: 'pointer',
+                        fontFamily: 'inherit', fontSize: '12px', fontWeight: '500',
+                        border: `1px solid ${isIn ? '#6366f1' : '#e2e8f0'}`,
+                        background: isIn ? '#ede9fe' : 'white',
+                        color: isIn ? '#6366f1' : '#64748b', transition: 'all 0.12s',
                       }}
                     >
-                      {active && <CheckCircle2 size={11} />}
+                      {isIn && <CheckCircle2 size={11} />}
                       {p.full_name || p.email}
                     </button>
                   );
                 })}
-                {profiles.length === 0 && (
-                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>טוען משתתפים...</p>
-                )}
+                {profiles.length === 0 && <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>טוען...</p>}
               </div>
             </div>
           </div>
-        </Section>
+        </Section>}
 
-        {/* RISKS — סיכונים */}
-        <Section id="risks" icon={AlertTriangle} title="סיכונים ותלויות">
+        {/* RISKS */}
+        {activeSection === 'risks' && <Section icon={AlertTriangle} title="סיכונים ותלויות">
           <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
             <Field label="סיכונים / חסמים">
-              <EditableArea
-                value={task.risksBlockers}
-                onChange={v => patchLocal('risksBlockers', v)}
-                onBlur={saveLatest}
-                placeholder="תאר סיכונים, חסמים ידועים..."
-                minRows={2}
-              />
+              <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="תאר סיכונים, חסמים ידועים..." minRows={2} />
             </Field>
             <Field label="תלויות">
-              <EditableArea
-                value={task.dependencies}
-                onChange={v => patchLocal('dependencies', v)}
-                onBlur={saveLatest}
-                placeholder="מה תלוי בגורמים חיצוניים?"
-                minRows={2}
-              />
+              <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="מה תלוי בגורמים חיצוניים?" minRows={2} />
             </Field>
             <Field label="קישורים">
-              <EditableArea
-                value={task.links}
-                onChange={v => patchLocal('links', v)}
-                onBlur={saveLatest}
-                placeholder="https://..."
-                style={{ wordBreak: 'break-all' }}
-              />
+              <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
             </Field>
-
-            {/* Stakeholders */}
             {task.stakeholders.length > 0 && (
               <Field label="בעלי עניין">
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', direction: 'rtl', marginTop: '4px' }}>
                   {task.stakeholders.map((s, i) => (
-                    <span key={i} style={{
-                      padding: '4px 12px', borderRadius: '20px',
-                      background: '#ede9fe', color: '#6d28d9',
-                      fontSize: '13px', fontWeight: '500',
-                    }}>
-                      {s}
-                    </span>
+                    <span key={i} style={{ padding: '4px 12px', borderRadius: '20px', background: '#ede9fe', color: '#6d28d9', fontSize: '13px', fontWeight: '500' }}>{s}</span>
                   ))}
                 </div>
               </Field>
             )}
           </div>
-        </Section>
+        </Section>}
 
       </div>
     </div>
