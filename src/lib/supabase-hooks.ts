@@ -126,6 +126,88 @@ function dbRowToMedicalTask(
   };
 }
 
+// ── useTaskById ───────────────────────────────────────────────────────────────
+
+/**
+ * Fetches a single task by ID, resolving its group + project context.
+ * Used by TaskPageContent so the URL only needs /task/:taskId.
+ */
+export function useTaskById(taskId: string | null) {
+  const [task, setTask] = useState<MedicalTask | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!taskId) { setLoading(false); return; }
+    let cancelled = false;
+    setLoading(true);
+
+    async function load() {
+      try {
+        const { data: taskRow, error } = await supabase
+          .from('tasks')
+          .select('*')
+          .eq('id', taskId)
+          .single();
+
+        if (error || !taskRow || cancelled) return;
+
+        const { data: group } = await supabase
+          .from('groups')
+          .select('id, name, color, order, project_id')
+          .eq('id', taskRow.group_id)
+          .single();
+
+        if (!group || cancelled) return;
+
+        const { data: projectRow } = await supabase
+          .from('projects')
+          .select('id')
+          .eq('id', group.project_id)
+          .single();
+
+        const { data: milestones } = await supabase
+          .from('milestones')
+          .select('*')
+          .eq('task_id', taskId)
+          .order('order');
+
+        const { data: participantRows } = await supabase
+          .from('task_participants')
+          .select('profile_id')
+          .eq('task_id', taskId);
+
+        if (cancelled) return;
+
+        const participants = (participantRows || []).map((p: { profile_id: string }) => p.profile_id);
+        setTask(dbRowToMedicalTask(taskRow, group, milestones || [], participants));
+        setProjectId(projectRow?.id ?? group.project_id);
+      } catch (err) {
+        console.error('Error fetching task by id:', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [taskId]);
+
+  const refetch = useCallback(async () => {
+    if (!taskId) return;
+    const { data: taskRow } = await supabase.from('tasks').select('*').eq('id', taskId).single();
+    if (!taskRow) return;
+    const { data: group } = await supabase.from('groups').select('id, name, color, order, project_id').eq('id', taskRow.group_id).single();
+    if (!group) return;
+    const { data: milestones } = await supabase.from('milestones').select('*').eq('task_id', taskId).order('order');
+    const { data: participantRows } = await supabase.from('task_participants').select('profile_id').eq('task_id', taskId);
+    const participants = (participantRows || []).map((p: { profile_id: string }) => p.profile_id);
+    setTask(dbRowToMedicalTask(taskRow, group, milestones || [], participants));
+  }, [taskId]);
+
+  return { task, projectId, loading, refetch };
+}
+
 // ── useProjects ───────────────────────────────────────────────────────────────
 
 /**

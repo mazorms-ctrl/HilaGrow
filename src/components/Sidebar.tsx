@@ -1,4 +1,5 @@
 import { LogOut, ChevronRight, ClipboardList, AlertCircle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useMyTasks, type MyTaskSummary } from '@/lib/supabase-hooks';
 import type { User } from '@supabase/supabase-js';
 import type { Profile } from '@/contexts/AuthContext';
@@ -25,9 +26,6 @@ const PRIORITY = {
 };
 
 interface Props {
-  selectedProjectId: string | null;
-  onSelectProject: (id: string) => void;
-  onOpenTask: (projectId: string, taskId: string) => void;
   user: User;
   profile: Profile | null;
   onSignOut: () => void;
@@ -157,9 +155,6 @@ function TaskCard({ task, onClick }: { task: MyTaskSummary; onClick: () => void 
 }
 
 export function Sidebar({
-  selectedProjectId,
-  onSelectProject,
-  onOpenTask,
   user,
   profile,
   onSignOut,
@@ -167,6 +162,7 @@ export function Sidebar({
   onToggleCollapse,
 }: Props) {
   const { myTasks, loading } = useMyTasks();
+  const navigate = useNavigate();
 
   const displayName = profile?.full_name || user.email || '';
   const emailDisplay = profile?.full_name ? user.email : undefined;
@@ -184,10 +180,7 @@ export function Sidebar({
   });
 
   const handleTaskClick = (task: MyTaskSummary) => {
-    if (selectedProjectId !== task.projectId) {
-      onSelectProject(task.projectId);
-    }
-    onOpenTask(task.projectId, task.id);
+    navigate(`/task/${task.id}`);
   };
 
   const w = collapsed ? '64px' : '272px';

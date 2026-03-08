@@ -281,7 +281,7 @@ function App() {
   const { user, profile, signOut } = useAuth();
   const navigate = useNavigate();
   // Detect task page route — renders TaskPageContent inside the normal layout
-  const taskMatch = useMatch('/project/:projectId/task/:taskId');
+  const taskMatch = useMatch('/task/:taskId');
   const [showLoginModal, setShowLoginModal] = useState(false);
 
   // ── Project workspace state ────────────────────────────────────────────────
@@ -353,12 +353,7 @@ function App() {
     }
   }, [user, projects, selectedProjectId]);
 
-  // Handle sidebar task click: navigate to full-page task view
-  const handleOpenTask = (projectId: string, taskId: string) => {
-    navigate(`/project/${projectId}/task/${taskId}`);
-  };
-
-  const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
+const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
   // Tree zoom functions
   const zoomIn = () => setTreeZoom(prev => Math.min(prev + 0.2, 2.0));
@@ -1199,7 +1194,7 @@ function App() {
                       <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                         {idx === 0 && <div style={{ width: '2px', height: '20px', background: color }} />}
                         <div
-                          onClick={() => selectedProjectId && navigate(`/project/${selectedProjectId}/task/${task.id}`)}
+                          onClick={() => navigate(`/task/${task.id}`)}
                           onMouseEnter={() => setHoveredTaskInTree(task)}
                           onMouseLeave={() => setHoveredTaskInTree(null)}
                           style={{
@@ -1722,9 +1717,6 @@ function App() {
       {user && (
         <div className="hidden md:flex">
           <Sidebar
-            selectedProjectId={selectedProjectId}
-            onSelectProject={setSelectedProjectId}
-            onOpenTask={handleOpenTask}
             user={user}
             profile={profile}
             onSignOut={signOut}
@@ -1786,10 +1778,9 @@ function App() {
           )}
 
           {/* Task page — renders TaskPageContent inside the normal layout shell */}
-          {taskMatch && taskMatch.params.projectId && taskMatch.params.taskId && (
+          {taskMatch && taskMatch.params.taskId && (
             <TaskPageContent
-              projectId={taskMatch.params.projectId}
-              taskId={taskMatch.params.taskId}
+              taskId={taskMatch.params.taskId!}
             />
           )}
 
@@ -2109,8 +2100,8 @@ function App() {
                         }}
                         nextStep={task.goal || undefined}
                         milestones={task.milestones}
-                        onClick={() => selectedProjectId && navigate(`/project/${selectedProjectId}/task/${task.id}`)}
-                        onEdit={() => selectedProjectId && navigate(`/project/${selectedProjectId}/task/${task.id}`)}
+                        onClick={() => navigate(`/task/${task.id}`)}
+                        onEdit={() => navigate(`/task/${task.id}`)}
                         className="cursor-pointer"
                         description={task.description}
                         department={task.department}
@@ -2138,7 +2129,7 @@ function App() {
               <TasksDashboard 
                 tasks={tasks}
                 onSelectTask={(task) => {
-                  if (selectedProjectId) navigate(`/project/${selectedProjectId}/task/${task.id}`);
+                  navigate(`/task/${task.id}`);
                 }}
                 onRenameCategory={renameCategory}
                 onAddCategory={addCategory}
@@ -2806,7 +2797,7 @@ function App() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    if (selectedProjectId) navigate(`/project/${selectedProjectId}/task/${task.id}`);
+                                    navigate(`/task/${task.id}`);
                                   }}
                                   style={{
                                     padding: '8px 16px',

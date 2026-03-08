@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import { ArrowRight, Calendar, Flag, Users, User, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
-import { useTasks, useProfiles, updateTask, type MedicalTask } from '@/lib/supabase-hooks';
+import { useTaskById, useProfiles, updateTask, type MedicalTask } from '@/lib/supabase-hooks';
 import { useState } from 'react';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
@@ -62,24 +62,18 @@ function ProgressRing({ value }: { value: number }) {
 }
 
 // ── TaskPageContent — renders INSIDE the app's existing layout shell ───────────
-// Props come from App.tsx (via useMatch), not from URL params directly.
-export function TaskPageContent({
-  projectId,
-  taskId,
-}: {
-  projectId: string;
-  taskId: string;
-}) {
+// Props come from App.tsx (via useMatch). Only needs taskId — project is resolved internally.
+export function TaskPageContent({ taskId }: { taskId: string }) {
   const navigate = useNavigate();
-  const { tasks, loading } = useTasks(projectId);
+  const { task: fetchedTask, projectId, loading, refetch } = useTaskById(taskId);
   const { profiles } = useProfiles();
   const [saving, setSaving] = useState(false);
   const [localTask, setLocalTask] = useState<MedicalTask | null>(null);
 
-  const task = localTask ?? tasks.find(t => t.id === taskId) ?? null;
+  const task = localTask ?? fetchedTask;
 
   const toggleMilestone = async (idx: number) => {
-    if (!task) return;
+    if (!task || !projectId) return;
     const updated: MedicalTask = {
       ...task,
       milestones: task.milestones.map((m, i) => i === idx ? { ...m, done: !m.done } : m),
@@ -89,7 +83,10 @@ export function TaskPageContent({
       ? Math.round((doneCount / updated.milestones.length) * 100) : 0;
     setLocalTask(updated);
     setSaving(true);
-    try { await updateTask(updated, projectId); }
+    try {
+      await updateTask(updated, projectId);
+      await refetch();
+    }
     catch (e) { console.error('Error saving milestone:', e); }
     finally { setSaving(false); }
   };
