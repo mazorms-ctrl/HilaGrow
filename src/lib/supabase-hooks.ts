@@ -397,6 +397,7 @@ export interface MyTaskSummary {
  * Cached by React Query — sidebar re-renders are instant on section switches.
  */
 export function useMyTasks() {
+  const queryClient = useQueryClient();
   const { data: myTasks = [], isLoading: loading } = useQuery({
     queryKey: ['myTasks'],
     staleTime: 15_000,
@@ -488,6 +489,27 @@ export function useMyTasks() {
       return result;
     },
   });
+
+  // Realtime: invalidate whenever tasks or participants change so the sidebar
+  // updates immediately when someone assigns a task to the current user.
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['myTasks'] });
+
+    const tasksChannel = supabase
+      .channel('my-tasks-rt-tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidate)
+      .subscribe();
+
+    const participantsChannel = supabase
+      .channel('my-tasks-rt-participants')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_participants' }, invalidate)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tasksChannel);
+      supabase.removeChannel(participantsChannel);
+    };
+  }, [queryClient]);
 
   return { myTasks, loading };
 }

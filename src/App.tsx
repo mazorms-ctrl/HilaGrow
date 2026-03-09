@@ -1629,8 +1629,11 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           )}
 
           {/* Task page — renders TaskPageContent inside the normal layout shell */}
+          {/* key={taskId} forces a full remount when navigating between tasks,
+              clearing all local state (localTask, activeSection, etc.) */}
           {taskMatch && taskMatch.params.taskId && (
             <TaskPageContent
+              key={taskMatch.params.taskId}
               taskId={taskMatch.params.taskId!}
             />
           )}

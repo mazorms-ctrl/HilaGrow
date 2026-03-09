@@ -14,15 +14,24 @@ DROP POLICY IF EXISTS "Allow all on groups"     ON groups;
 DROP POLICY IF EXISTS "Allow all on tasks"      ON tasks;
 DROP POLICY IF EXISTS "Allow all on milestones" ON milestones;
 
--- 4. Projects: users can only see and manage their own projects
+-- Collaborative model: all authenticated users share the workspace.
+-- Any authenticated user can read everything; only the project owner can write.
+
+-- 4. Projects: all authenticated users can read; only owner can write
+CREATE POLICY "Authenticated users read projects" ON projects
+  FOR SELECT TO authenticated USING (true);
+
 CREATE POLICY "Users manage own projects" ON projects
-  FOR ALL
-  USING  (auth.uid() = user_id)
+  FOR ALL TO authenticated
+  USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 
--- 5. Groups: accessible only if the parent project belongs to the current user
+-- 5. Groups: all authenticated users can read; only project owner can write
+CREATE POLICY "Authenticated users read groups" ON groups
+  FOR SELECT TO authenticated USING (true);
+
 CREATE POLICY "Users manage groups in own projects" ON groups
-  FOR ALL
+  FOR ALL TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM projects p
@@ -38,9 +47,12 @@ CREATE POLICY "Users manage groups in own projects" ON groups
     )
   );
 
--- 6. Tasks: accessible only through owned groups → projects
+-- 6. Tasks: all authenticated users can read; only project owner can write
+CREATE POLICY "Authenticated users read tasks" ON tasks
+  FOR SELECT TO authenticated USING (true);
+
 CREATE POLICY "Users manage tasks in own projects" ON tasks
-  FOR ALL
+  FOR ALL TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM groups g
@@ -58,9 +70,12 @@ CREATE POLICY "Users manage tasks in own projects" ON tasks
     )
   );
 
--- 7. Milestones: accessible through owned tasks → groups → projects
+-- 7. Milestones: all authenticated users can read; only project owner can write
+CREATE POLICY "Authenticated users read milestones" ON milestones
+  FOR SELECT TO authenticated USING (true);
+
 CREATE POLICY "Users manage milestones in own projects" ON milestones
-  FOR ALL
+  FOR ALL TO authenticated
   USING (
     EXISTS (
       SELECT 1 FROM tasks t
@@ -94,8 +109,12 @@ CREATE TABLE IF NOT EXISTS profiles (
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users view own profile" ON profiles;
-CREATE POLICY "Users view own profile" ON profiles
-  FOR ALL
+-- All authenticated users can read profiles (required for owner/participants dropdowns)
+CREATE POLICY "Authenticated users read all profiles" ON profiles
+  FOR SELECT TO authenticated USING (true);
+-- Users can only write their own profile row
+CREATE POLICY "Users manage own profile" ON profiles
+  FOR ALL TO authenticated
   USING (auth.uid() = id)
   WITH CHECK (auth.uid() = id);
 

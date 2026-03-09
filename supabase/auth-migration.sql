@@ -22,10 +22,13 @@ CREATE TRIGGER update_profiles_updated_at
   BEFORE UPDATE ON public.profiles
   FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Profiles RLS: each user can only read/write their own row
-CREATE POLICY "Users can view own profile"
+-- Profiles RLS:
+-- SELECT: any authenticated user can read all profiles (required for owner/participants dropdowns)
+-- UPDATE/INSERT: users can only write their own row
+CREATE POLICY "Authenticated users can read all profiles"
   ON public.profiles FOR SELECT
-  USING (auth.uid() = id);
+  TO authenticated
+  USING (true);
 
 CREATE POLICY "Users can update own profile"
   ON public.profiles FOR UPDATE
