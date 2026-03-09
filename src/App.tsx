@@ -1301,70 +1301,56 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     );
   };
 
-  // Header button styles: Soft Glass squircle design
+  // Header button styles
   const headerButtonCommon = {
-    borderRadius: '16px',
+    borderRadius: '8px',
     cursor: 'pointer',
     fontFamily: 'inherit',
     fontSize: '13px',
-    fontWeight: '700',
+    fontWeight: '500',
     transition: 'all 0.15s ease',
     display: 'flex',
     alignItems: 'center',
     gap: '6px',
     whiteSpace: 'nowrap',
     userSelect: 'none',
-    border: 'none',
   } as const;
 
   const elevateHeaderButton = (e: any, _shadow: string) => {
-    e.currentTarget.style.transform = 'translateY(-1px)';
-    e.currentTarget.style.opacity = '0.9';
+    e.currentTarget.style.opacity = '0.75';
   };
 
   const resetHeaderButton = (e: any, _shadow: string) => {
-    e.currentTarget.style.transform = 'translateY(0)';
     e.currentTarget.style.opacity = '1';
   };
 
-  const headerActionButtonSpec = {
-    newTask: { color: '#16a34a', tint: 'rgba(22,163,74,0.10)',   tintHover: 'rgba(22,163,74,0.17)'  },
-    export:  { color: '#7c3aed', tint: 'rgba(124,58,237,0.10)',  tintHover: 'rgba(124,58,237,0.17)' },
-  } as const;
-
-  const headerModeButtonSpec = {
-    dashboard: { color: '#0ea5e9', tint: 'rgba(14,165,233,0.10)',  tintActive: 'rgba(14,165,233,0.20)'  },
-    rows:      { color: '#6366f1', tint: 'rgba(99,102,241,0.10)',  tintActive: 'rgba(99,102,241,0.20)'  },
-    tree:      { color: '#16a34a', tint: 'rgba(22,163,74,0.10)',   tintActive: 'rgba(22,163,74,0.20)'   },
-  } as const;
-
-  const getHeaderActionButtonStyle = (kind: keyof typeof headerActionButtonSpec) => {
-    const { color, tint } = headerActionButtonSpec[kind];
+  const getHeaderActionButtonStyle = (_kind: string) => {
     return {
       ...headerButtonCommon,
-      padding: '8px 18px',
-      color,
-      background: tint,
-      boxShadow: 'none',
+      padding: '7px 14px',
+      color: '#1e293b',
+      background: 'transparent',
+      border: '1px solid #cbd5e1',
+      fontWeight: '500',
     } as CSSProperties;
   };
 
   const getHeaderModeButtonStyle = (
-    mode: keyof typeof headerModeButtonSpec,
+    _mode: string,
     isActive: boolean,
     size: 'desktop' | 'mobile' = 'desktop'
   ) => {
-    const { color, tint, tintActive } = headerModeButtonSpec[mode];
     return {
       ...headerButtonCommon,
-      padding: size === 'mobile' ? '12px 20px' : '8px 18px',
-      color,
-      background: isActive ? tintActive : tint,
-      fontWeight: isActive ? '800' : '600',
-      boxShadow: isActive ? 'inset 0 1px 4px rgba(0,0,0,0.12)' : 'none',
-      borderRadius: size === 'mobile' ? '16px' : '16px',
+      padding: size === 'mobile' ? '12px 20px' : '7px 12px',
+      color: isActive ? '#4f46e5' : '#475569',
+      background: 'transparent',
+      border: 'none',
+      fontWeight: isActive ? '700' : '500',
       fontSize: size === 'mobile' ? '14px' : '13px',
       justifyContent: size === 'mobile' ? 'center' : undefined,
+      borderBottom: isActive && size === 'desktop' ? '2px solid #4f46e5' : '2px solid transparent',
+      borderRadius: 0,
     } as CSSProperties;
   };
 
@@ -1392,9 +1378,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       
       {/* Header */}
       <header style={{
-        borderBottom: '2px solid #e5e5e5',
-        background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+        borderBottom: '1px solid #e2e8f0',
+        background: '#ffffff',
         position: 'sticky',
         top: 0,
         zIndex: 30
@@ -1410,81 +1395,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         }}
         className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px] md:justify-between flex-nowrap"
         >
-          {/* Desktop Left — Avatar + nav buttons */}
-          <div className="desktop-only" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexShrink: 0, flex: 1, justifyContent: 'flex-start' }}>
-
-            {/* Avatar dropdown — far left */}
-            {user ? (
-              <div style={{ position: 'relative', marginLeft: '4px', flexShrink: 0 }}>
-                <button
-                  onClick={() => setAvatarDropdownOpen(v => !v)}
-                  title={profile?.full_name ?? user.email ?? ''}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    width: '36px', height: '36px', borderRadius: '50%',
-                    background: colors.brand.primary, border: '2px solid #e2e8f0',
-                    cursor: 'pointer', color: 'white',
-                    fontSize: '14px', fontWeight: '700', fontFamily: 'inherit',
-                    flexShrink: 0, overflow: 'hidden', padding: 0,
-                    transition: 'border-color 0.12s',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
-                >
-                  {profile?.avatar_url
-                    ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    : (profile?.full_name ?? user.email ?? '?')[0].toUpperCase()
-                  }
-                </button>
-                {avatarDropdownOpen && (
-                  <>
-                    <div style={{ position: 'fixed', inset: 0, zIndex: 39 }} onClick={() => setAvatarDropdownOpen(false)} />
-                    <div style={{
-                      position: 'absolute', top: 'calc(100% + 8px)', right: 0,
-                      zIndex: 50, minWidth: '200px',
-                      background: 'white', borderRadius: '14px',
-                      border: '1px solid #e2e8f0',
-                      boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-                      overflow: 'hidden', direction: 'rtl',
-                    }}>
-                      <div style={{ padding: '14px 16px', borderBottom: '1px solid #f1f5f9' }}>
-                        <div style={{ fontSize: '13px', fontWeight: '700', color: '#1e293b', marginBottom: '2px' }}>{profile?.full_name ?? ''}</div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', wordBreak: 'break-all' }}>{user.email}</div>
-                      </div>
-                      <button
-                        onClick={() => { setAvatarDropdownOpen(false); signOut(); }}
-                        style={{
-                          width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
-                          padding: '12px 16px', background: 'none', border: 'none',
-                          cursor: 'pointer', fontSize: '13px', fontWeight: '600',
-                          color: '#64748b', fontFamily: 'inherit', textAlign: 'right',
-                          transition: 'background 0.1s, color 0.1s',
-                        }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.color = '#dc2626'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#64748b'; }}
-                      >
-                        <LogOut size={14} />יציאה
-                      </button>
-                    </div>
-                  </>
-                )}
-              </div>
-            ) : null}
-
-            {/* Divider */}
-            {user && <div style={{ width: '1px', height: '22px', background: '#e2e8f0', flexShrink: 0 }} />}
-
-            {/* Export */}
-            <button
-              onClick={exportData}
-              style={getHeaderActionButtonStyle('export')}
-              onMouseEnter={(e) => { elevateHeaderButton(e, ''); }}
-              onMouseLeave={(e) => { resetHeaderButton(e, ''); }}
-            >
-              <span>ייצוא</span>
-            </button>
-
-            {/* View mode nav */}
+          {/* Desktop Right — nav buttons */}
+          <div className="desktop-only" style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0, flex: 1, justifyContent: 'flex-end' }}>
             {(['dashboard', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
@@ -1628,28 +1540,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             `}</style>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button
-                onClick={() => { exportData(); setIsMobileMenuOpen(false); }}
-                style={{
-                  padding: '16px',
-                  minHeight: '44px',
-                  background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '700',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <span>ייצוא</span>
-              </button>
-
-              <div style={{ height: '2px', background: '#e5e5e5', margin: '8px 0' }} />
 
               {(['dashboard', 'rows', 'tree'] as const).map(mode => (
                 <button

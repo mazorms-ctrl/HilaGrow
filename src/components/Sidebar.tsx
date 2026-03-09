@@ -8,17 +8,17 @@ import type { Profile } from '@/contexts/AuthContext';
 
 // ── Design tokens ─────────────────────────────────────────────────────────────
 const C = {
-  bg:          '#111827',   // deep gray-900 — premium, neutral
-  bgCard:      '#1a2235',   // card base on dark bg
-  bgHover:     '#1e2d45',
-  border:      'rgba(255,255,255,0.06)',
+  bg:          '#ffffff',
+  bgCard:      '#f8fafc',
+  bgHover:     '#f1f5f9',
+  border:      'rgba(0,0,0,0.07)',
   accent:      '#6366f1',
   accentLight: '#818cf8',
-  text:        '#e2e8f0',
-  textMuted:   'rgba(226,232,240,0.50)',
-  textDim:     'rgba(226,232,240,0.28)',
-  danger:      '#f87171',
-  dangerBg:    'rgba(239,68,68,0.10)',
+  text:        '#1e293b',
+  textMuted:   'rgba(30,41,59,0.52)',
+  textDim:     'rgba(30,41,59,0.34)',
+  danger:      '#ef4444',
+  dangerBg:    'rgba(239,68,68,0.08)',
 };
 
 // Priority soft-tint tokens — Soft Glass style matching header
@@ -44,7 +44,7 @@ function ProgressBar({ value, color }: { value: number; color: string }) {
   return (
     <div style={{
       width: '100%', height: '3px',
-      background: 'rgba(255,255,255,0.07)',
+      background: 'rgba(0,0,0,0.06)',
       borderRadius: '2px', marginTop: '6px', overflow: 'hidden',
     }}>
       <div style={{
@@ -159,7 +159,7 @@ function TaskCard({
           cursor: 'pointer', color: C.textDim,
           transition: 'background 0.12s, color 0.12s',
         }}
-        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.10)'; e.currentTarget.style.color = C.accentLight; }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.06)'; e.currentTarget.style.color = C.accentLight; }}
         onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.textDim; }}
       >
         <Eye size={11} />
@@ -186,7 +186,7 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
     return order[a.priority] - order[b.priority];
   });
 
-  const w = collapsed ? '60px' : '268px';
+  const w = collapsed ? '60px' : '220px';
 
   return (<>
     <aside
@@ -200,7 +200,7 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
         display: 'flex',
         flexDirection: 'column',
         borderLeft: `1px solid ${C.border}`,
-        boxShadow: '-4px 0 20px rgba(0,0,0,0.30)',
+        boxShadow: '-4px 0 20px rgba(0,0,0,0.08)',
         transition: 'width 0.25s cubic-bezier(.4,0,.2,1), min-width 0.25s cubic-bezier(.4,0,.2,1)',
         overflow: 'hidden',
         flexShrink: 0,
@@ -208,7 +208,7 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
     >
       {/* ── User profile card ──────────────────────────────────── */}
       <div style={{
-        background: 'rgba(255,255,255,0.03)',
+        background: 'rgba(0,0,0,0.02)',
         padding: collapsed ? '14px 0' : '14px 12px',
         borderBottom: `1px solid ${C.border}`,
         display: 'flex',
@@ -287,19 +287,19 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
         overflowY: 'auto', overflowX: 'hidden',
         padding: collapsed ? '8px 6px' : '4px 9px 14px',
         scrollbarWidth: 'thin',
-        scrollbarColor: 'rgba(255,255,255,0.08) transparent',
+        scrollbarColor: 'rgba(0,0,0,0.10) transparent',
       }}>
         <style>{`
           aside::-webkit-scrollbar { width: 3px; }
           aside::-webkit-scrollbar-track { background: transparent; }
-          aside::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
+          aside::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.10); border-radius: 3px; }
         `}</style>
 
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', padding: '28px 0' }}>
             <div style={{
               width: '18px', height: '18px',
-              border: '2px solid rgba(255,255,255,0.08)', borderTopColor: C.accent,
+              border: '2px solid rgba(0,0,0,0.08)', borderTopColor: C.accent,
               borderRadius: '50%', animation: 'sb-spin 0.8s linear infinite',
             }} />
             <style>{`@keyframes sb-spin { to { transform: rotate(360deg); } }`}</style>
@@ -387,7 +387,7 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
             borderRadius: '6px', cursor: 'pointer', fontSize: '12px',
             fontFamily: 'inherit', transition: 'background 0.15s, color 0.15s',
           }}
-          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; e.currentTarget.style.color = C.textMuted; }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(0,0,0,0.04)'; e.currentTarget.style.color = C.textMuted; }}
           onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = C.textDim; }}
         >
           <ChevronRight size={14} style={{ flexShrink: 0, transform: collapsed ? 'rotate(180deg)' : 'none', transition: 'transform 0.25s cubic-bezier(.4,0,.2,1)' }} />
