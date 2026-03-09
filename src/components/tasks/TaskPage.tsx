@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
-  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon,
+  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays,
 } from 'lucide-react';
 import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment } from '@/lib/supabase-hooks';
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -332,7 +332,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   }, [save]);
 
   const patchActionItem = useCallback((
-    mIdx: number, aIdx: number, key: 'text' | 'done' | 'assignedTo', value: string | boolean
+    mIdx: number, aIdx: number, key: 'text' | 'done' | 'assignedTo' | 'dueDate', value: string | boolean
   ) => {
     setLocalTask(prev => {
       if (!prev) return prev;
@@ -344,7 +344,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         return { ...m, actionItems };
       });
       const updated = { ...prev, milestones };
-      if (key !== 'text') save(updated);    // text saves on blur
+      if (key !== 'text') save(updated);   // text saves on blur; everything else saves immediately
       return updated;
     });
   }, [save]);
@@ -593,20 +593,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-active-card.overdue { border-color: #fecaca; background: #fff9f9; }
         .tp-active-card.overdue:hover { border-color: #fca5a5; box-shadow: 0 3px 10px rgba(239,68,68,0.10); }
 
-        /* Card header strip */
-        .tp-card-head {
-          padding: 7px 9px 5px;
-          border-bottom: 1px solid #f4f6f9;
-        }
-        .tp-active-card.overdue .tp-card-head { border-bottom-color: #fee2e2; }
-
-        /* Card body */
-        .tp-card-body {
-          padding: 4px 9px 7px;
-          display: flex;
-          flex-direction: column;
-          gap: 2px;
-        }
+        /* tp-card-head / tp-card-body kept for backward compat but no longer rendered */
 
         /* Thin scrollbar for the בעבודה row */
         .tp-cards-scroll {
@@ -770,43 +757,97 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         /* ── Assignee avatar pill ── */
         .tp-assignee-pill {
+          position: relative;
+          overflow: hidden;
           display: inline-flex;
           align-items: center;
-          gap: 4px;
-          padding: 2px 8px 2px 4px;
+          gap: 5px;
+          padding: 4px 10px 4px 7px;
           border-radius: 20px;
           background: #ede9fe;
           color: #6d28d9;
-          font-size: 11px;
+          font-size: 11.5px;
           font-weight: 600;
           white-space: nowrap;
           cursor: pointer;
-          border: none;
+          border: 1px solid transparent;
           font-family: inherit;
-          transition: background 0.12s;
+          transition: background 0.12s, border-color 0.12s;
           flex-shrink: 0;
+          user-select: none;
         }
-        .tp-assignee-pill:hover { background: #ddd6fe; }
+        .tp-assignee-pill:hover { background: #ddd6fe; border-color: #c4b5fd; }
         .tp-assignee-pill.unassigned {
           background: #f1f5f9;
           color: #94a3b8;
+          border-color: transparent;
         }
-        .tp-assignee-pill.unassigned:hover { background: #e2e8f0; color: #64748b; }
+        .tp-assignee-pill.unassigned:hover { background: #e2e8f0; color: #64748b; border-color: #cbd5e1; }
 
-        /* ── Assignee dropdown ── */
+        /* ── Assignee dropdown — invisible full-cover overlay ── */
         .tp-assignee-select {
           appearance: none;
           -webkit-appearance: none;
-          border: none;
-          background: transparent;
-          font-family: inherit;
-          font-size: 11px;
-          font-weight: 600;
-          color: inherit;
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          opacity: 0;
           cursor: pointer;
-          outline: none;
-          max-width: 110px;
+          border: none;
+          padding: 0;
+          margin: 0;
           direction: rtl;
+          font-family: inherit;
+        }
+
+        /* ── Action-item due-date pill ── */
+        .tp-action-date-pill {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 4px 10px 4px 8px;
+          border-radius: 20px;
+          background: #f1f5f9;
+          color: #64748b;
+          font-size: 11.5px;
+          font-weight: 500;
+          white-space: nowrap;
+          cursor: pointer;
+          border: 1px solid transparent;
+          font-family: inherit;
+          flex-shrink: 0;
+          transition: background 0.12s, border-color 0.12s, color 0.12s;
+          overflow: hidden;
+          user-select: none;
+        }
+        .tp-action-date-pill:hover {
+          background: #e8eeff;
+          border-color: #c7d2fe;
+          color: #4338ca;
+        }
+        .tp-action-date-pill.has-date {
+          background: #ede9fe;
+          color: #5b21b6;
+          border-color: #ddd6fe;
+        }
+        .tp-action-date-pill.has-date:hover {
+          background: #ddd6fe;
+          border-color: #c4b5fd;
+          color: #4c1d95;
+        }
+        /* Invisible full-cover native date input — receives clicks from pill */
+        .tp-action-date-pill input[type=date] {
+          position: absolute;
+          inset: 0;
+          width: 100%;
+          height: 100%;
+          opacity: 0;
+          cursor: pointer;
+          border: none;
+          padding: 0;
+          margin: 0;
         }
 
         /* ── Add action button ── */
@@ -1093,47 +1134,41 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   const due = m.dueDate ? new Date(m.dueDate) : null;
                   const isOverdue = due ? due < today : false;
                   const dueFmt = due ? due.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : null;
-                  const actions = m.actionItems || [];
-                  const actionsDone = actions.filter(a => a.done).length;
-
                   return (
                     <div
                       key={mIdx}
                       className={`tp-active-card${isOverdue ? ' overdue' : ''}`}
                       onClick={() => setExpandedOverviewCard(mIdx)}
                     >
-                      {/* Header: name */}
-                      <div className="tp-card-head">
-                        <span style={{ fontSize: '11.5px', fontWeight: '500', color: '#334155', lineHeight: '1.35', display: 'block', wordBreak: 'break-word' }}>
+                      <div style={{ padding: '7px 9px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                        {/* Name */}
+                        <span style={{
+                          fontSize: '11px', fontWeight: '500', color: '#334155',
+                          lineHeight: '1.3',
+                          display: '-webkit-box', WebkitLineClamp: 2,
+                          WebkitBoxOrient: 'vertical', overflow: 'hidden',
+                        } as React.CSSProperties}>
                           {m.text || `אבן דרך ${i + 1}`}
                         </span>
-                        {/* Mini progress bar — only when action items exist */}
-                        {actions.length > 0 && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
-                            <div style={{ flex: 1, height: '2px', borderRadius: '99px', background: '#f1f5f9', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', borderRadius: '99px', background: actionsDone === actions.length ? '#10b981' : '#6366f1', width: `${Math.round((actionsDone / actions.length) * 100)}%`, transition: 'width 0.3s' }} />
-                            </div>
-                            <span style={{ fontSize: '9.5px', color: '#94a3b8', flexShrink: 0 }}>{actionsDone}/{actions.length}</span>
+                        {/* Date · Assignee */}
+                        {(dueFmt || assigneeName) && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', lineHeight: '1.2' }}>
+                            {dueFmt && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <CalendarDays size={9} style={{ color: '#cbd5e1', flexShrink: 0 }} />
+                                <span style={{ fontSize: '10px', color: isOverdue ? '#ef4444' : '#475569' }}>{dueFmt}</span>
+                              </span>
+                            )}
+                            {assigneeName && (
+                              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px' }}>
+                                <UserCircle2 size={9} style={{ color: '#cbd5e1', flexShrink: 0 }} />
+                                <span style={{ fontSize: '10px', color: '#475569' }}>{assigneeName}</span>
+                              </span>
+                            )}
                           </div>
                         )}
-                      </div>
-
-                      {/* Body: date + assignee on one row, status below */}
-                      <div className="tp-card-body">
-                        {/* Date & assignee row */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
-                          {dueFmt && (
-                            <span style={{ fontSize: '10px', color: isOverdue ? '#ef4444' : '#94a3b8' }}>
-                              {dueFmt}
-                            </span>
-                          )}
-                          {assigneeName && dueFmt && <span style={{ fontSize: '9px', color: '#cbd5e1' }}>·</span>}
-                          {assigneeName && (
-                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>{assigneeName}</span>
-                          )}
-                        </div>
                         {/* Status */}
-                        <span style={{ fontSize: '10px', color: isOverdue ? '#ef4444' : '#94a3b8', fontWeight: isOverdue ? '600' : '400' }}>
+                        <span style={{ fontSize: '10px', color: isOverdue ? '#ef4444' : '#94a3b8', fontWeight: isOverdue ? '600' : '400', marginTop: '1px' }}>
                           {isOverdue ? 'בפיגור' : 'בזמן'}
                         </span>
                       </div>
@@ -1230,25 +1265,63 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   </div>
                 ) : (
                   actions.map((a, aIdx) => {
+                    const participantProfiles = task.participants.length > 0
+                      ? profiles.filter(p => task.participants.includes(p.id))
+                      : profiles;
                     const ap = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                     const apName = ap ? (ap.full_name || ap.email || '').split(' ')[0] : null;
                     return (
                       <div key={aIdx} className="tp-modal-action-row">
+                        {/* Checkbox */}
                         <input
                           type="checkbox"
                           className="tp-check"
                           checked={a.done}
                           onChange={e => patchActionItem(mIdx, aIdx, 'done', e.target.checked)}
                         />
+                        {/* Text */}
                         <span style={{ flex: 1, fontSize: '13.5px', lineHeight: '1.45', color: a.done ? '#94a3b8' : '#1e293b', textDecoration: a.done ? 'line-through' : 'none' }}>
                           {a.text || 'פעולה ללא שם'}
                         </span>
-                        {apName && (
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: '#6366f1', fontWeight: '500', flexShrink: 0, background: '#ede9fe', padding: '2px 7px', borderRadius: '20px' }}>
-                            <UserCircle2 size={11} />
-                            {apName}
+                        {/* Due date pill */}
+                        <label
+                          className={`tp-action-date-pill${a.dueDate ? ' has-date' : ''}`}
+                          title="תאריך יעד"
+                          onClick={e => {
+                            const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null;
+                            try { inp?.showPicker?.(); } catch { inp?.focus(); }
+                          }}
+                        >
+                          <CalendarDays size={13} />
+                          <span>
+                            {a.dueDate
+                              ? new Date(a.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+                              : 'תאריך יעד'}
                           </span>
-                        )}
+                          <input
+                            type="date"
+                            value={a.dueDate || ''}
+                            onChange={e => patchActionItem(mIdx, aIdx, 'dueDate', e.target.value)}
+                          />
+                        </label>
+                        {/* Assignee dropdown */}
+                        <label
+                          className={`tp-assignee-pill${!a.assignedTo ? ' unassigned' : ''}`}
+                          title="שייך לפעולה"
+                        >
+                          <UserCircle2 size={13} />
+                          <span>{apName || 'שייך'}</span>
+                          <select
+                            className="tp-assignee-select"
+                            value={a.assignedTo || ''}
+                            onChange={e => patchActionItem(mIdx, aIdx, 'assignedTo', e.target.value || '')}
+                          >
+                            <option value="">ללא שיוך</option>
+                            {participantProfiles.map(p => (
+                              <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                     );
                   })
@@ -1481,20 +1554,22 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                           className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`}
                           title="שייך אחראי"
                         >
-                          <UserCircle2 size={12} />
+                          <UserCircle2 size={13} />
+                          <span>
+                            {assignedProfile
+                              ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0]
+                              : 'שייך'}
+                          </span>
                           <select
                             className="tp-assignee-select"
                             value={m.assignedTo || ''}
                             onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
                           >
-                            <option value="">ללא</option>
+                            <option value="">ללא אחראי</option>
                             {profiles.map(p => (
                               <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
                             ))}
                           </select>
-                          {assignedProfile && (
-                            <span>{(assignedProfile.full_name || assignedProfile.email || '').split(' ')[0]}</span>
-                          )}
                         </label>
                       </div>
 
@@ -1518,6 +1593,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     {expanded && (
                       <>
                         {actions.map((a, aIdx) => {
+                          const participantProfiles = task.participants.length > 0
+                            ? profiles.filter(p => task.participants.includes(p.id))
+                            : profiles;
                           const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                           return (
                             <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>
@@ -1553,20 +1631,44 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                                 className={`tp-assignee-pill${!a.assignedTo ? ' unassigned' : ''}`}
                                 title="שייך לפעולה"
                               >
-                                <UserCircle2 size={11} />
+                                <UserCircle2 size={13} />
+                                <span>
+                                  {aProfile
+                                    ? (aProfile.full_name || aProfile.email || '').split(' ')[0]
+                                    : 'שייך'}
+                                </span>
                                 <select
                                   className="tp-assignee-select"
                                   value={a.assignedTo || ''}
                                   onChange={e => patchActionItem(mIdx, aIdx, 'assignedTo', e.target.value || '')}
                                 >
-                                  <option value="">ללא</option>
-                                  {profiles.map(p => (
+                                  <option value="">ללא שיוך</option>
+                                  {participantProfiles.map(p => (
                                     <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
                                   ))}
                                 </select>
-                                {aProfile && (
-                                  <span>{(aProfile.full_name || aProfile.email || '').split(' ')[0]}</span>
-                                )}
+                              </label>
+
+                              {/* Due date pill — overlaid invisible input triggers native picker on any click */}
+                              <label
+                                className={`tp-action-date-pill${a.dueDate ? ' has-date' : ''}`}
+                                title="תאריך יעד"
+                                onClick={e => {
+                                  const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null;
+                                  try { inp?.showPicker?.(); } catch { inp?.focus(); }
+                                }}
+                              >
+                                <CalendarDays size={13} />
+                                <span>
+                                  {a.dueDate
+                                    ? new Date(a.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' })
+                                    : 'תאריך יעד'}
+                                </span>
+                                <input
+                                  type="date"
+                                  value={a.dueDate || ''}
+                                  onChange={e => patchActionItem(mIdx, aIdx, 'dueDate', e.target.value)}
+                                />
                               </label>
 
                               {/* Delete action item */}

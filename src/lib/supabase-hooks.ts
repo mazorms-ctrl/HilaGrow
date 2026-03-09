@@ -55,6 +55,7 @@ export interface MedicalTask {
       text: string;
       done: boolean;
       assignedTo?: string;      // profile ID
+      dueDate?: string;         // ISO date string
     }>;
   }>;
   
