@@ -337,7 +337,6 @@ function App() {
   const [categoryModalFilter, setCategoryModalFilter] = useState<null | 'p1' | 'overdue' | 'blockers' | 'unassigned' | 'kpi'>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   
-  const [avatarDropdownOpen, setAvatarDropdownOpen] = useState(false);
 
   // Project name state with localStorage persistence
   const [projectName, setProjectName] = useState(() => {
@@ -1324,16 +1323,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     e.currentTarget.style.opacity = '1';
   };
 
-  const getHeaderActionButtonStyle = (_kind: string) => {
-    return {
-      ...headerButtonCommon,
-      padding: '7px 14px',
-      color: '#1e293b',
-      background: 'transparent',
-      border: '1px solid #cbd5e1',
-      fontWeight: '500',
-    } as CSSProperties;
-  };
 
   const getHeaderModeButtonStyle = (
     _mode: string,
@@ -1384,19 +1373,23 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         top: 0,
         zIndex: 30
       }}>
-        <div style={{
-          maxWidth: '1920px',
-          margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          position: 'relative',
-          gap: '12px',
-          backgroundColor: 'rgba(255, 255, 255, 1)'
-        }}
-        className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px] md:justify-between flex-nowrap"
+        <div
+          style={{
+            maxWidth: '1920px',
+            margin: '0 auto',
+            display: 'flex',
+            alignItems: 'center',
+            direction: 'rtl',
+            position: 'relative',
+            backgroundColor: '#ffffff',
+          }}
+          className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px]"
         >
-          {/* Desktop Right — nav buttons */}
-          <div className="desktop-only" style={{ display: 'flex', gap: '4px', alignItems: 'center', flexShrink: 0, flex: 1, justifyContent: 'flex-end' }}>
+          {/* Nav buttons — desktop, stuck to the right (flex-start in RTL) */}
+          <div
+            className="desktop-only"
+            style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
+          >
             {(['dashboard', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
@@ -1415,70 +1408,59 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             ))}
           </div>
 
-          {/* Mobile spacer to balance menu button - only visible on mobile */}
-          <div 
-            className="mobile-only"
-            style={{ 
-              minWidth: '54px', // Match menu button width (44px + some margin)
-              flexShrink: 0 
-            }} 
-          />
-
-          {/* Logo and Title - Centered on all screen sizes */}
-          <div 
-            className="flex-1 md:flex-1 flex items-center justify-center gap-2 md:gap-3 min-w-0"
+          {/* Logo — absolutely centered in the header, independent of other items */}
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              pointerEvents: 'none',
+              direction: 'rtl',
+            }}
           >
-            <img 
+            <img
               src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
               alt="הלל יפה"
-              style={{
-                filter: 'brightness(1) contrast(1.1)'
-              }}
-              className="h-[48px] md:h-[56px] lg:h-[64px] w-auto max-w-[120px] md:max-w-[180px] lg:max-w-[220px] object-contain shrink-0"
+              style={{ filter: 'brightness(1) contrast(1.1)', pointerEvents: 'auto' }}
+              className="h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
             />
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'flex-start',
-              textAlign: 'right',
-              minWidth: 0,
-              overflow: 'hidden'
-            }}>
-              <h1 
-                style={{ 
-                  fontWeight: typography.fontWeight.black, 
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'right', pointerEvents: 'auto' }}>
+              <h1
+                style={{
+                  fontWeight: typography.fontWeight.black,
                   color: '#000000',
                   letterSpacing: '-0.5px',
                   fontFamily: typography.fontFamily,
-                  textAlign: 'right',
-                  margin: 0,
-                  padding: 0,
-                  whiteSpace: 'nowrap'
+                  margin: 0, padding: 0, whiteSpace: 'nowrap',
                 }}
-                className="leading-none text-[19px] md:text-3xl lg:text-4xl"
+                className="leading-none text-[19px] md:text-2xl lg:text-3xl"
               >
                 GROW
               </h1>
-              <p 
-                style={{ 
-                  color: '#1a1a1a', 
-                  margin: 0,
-                  marginTop: '2px',
-                  padding: 0,
+              <p
+                style={{
+                  color: '#1a1a1a',
+                  margin: 0, marginTop: '2px', padding: 0,
                   fontWeight: typography.fontWeight.medium,
                   fontFamily: typography.fontFamily,
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
                 }}
-                className="leading-tight text-[9.5px] md:text-sm lg:text-base"
+                className="leading-tight text-[9px] md:text-xs lg:text-sm"
               >
                 פיתוח וחיזוק מחוברות ארגונית
               </p>
             </div>
           </div>
 
-
-          {/* Right spacer — centers the logo; shows Sign In for guests */}
-          <div className="desktop-only" style={{ flex: 1, minWidth: 0, display: 'flex', justifyContent: 'flex-end' }}>
+          {/* Left side — sign-in for guests (pushes to the left via margin-inline-start auto) */}
+          <div
+            className="desktop-only"
+            style={{ marginInlineStart: 'auto', flexShrink: 0 }}
+          >
             {!user && (
               <button
                 onClick={() => setShowLoginModal(true)}
@@ -1492,11 +1474,12 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             )}
           </div>
 
-          {/* Mobile Menu Button - Right side on mobile */}
+          {/* Mobile: logo centered (handled by absolute above), hamburger on the left */}
           <button
             className="mobile-only"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             style={{
+              marginInlineStart: 'auto',
               padding: '10px',
               background: 'white',
               border: '2px solid #e5e5e5',
@@ -1504,13 +1487,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               cursor: 'pointer',
               fontSize: '24px',
               transition: 'all 0.2s',
-              position: 'absolute',
-              left: 'auto',
-              right: 'max(12px, env(safe-area-inset-right))',
-              top: '50%',
-              transform: 'translateY(-50%)',
               minHeight: '44px',
-              minWidth: '44px'
+              minWidth: '44px',
+              flexShrink: 0,
             }}
           >
             {isMobileMenuOpen ? '✕' : '☰'}

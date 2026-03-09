@@ -173,6 +173,7 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
   const navigate = useNavigate();
   const location = useLocation();
   const [quickViewTaskId, setQuickViewTaskId] = useState<string | null>(null);
+  const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
 
   const initials = (profile?.full_name || user.email || '?')
     .split(' ')
@@ -207,16 +208,21 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
       }}
     >
       {/* ── User profile card ──────────────────────────────────── */}
-      <div style={{
-        background: 'rgba(0,0,0,0.02)',
-        padding: collapsed ? '14px 0' : '14px 12px',
-        borderBottom: `1px solid ${C.border}`,
-        display: 'flex',
-        flexDirection: collapsed ? 'column' : 'row',
-        alignItems: 'center',
-        gap: collapsed ? '0' : '10px',
-        flexShrink: 0,
-      }}>
+      <div
+        onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
+        style={{
+          background: profileDropdownOpen ? 'rgba(0,0,0,0.04)' : 'rgba(0,0,0,0.02)',
+          padding: collapsed ? '14px 0' : '14px 12px',
+          borderBottom: `1px solid ${C.border}`,
+          display: 'flex',
+          flexDirection: collapsed ? 'column' : 'row',
+          alignItems: 'center',
+          gap: collapsed ? '0' : '10px',
+          flexShrink: 0,
+          cursor: 'pointer',
+          transition: 'background 0.15s',
+        }}
+      >
         <div style={{
           width: '36px', height: '36px', minWidth: '36px',
           borderRadius: '10px',
@@ -253,6 +259,34 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
           </div>
         )}
       </div>
+
+      {/* ── Profile dropdown ──────────────────────────────────── */}
+      {profileDropdownOpen && !collapsed && (
+        <div style={{
+          borderBottom: `1px solid ${C.border}`,
+          background: 'rgba(0,0,0,0.02)',
+          flexShrink: 0,
+        }}>
+          <div style={{ padding: '8px 12px 4px', fontSize: '11px', color: C.textMuted, textAlign: 'right' }}>
+            {user.email}
+          </div>
+          <button
+            onClick={(e) => { e.stopPropagation(); onSignOut(); }}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '7px',
+              padding: '9px 12px', background: 'none', border: 'none',
+              cursor: 'pointer', fontSize: '12.5px', fontWeight: '600',
+              color: C.danger, fontFamily: 'inherit', textAlign: 'right',
+              borderRadius: 0, transition: 'background 0.1s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = C.dangerBg; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+          >
+            <LogOut size={13} />
+            יציאה
+          </button>
+        </div>
+      )}
 
       {/* ── "My Tasks" section label ──────────────────────────── */}
       {!collapsed && (
