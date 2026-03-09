@@ -1,167 +1,200 @@
 import { useState } from 'react';
 import { LoginModal } from '@/components/auth/LoginModal';
 
-// ── Category constellation data ───────────────────────────────────────────────
+// ── Category chips ────────────────────────────────────────────────────────────
 
 const CATEGORIES = [
-  { label: 'העצמת הרגשת הערכה',       bg: '#BAE6FD', text: '#075985' },
-  { label: 'פיתוח מתמחים',             bg: '#FEF08A', text: '#713F12' },
-  { label: 'פיתוח רופאים בכירים',      bg: '#FBCFE8', text: '#831843' },
-  { label: 'פרסום פנים ארגוני',        bg: '#F9A8D4', text: '#9D174D' },
-  { label: 'שיפור תשתיות ורווחה',     bg: '#D9F99D', text: '#365314' },
-  { label: 'תוכניות התפתחות כלליות',  bg: '#A5F3FC', text: '#164E63' },
-  { label: 'מחקר',                     bg: '#C7D2FE', text: '#312E81' },
+  { label: 'העצמת הרגשת הערכה',      bg: '#DBEAFE', text: '#1D4ED8' },
+  { label: 'פיתוח מתמחים',            bg: '#FEF9C3', text: '#854D0E' },
+  { label: 'פיתוח רופאים בכירים',     bg: '#FCE7F3', text: '#9D174D' },
+  { label: 'פרסום פנים ארגוני',       bg: '#FDF2F8', text: '#86198F' },
+  { label: 'שיפור תשתיות ורווחה',    bg: '#ECFCCB', text: '#3F6212' },
+  { label: 'תוכניות התפתחות כלליות', bg: '#CFFAFE', text: '#155E75' },
+  { label: 'מחקר',                    bg: '#EEF2FF', text: '#3730A3' },
 ] as const;
 
-// ── Chip positions (% offsets within constellation container) ─────────────────
-// 7 chips arranged in an organic, non-grid cluster
-const CHIP_POSITIONS = [
-  { top: '0%',   left: '0%'   },  // top-left
-  { top: '-16px', left: '28%' },  // top-center-left
-  { top: '0%',   left: '56%'  },  // top-center-right
-  { top: '52px', left: '14%'  },  // mid-left
-  { top: '48px', left: '42%'  },  // mid-center
-  { top: '44px', left: '68%'  },  // mid-right
-  { top: '100px', left: '30%' },  // bottom-center
+// Organic cluster — two rows, middle row offset
+const CHIP_POSITIONS: React.CSSProperties[] = [
+  // Row 1 — 3 chips
+  { top: 0,    left: '1%'  },
+  { top: 0,    left: '26%' },
+  { top: 0,    left: '58%' },
+  // Row 2 — 3 chips, offset
+  { top: 56,   left: '13%' },
+  { top: 56,   left: '44%' },
+  { top: 56,   left: '70%' },
+  // Row 3 — 1 chip, centered
+  { top: 112,  left: '35%' },
 ];
 
-// ── SVG neural-network background ────────────────────────────────────────────
+// ── Faint neural-network watermark ────────────────────────────────────────────
 
-function NeuralBackground() {
-  // Node positions as [cx%, cy%] of the SVG viewBox (1440×900)
-  const nodes = [
-    [120, 80], [320, 50], [580, 120], [820, 60], [1050, 90], [1280, 70], [1380, 200],
-    [80,  280], [260, 320], [500, 260], [700, 310], [950, 270], [1180, 300], [1350, 380],
-    [150, 520], [400, 480], [660, 550], [880, 500], [1100, 540], [1300, 510],
-    [50,  720], [280, 760], [540, 700], [800, 740], [1020, 710], [1240, 760], [1420, 680],
-    [200, 860], [480, 840], [750, 870], [1000, 850], [1350, 820],
+function NeuralWatermark() {
+  const nodes: [number, number][] = [
+    [100, 60],  [280, 30],  [500, 80],  [720, 40],  [940, 70],  [1160, 35], [1340, 85],
+    [60,  220], [230, 200], [420, 240], [640, 210], [860, 235], [1080, 205],[1300, 230],
+    [140, 390], [360, 370], [580, 410], [800, 380], [1020, 400],[1240, 375],
+    [80,  550], [300, 530], [520, 570], [740, 545], [960, 560], [1180, 540],[1380, 555],
+    [200, 710], [440, 690], [680, 720], [900, 700], [1120, 715],[1340, 695],
   ];
 
-  // Edges: pairs of node indices
-  const edges = [
+  const edges: [number, number][] = [
+    // horizontal rows
     [0,1],[1,2],[2,3],[3,4],[4,5],[5,6],
-    [0,7],[1,8],[2,9],[3,10],[4,11],[5,12],[6,13],
     [7,8],[8,9],[9,10],[10,11],[11,12],[12,13],
-    [7,14],[9,15],[11,16],[13,17],
     [14,15],[15,16],[16,17],[17,18],[18,19],
-    [14,20],[15,21],[16,22],[17,23],[18,24],[19,25],
     [20,21],[21,22],[22,23],[23,24],[24,25],[25,26],
-    [21,27],[22,28],[23,29],[24,30],[25,31],
     [27,28],[28,29],[29,30],[30,31],
-    [0,2],[1,3],[8,10],[9,11],[15,17],[22,24],
+    // vertical connections
+    [0,7],[1,8],[2,9],[3,10],[4,11],[5,12],[6,13],
+    [7,14],[8,15],[9,16],[10,17],[11,18],[12,19],
+    [14,20],[15,21],[16,22],[17,23],[18,24],[19,25],
+    [20,27],[21,28],[22,29],[23,30],[24,31],
+    // diagonal accents
+    [1,9],[3,11],[5,13],[8,16],[10,18],[15,23],[17,25],
   ];
 
   return (
     <svg
-      viewBox="0 0 1440 900"
+      viewBox="0 0 1440 780"
       preserveAspectRatio="xMidYMid slice"
+      aria-hidden="true"
       style={{
-        position: 'absolute', inset: 0, width: '100%', height: '100%',
-        opacity: 0.18, pointerEvents: 'none',
+        position: 'absolute', inset: 0,
+        width: '100%', height: '100%',
+        pointerEvents: 'none',
       }}
     >
-      <defs>
-        <radialGradient id="nodeGlow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#38BDF8" stopOpacity="1" />
-          <stop offset="100%" stopColor="#38BDF8" stopOpacity="0" />
-        </radialGradient>
-        <style>{`
-          @keyframes nodePulse {
-            0%, 100% { opacity: 0.5; r: 2.5; }
-            50%       { opacity: 1;   r: 4;   }
-          }
-          @keyframes nodePulse2 {
-            0%, 100% { opacity: 0.3; r: 2; }
-            50%       { opacity: 0.9; r: 3.5; }
-          }
-          .n1 { animation: nodePulse  3.2s ease-in-out infinite; }
-          .n2 { animation: nodePulse2 4.1s ease-in-out infinite 0.8s; }
-          .n3 { animation: nodePulse  5s   ease-in-out infinite 1.6s; }
-        `}</style>
-      </defs>
-
-      {/* Edges */}
       {edges.map(([a, b], i) => (
         <line
           key={i}
           x1={nodes[a][0]} y1={nodes[a][1]}
           x2={nodes[b][0]} y2={nodes[b][1]}
-          stroke="#7DD3FC"
-          strokeWidth="0.8"
-          strokeOpacity="0.6"
+          stroke="#D1D5DB"
+          strokeWidth="0.9"
+          strokeOpacity="0.7"
         />
       ))}
-
-      {/* Nodes */}
       {nodes.map(([cx, cy], i) => (
         <circle
           key={i}
-          cx={cx} cy={cy}
-          r="2.5"
-          fill="#38BDF8"
-          className={i % 3 === 0 ? 'n1' : i % 3 === 1 ? 'n2' : 'n3'}
+          cx={cx} cy={cy} r="2.5"
+          fill="#9CA3AF"
+          fillOpacity="0.5"
         />
       ))}
-
-      {/* Larger accent circles */}
-      <circle cx="320" cy="50"  r="8" fill="none" stroke="#7DD3FC" strokeWidth="1" strokeOpacity="0.4" />
-      <circle cx="880" cy="500" r="10" fill="none" stroke="#38BDF8" strokeWidth="1" strokeOpacity="0.3" />
-      <circle cx="1280" cy="70" r="6"  fill="none" stroke="#BAE6FD" strokeWidth="1" strokeOpacity="0.4" />
     </svg>
   );
 }
 
-// ── Geometric accent shapes ───────────────────────────────────────────────────
+// ── Landing header — matches App header appearance exactly ────────────────────
 
-function GeometricAccents() {
+function LandingHeader({ onLogin }: { onLogin: () => void }) {
   return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none' }}>
-      {/* Large ring — top left */}
-      <div style={{
-        position: 'absolute', top: '-120px', left: '-120px',
-        width: '480px', height: '480px', borderRadius: '50%',
-        border: '1px solid rgba(56,189,248,0.12)',
-      }} />
-      <div style={{
-        position: 'absolute', top: '-60px', left: '-60px',
-        width: '360px', height: '360px', borderRadius: '50%',
-        border: '1px solid rgba(56,189,248,0.08)',
-      }} />
+    <header style={{
+      borderBottom: '1px solid #e2e8f0',
+      background: '#ffffff',
+      position: 'sticky',
+      top: 0,
+      zIndex: 30,
+    }}>
+      <div
+        style={{
+          maxWidth: '1920px',
+          margin: '0 auto',
+          display: 'flex',
+          alignItems: 'center',
+          direction: 'rtl',
+          position: 'relative',
+          backgroundColor: '#ffffff',
+          height: '80px',
+          padding: '0 32px',
+        }}
+      >
+        {/* Logo — centered, same as App */}
+        <div style={{
+          position: 'absolute',
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          direction: 'rtl',
+        }}>
+          <img
+            src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
+            alt="הלל יפה"
+            style={{ height: '52px', width: 'auto', objectFit: 'contain' }}
+          />
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+            <span style={{
+              fontWeight: '800',
+              color: '#000000',
+              letterSpacing: '-0.5px',
+              fontFamily: 'Rubik, sans-serif',
+              fontSize: '24px',
+              lineHeight: 1,
+              whiteSpace: 'nowrap',
+            }}>
+              GROW
+            </span>
+            <span style={{
+              color: '#1a1a1a',
+              fontSize: '12px',
+              fontWeight: '500',
+              fontFamily: 'Rubik, sans-serif',
+              whiteSpace: 'nowrap',
+              marginTop: '2px',
+            }}>
+              פיתוח וחיזוק מחוברות ארגונית
+            </span>
+          </div>
+        </div>
 
-      {/* Large ring — bottom right */}
-      <div style={{
-        position: 'absolute', bottom: '-160px', right: '-160px',
-        width: '560px', height: '560px', borderRadius: '50%',
-        border: '1px solid rgba(14,165,233,0.10)',
-      }} />
-      <div style={{
-        position: 'absolute', bottom: '-80px', right: '-80px',
-        width: '400px', height: '400px', borderRadius: '50%',
-        border: '1px solid rgba(14,165,233,0.07)',
-      }} />
-
-      {/* Faint teal gradient blob — top right */}
-      <div style={{
-        position: 'absolute', top: '-80px', right: '10%',
-        width: '360px', height: '360px', borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(14,165,233,0.08) 0%, transparent 70%)',
-      }} />
-
-      {/* Faint indigo blob — bottom left */}
-      <div style={{
-        position: 'absolute', bottom: '5%', left: '5%',
-        width: '300px', height: '300px', borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(99,102,241,0.07) 0%, transparent 70%)',
-      }} />
-    </div>
+        {/* Login button — left side (RTL = visual left) */}
+        <div style={{ marginInlineStart: 'auto' }}>
+          <button
+            onClick={onLogin}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '8px 20px',
+              borderRadius: '8px',
+              border: '1.5px solid #3B82F6',
+              background: 'transparent',
+              color: '#3B82F6',
+              fontSize: '14px',
+              fontWeight: '600',
+              fontFamily: 'Rubik, sans-serif',
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              direction: 'rtl',
+            }}
+            onMouseEnter={(e) => {
+              const el = e.currentTarget as HTMLButtonElement;
+              el.style.background = '#3B82F6';
+              el.style.color = '#ffffff';
+            }}
+            onMouseLeave={(e) => {
+              const el = e.currentTarget as HTMLButtonElement;
+              el.style.background = 'transparent';
+              el.style.color = '#3B82F6';
+            }}
+          >
+            כניסה
+          </button>
+        </div>
+      </div>
+    </header>
   );
 }
 
-// ── CTA Button ────────────────────────────────────────────────────────────────
+// ── CTA button — solid primary blue ──────────────────────────────────────────
 
 function CtaButton({ onClick }: { onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
-
   return (
     <button
       onClick={onClick}
@@ -171,31 +204,26 @@ function CtaButton({ onClick }: { onClick: () => void }) {
         display: 'inline-flex',
         alignItems: 'center',
         gap: '10px',
-        padding: '16px 44px',
-        borderRadius: '100px',
-        border: `1px solid rgba(255,255,255,${hovered ? '0.4' : '0.25'})`,
-        background: hovered
-          ? 'rgba(14,165,233,0.35)'
-          : 'rgba(255,255,255,0.12)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        color: '#FFFFFF',
-        fontSize: '18px',
+        padding: '15px 44px',
+        borderRadius: '12px',
+        border: 'none',
+        background: hovered ? '#2563EB' : '#3B82F6',
+        color: '#ffffff',
+        fontSize: '17px',
         fontWeight: '700',
         fontFamily: 'Rubik, sans-serif',
         letterSpacing: '-0.2px',
         cursor: 'pointer',
         boxShadow: hovered
-          ? '0 12px 40px rgba(14,165,233,0.45), inset 0 1px 0 rgba(255,255,255,0.25)'
-          : '0 8px 32px rgba(14,165,233,0.25), inset 0 1px 0 rgba(255,255,255,0.15)',
-        transform: hovered ? 'translateY(-2px) scale(1.02)' : 'translateY(0) scale(1)',
-        transition: 'all 0.2s cubic-bezier(0.34,1.56,0.64,1)',
+          ? '0 8px 28px rgba(59,130,246,0.45), 0 2px 8px rgba(59,130,246,0.2)'
+          : '0 4px 16px rgba(59,130,246,0.3), 0 1px 4px rgba(59,130,246,0.15)',
+        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        transition: 'all 0.18s ease',
         direction: 'rtl',
       }}
     >
       <span>כניסה למרכז הפיקוד</span>
-      {/* Arrow icon */}
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
         <path d="M5 12h14M12 5l7 7-7 7" />
       </svg>
     </button>
@@ -204,58 +232,49 @@ function CtaButton({ onClick }: { onClick: () => void }) {
 
 // ── Footer ────────────────────────────────────────────────────────────────────
 
-function Footer() {
+function LandingFooter() {
   return (
     <footer
       dir="rtl"
       style={{
-        position: 'relative', zIndex: 1,
-        borderTop: '1px solid rgba(255,255,255,0.08)',
+        borderTop: '1px solid #e2e8f0',
+        background: '#ffffff',
         padding: '20px 40px',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        background: 'rgba(0,0,0,0.2)',
-        backdropFilter: 'blur(10px)',
         flexShrink: 0,
       }}
     >
-      {/* Right: Logo */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      {/* Right: logo mark */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         <div style={{
-          width: 32, height: 32, borderRadius: '8px',
-          background: 'linear-gradient(135deg, #0EA5E9 0%, #6366F1 100%)',
+          width: 28, height: 28, borderRadius: '7px',
+          background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '14px', fontWeight: '800', color: 'white',
-        }}>
-          G+
-        </div>
-        <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: '600', fontSize: '14px' }}>
+          fontSize: '12px', fontWeight: '800', color: 'white',
+        }}>G+</div>
+        <span style={{ color: '#374151', fontWeight: '600', fontSize: '14px', fontFamily: 'Rubik, sans-serif' }}>
           GROW+
         </span>
       </div>
 
-      {/* Center: Links */}
+      {/* Center: links */}
       <div style={{ display: 'flex', gap: '28px' }}>
         {['תנאי שימוש', 'מדיניות פרטיות', 'צור קשר'].map((link) => (
           <span
             key={link}
-            style={{
-              fontSize: '13px',
-              color: 'rgba(255,255,255,0.45)',
-              cursor: 'pointer',
-              transition: 'color 0.15s',
-            }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.8)'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.45)'; }}
+            style={{ fontSize: '13px', color: '#9CA3AF', cursor: 'pointer', transition: 'color 0.15s', fontFamily: 'Rubik, sans-serif' }}
+            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#374151'; }}
+            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#9CA3AF'; }}
           >
             {link}
           </span>
         ))}
       </div>
 
-      {/* Left: Copyright */}
-      <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.35)', direction: 'ltr' }}>
+      {/* Left: copyright */}
+      <span style={{ fontSize: '13px', color: '#D1D5DB', fontFamily: 'Rubik, sans-serif', direction: 'ltr' }}>
         © 2024 GROW+
       </span>
     </footer>
@@ -270,86 +289,44 @@ export function LandingPage() {
   return (
     <>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Rubik:wght@400;500;600;700;800;900&display=swap');
-
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(24px); }
+        @keyframes lp-fadeUp {
+          from { opacity: 0; transform: translateY(20px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        @keyframes fadeIn {
+        @keyframes lp-fadeIn {
           from { opacity: 0; }
           to   { opacity: 1; }
         }
-        @keyframes chipFloat {
+        @keyframes lp-chipFloat {
           0%, 100% { transform: translateY(0px); }
-          50%       { transform: translateY(-6px); }
+          50%       { transform: translateY(-5px); }
         }
-
-        .landing-hero-title {
-          animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) both;
-        }
-        .landing-hero-sub {
-          animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.15s both;
-        }
-        .landing-constellation {
-          animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.28s both;
-        }
-        .landing-cta {
-          animation: fadeUp 0.7s cubic-bezier(0.16,1,0.3,1) 0.42s both;
-        }
-        .chip-float-0 { animation: chipFloat 4.0s ease-in-out infinite 0.0s; }
-        .chip-float-1 { animation: chipFloat 4.4s ease-in-out infinite 0.6s; }
-        .chip-float-2 { animation: chipFloat 3.8s ease-in-out infinite 1.2s; }
-        .chip-float-3 { animation: chipFloat 4.2s ease-in-out infinite 0.3s; }
-        .chip-float-4 { animation: chipFloat 4.6s ease-in-out infinite 0.9s; }
-        .chip-float-5 { animation: chipFloat 3.6s ease-in-out infinite 1.5s; }
-        .chip-float-6 { animation: chipFloat 4.8s ease-in-out infinite 0.5s; }
+        .lp-badge    { animation: lp-fadeIn  0.4s ease both; }
+        .lp-h1       { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.08s both; }
+        .lp-sub      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.18s both; }
+        .lp-cluster  { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.30s both; }
+        .lp-cta      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.44s both; }
+        .lp-cf0 { animation: lp-chipFloat 4.0s ease-in-out infinite 0.0s; }
+        .lp-cf1 { animation: lp-chipFloat 4.5s ease-in-out infinite 0.7s; }
+        .lp-cf2 { animation: lp-chipFloat 3.8s ease-in-out infinite 1.3s; }
+        .lp-cf3 { animation: lp-chipFloat 4.3s ease-in-out infinite 0.4s; }
+        .lp-cf4 { animation: lp-chipFloat 4.7s ease-in-out infinite 1.0s; }
+        .lp-cf5 { animation: lp-chipFloat 3.6s ease-in-out infinite 1.6s; }
+        .lp-cf6 { animation: lp-chipFloat 4.9s ease-in-out infinite 0.2s; }
       `}</style>
 
-      <div
-        style={{
-          minHeight: '100vh',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'linear-gradient(160deg, #0B1628 0%, #0F2A4A 35%, #0A2240 65%, #0D1B38 100%)',
-          fontFamily: 'Rubik, sans-serif',
-          overflow: 'hidden',
-          position: 'relative',
-        }}
-      >
-        {/* Animated background layers */}
-        <NeuralBackground />
-        <GeometricAccents />
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        flexDirection: 'column',
+        background: '#FCFCFD',
+        fontFamily: 'Rubik, sans-serif',
+      }}>
 
-        {/* ── Header ───────────────────────────────────────────────────────── */}
-        <header
-          style={{
-            position: 'relative', zIndex: 10,
-            display: 'flex', alignItems: 'center',
-            padding: '20px 40px',
-            borderBottom: '1px solid rgba(255,255,255,0.06)',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: '10px',
-              background: 'linear-gradient(135deg, #0EA5E9 0%, #6366F1 100%)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: '16px', fontWeight: '800', color: 'white',
-              boxShadow: '0 4px 16px rgba(14,165,233,0.4)',
-            }}>
-              G+
-            </div>
-            <span style={{
-              fontSize: '20px', fontWeight: '800',
-              color: 'white', letterSpacing: '-0.5px',
-            }}>
-              GROW+
-            </span>
-          </div>
-        </header>
+        {/* ── Header ─────────────────────────────────────────── */}
+        <LandingHeader onLogin={() => setShowLogin(true)} />
 
-        {/* ── Hero ─────────────────────────────────────────────────────────── */}
+        {/* ── Hero ───────────────────────────────────────────── */}
         <main
           dir="rtl"
           style={{
@@ -358,81 +335,97 @@ export function LandingPage() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '60px 24px 80px',
-            position: 'relative', zIndex: 1,
+            padding: '72px 24px 96px',
+            position: 'relative',
             textAlign: 'center',
+            overflow: 'hidden',
           }}
         >
-          {/* Subtitle badge */}
-          <div
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: '8px',
-              padding: '6px 18px', borderRadius: '100px', marginBottom: '28px',
-              background: 'rgba(14,165,233,0.15)',
-              border: '1px solid rgba(14,165,233,0.3)',
-              animation: 'fadeIn 0.5s ease both',
-            }}
-          >
-            <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#38BDF8', display: 'inline-block', flexShrink: 0 }} />
-            <span style={{ fontSize: '13px', fontWeight: '500', color: '#7DD3FC', letterSpacing: '0.3px' }}>
-              פלטפורמה לניהול יוזמות רוחביות
-            </span>
-          </div>
+          {/* Faint neural network watermark */}
+          <NeuralWatermark />
 
-          {/* H1 */}
-          <h1
-            className="landing-hero-title"
-            style={{
-              margin: '0 0 20px',
-              fontSize: 'clamp(36px, 6vw, 72px)',
-              fontWeight: '900',
-              lineHeight: '1.1',
-              letterSpacing: '-2px',
-              color: 'white',
-              direction: 'rtl',
-            }}
-          >
-            GROW
-            <span style={{
-              background: 'linear-gradient(135deg, #38BDF8 0%, #818CF8 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-            }}>+</span>
-            {' '}|{' '}מובילים שינוי. יחד.
-          </h1>
+          {/* Very subtle gradient tints behind the text */}
+          <div aria-hidden="true" style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none',
+            background: 'radial-gradient(ellipse 70% 60% at 50% 40%, rgba(219,234,254,0.35) 0%, transparent 70%)',
+          }} />
 
-          {/* Subtitle */}
-          <p
-            className="landing-hero-sub"
-            style={{
-              margin: '0 auto 52px',
-              maxWidth: '640px',
-              fontSize: 'clamp(15px, 2vw, 18px)',
-              fontWeight: '400',
-              lineHeight: '1.7',
-              color: 'rgba(186,230,253,0.75)',
-              direction: 'rtl',
-            }}
-          >
-            המרחב הדיגיטלי לניהול יוזמות רוחביות, טיפוח מצוינות וחיזוק המחוברות הארגונית בבית החולים
-          </p>
+          {/* Content — above watermark */}
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
-          {/* Constellation cluster */}
-          <div
-            className="landing-constellation"
-            style={{
-              position: 'relative',
-              width: '680px',
-              maxWidth: '100%',
-              height: '160px',
-              marginBottom: '60px',
-            }}
-          >
-            {CATEGORIES.map((cat, i) => (
-              <div key={i} className={`chip-float-${i}`} style={{ position: 'absolute', ...CHIP_POSITIONS[i] }}>
+            {/* Badge */}
+            <div
+              className="lp-badge"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '7px',
+                padding: '6px 16px', borderRadius: '100px', marginBottom: '28px',
+                background: '#EFF6FF',
+                border: '1px solid #BFDBFE',
+              }}
+            >
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />
+              <span style={{ fontSize: '13px', fontWeight: '500', color: '#1D4ED8' }}>
+                פלטפורמה לניהול יוזמות רוחביות
+              </span>
+            </div>
+
+            {/* H1 */}
+            <h1
+              className="lp-h1"
+              style={{
+                margin: '0 0 18px',
+                fontSize: 'clamp(34px, 5.5vw, 64px)',
+                fontWeight: '900',
+                lineHeight: '1.1',
+                letterSpacing: '-1.5px',
+                color: '#0F172A',
+                direction: 'rtl',
+              }}
+            >
+              GROW
+              <span style={{
+                background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}>+</span>
+              {' '}|{' '}מובילים שינוי. יחד.
+            </h1>
+
+            {/* Subtitle */}
+            <p
+              className="lp-sub"
+              style={{
+                margin: '0 auto 52px',
+                maxWidth: '580px',
+                fontSize: 'clamp(15px, 1.8vw, 18px)',
+                fontWeight: '400',
+                lineHeight: '1.75',
+                color: '#475569',
+                direction: 'rtl',
+              }}
+            >
+              המרחב הדיגיטלי לניהול יוזמות רוחביות, טיפוח מצוינות וחיזוק המחוברות הארגונית בבית החולים
+            </p>
+
+            {/* Constellation cluster */}
+            <div
+              className="lp-cluster"
+              style={{
+                position: 'relative',
+                width: '700px',
+                maxWidth: '96vw',
+                height: '168px',
+                marginBottom: '60px',
+              }}
+            >
+              {CATEGORIES.map((cat, i) => (
                 <div
-                  style={{
+                  key={i}
+                  className={`lp-cf${i}`}
+                  style={{ position: 'absolute', ...CHIP_POSITIONS[i] }}
+                >
+                  <div style={{
                     display: 'inline-flex',
                     alignItems: 'center',
                     padding: '8px 18px',
@@ -440,31 +433,30 @@ export function LandingPage() {
                     fontSize: '13px',
                     fontWeight: '600',
                     color: cat.text,
-                    background: `${cat.bg}E8`,
-                    backdropFilter: 'blur(10px)',
-                    border: `1px solid ${cat.bg}`,
-                    boxShadow: `0 4px 16px rgba(0,0,0,0.2), 0 0 0 1px ${cat.bg}40`,
+                    background: cat.bg,
+                    border: `1.5px solid ${cat.text}22`,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
                     whiteSpace: 'nowrap',
                     cursor: 'default',
-                  }}
-                >
-                  {cat.label}
+                  }}>
+                    {cat.label}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
 
-          {/* CTA */}
-          <div className="landing-cta">
-            <CtaButton onClick={() => setShowLogin(true)} />
+            {/* CTA */}
+            <div className="lp-cta">
+              <CtaButton onClick={() => setShowLogin(true)} />
+            </div>
+
           </div>
         </main>
 
-        {/* ── Footer ───────────────────────────────────────────────────────── */}
-        <Footer />
+        {/* ── Footer ─────────────────────────────────────────── */}
+        <LandingFooter />
       </div>
 
-      {/* Login modal */}
       {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
     </>
   );
