@@ -12,12 +12,6 @@ import { useAuth } from '@/contexts/AuthContext';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG = {
-  open:        { label: 'שלב הרעיון', color: '#0284c7', bg: '#e0f2fe' },
-  in_progress: { label: 'בעבודה',     color: '#6366f1', bg: '#ede9fe' },
-  blocked:     { label: 'תקועה',      color: '#dc2626', bg: '#fee2e2' },
-  done:        { label: 'הושלמה',     color: '#059669', bg: '#d1fae5' },
-} as const;
 
 const NAV_ITEMS = [
   { id: 'foundations',  Icon: BookOpen,      label: 'יסודות'            },
