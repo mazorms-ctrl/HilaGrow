@@ -66,6 +66,15 @@ export interface MedicalTask {
   sourceOfTruth?: string;
   measurementCadence: string;
   metricOwner?: string;
+  // Dynamic KPI list (replaces the flat fields above)
+  kpis?: Array<{
+    name: string;
+    baseline: string;
+    target: string;
+    cadence: string;
+    source: string;
+    owner: string;
+  }>;
   
   // ── Participants (משתתפים) ───────────────────────────────────
   stakeholders: string[];   // Array of profile names/emails
@@ -203,13 +212,19 @@ function dbRowToMedicalTask(
         };
       }),
     
-    // KPI
+    // KPI (flat legacy fields kept for compat)
     kpiName: metadata.kpiName || '',
     baseline: metadata.baseline || '',
     target: metadata.target || '',
     sourceOfTruth: metadata.sourceOfTruth || '',
     measurementCadence: metadata.measurementCadence || '',
     metricOwner: metadata.metricOwner || '',
+    // Dynamic KPI list — falls back to one entry built from legacy flat fields
+    kpis: Array.isArray(metadata.kpis) && metadata.kpis.length > 0
+      ? metadata.kpis
+      : (metadata.kpiName || metadata.baseline || metadata.target)
+        ? [{ name: metadata.kpiName || '', baseline: metadata.baseline || '', target: metadata.target || '', cadence: metadata.measurementCadence || '', source: metadata.sourceOfTruth || '', owner: metadata.metricOwner || '' }]
+        : [],
     
     // Participants
     stakeholders: metadata.stakeholders || [],
@@ -630,6 +645,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     sourceOfTruth: task.sourceOfTruth,
     measurementCadence: task.measurementCadence,
     metricOwner: task.metricOwner,
+    kpis: task.kpis || [],
     
     // Participants
     stakeholders: task.stakeholders,
@@ -780,6 +796,7 @@ export async function createTask(
     links: task.links,
     status: task.status,
     currentState: task.currentState,
+    kpis: task.kpis || [],
   };
 
   const { data: newTask, error: taskError } = await supabase

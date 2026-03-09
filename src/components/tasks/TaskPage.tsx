@@ -13,28 +13,20 @@ import { useAuth } from '@/contexts/AuthContext';
 // ── Config ─────────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG = {
-  open:        { label: 'פתוח',   color: '#0ea5e9', bg: '#e0f2fe' },
-  in_progress: { label: 'בעבודה', color: '#d97706', bg: '#fef3c7' },
-  blocked:     { label: 'תקוע',   color: '#ef4444', bg: '#fee2e2' },
-  done:        { label: 'הושלם',  color: '#10b981', bg: '#d1fae5' },
-} as const;
-
-const PRIORITY_CONFIG = {
-  P1: { label: 'P1 — דחוף',   color: '#dc2626', bg: '#fee2e2' },
-  P2: { label: 'P2 — בינוני', color: '#c2410c', bg: '#fed7aa' },
-  P3: { label: 'P3 — נמוך',   color: '#4f46e5', bg: '#e0e7ff' },
+  open:        { label: 'שלב הרעיון', color: '#0284c7', bg: '#e0f2fe' },
+  in_progress: { label: 'בעבודה',     color: '#6366f1', bg: '#ede9fe' },
+  blocked:     { label: 'תקועה',      color: '#dc2626', bg: '#fee2e2' },
+  done:        { label: 'הושלמה',     color: '#059669', bg: '#d1fae5' },
 } as const;
 
 const NAV_ITEMS = [
-  { id: 'foundations',   Icon: BookOpen,      label: 'יסודות'        },
-  { id: 'current-state', Icon: Activity,      label: 'מצב נוכחי'     },
-  { id: 'spec',          Icon: FileText,      label: 'אפיון'          },
-  { id: 'timeline',      Icon: ListChecks,    label: 'ציר זמן'       },
-  { id: 'kpi',           Icon: BarChart2,     label: 'KPI'            },
-  { id: 'participants',  Icon: Users,         label: 'משתתפים'       },
-  { id: 'risks',         Icon: AlertTriangle, label: 'סיכונים'       },
-  { id: 'discussion',    Icon: MessageSquare, label: 'דיון'           },
-  { id: 'outcome',       Icon: CheckCircle2,  label: 'תוצר סופי'     },
+  { id: 'foundations',  Icon: BookOpen,      label: 'יסודות'            },
+  { id: 'snapshot',     Icon: Activity,      label: 'תמונת מצב ויעדים' },
+  { id: 'participants', Icon: Users,         label: 'משתתפים'           },
+  { id: 'spec',         Icon: FileText,      label: 'אפיון'             },
+  { id: 'timeline',     Icon: ListChecks,    label: 'אבני דרך'          },
+  { id: 'outcome',      Icon: CheckCircle2,  label: 'תוצר סופי'         },
+  { id: 'discussion',   Icon: MessageSquare, label: 'דיון'              },
 ] as const;
 
 // ── Shared style objects ───────────────────────────────────────────────────────
@@ -315,6 +307,23 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     });
   }, [save]);
 
+  // ── Delete milestone ──────────────────────────────────────────────────────
+  const deleteMilestone = useCallback((mIdx: number) => {
+    if (!window.confirm('האם אתה בטוח שברצונך למחוק את אבן הדרך ואת כל המשימות שבתוכה?')) return;
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const milestones = prev.milestones.filter((_, i) => i !== mIdx);
+      const updated = { ...prev, milestones };
+      save(updated);
+      setExpandedMilestones(s => {
+        const n = new Set<number>();
+        s.forEach(i => { if (i < mIdx) n.add(i); else if (i > mIdx) n.add(i - 1); });
+        return n;
+      });
+      return updated;
+    });
+  }, [save]);
+
   // ── Action item helpers ────────────────────────────────────────────────────
   const addActionItem = useCallback((mIdx: number) => {
     setLocalTask(prev => {
@@ -358,6 +367,35 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         return { ...m, actionItems };
       });
       const updated = { ...prev, milestones };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  // ── KPI list helpers ────────────────────────────────────────────────────────
+  const addKpi = useCallback(() => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, kpis: [...(prev.kpis || []), { name: '', baseline: '', target: '', cadence: '', source: '', owner: '' }] };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  const patchKpi = useCallback((idx: number, key: keyof NonNullable<MedicalTask['kpis']>[number], value: string) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const kpis = (prev.kpis || []).map((k, i) => i === idx ? { ...k, [key]: value } : k);
+      const updated = { ...prev, kpis };
+      return updated;               // text fields save on blur
+    });
+  }, []);
+
+  const deleteKpi = useCallback((idx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const kpis = (prev.kpis || []).filter((_, i) => i !== idx);
+      const updated = { ...prev, kpis };
       save(updated);
       return updated;
     });
@@ -422,8 +460,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   }
 
   const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.open;
-  const priorityCfg = PRIORITY_CONFIG[task.priority];
   const overdue = task.dueDate ? new Date(task.dueDate) < new Date() : false;
+  const assignedProfile = task.assignedTo ? profiles.find(p => p.id === task.assignedTo) : null;
+  const assignedName = assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '') : null;
   const milestonesDone = task.milestones.filter(m => m.done).length;
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -533,6 +572,79 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           border-color: #e2e8f0;
           box-shadow: 0 1px 4px rgba(15,23,42,0.06);
         }
+
+        /* ── Dynamic KPI rows ── */
+        .tp-kpi-row {
+          display: flex;
+          align-items: flex-start;
+          gap: 10px;
+          padding: 12px 14px;
+          background: #f8fafc;
+          border: 1px solid #edf0f4;
+          border-radius: 12px;
+          direction: rtl;
+          transition: border-color 0.14s, box-shadow 0.14s;
+        }
+        .tp-kpi-row:hover {
+          border-color: #e2e8f0;
+          box-shadow: 0 1px 6px rgba(15,23,42,0.06);
+        }
+        .tp-kpi-num {
+          flex-shrink: 0;
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background: #ede9fe;
+          color: #6d28d9;
+          font-size: 10.5px;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-top: 4px;
+        }
+        .tp-kpi-fields {
+          flex: 1;
+          display: grid;
+          grid-template-columns: 2fr 1fr 1fr;
+          gap: 8px 12px;
+        }
+        @media (max-width: 560px) {
+          .tp-kpi-fields { grid-template-columns: 1fr 1fr; }
+        }
+        .tp-kpi-field { direction: rtl; text-align: right; }
+        .tp-kpi-name { grid-column: 1 / -1; }
+        .tp-kpi-delete {
+          flex-shrink: 0;
+          background: none;
+          border: none;
+          cursor: pointer;
+          color: #cbd5e1;
+          padding: 4px;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          transition: color 0.12s, background 0.12s;
+          margin-top: 2px;
+        }
+        .tp-kpi-delete:hover { color: #ef4444; background: #fee2e2; }
+        .tp-kpi-add-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 7px 14px;
+          border-radius: 10px;
+          border: 1.5px dashed #c7d2fe;
+          background: transparent;
+          color: #6366f1;
+          font-size: 12.5px;
+          font-weight: 600;
+          font-family: inherit;
+          cursor: pointer;
+          direction: rtl;
+          transition: background 0.12s, border-color 0.12s;
+        }
+        .tp-kpi-add-btn:hover { background: #f5f3ff; border-color: #a5b4fc; }
 
         /* ── Management Overview ── */
         .tp-overview {
@@ -884,6 +996,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         }
         .tp-expand-btn:hover { background: #f1f5f9; color: #475569; }
 
+        /* ── Milestone delete button ── */
+        .tp-milestone-delete-btn {
+          display: flex; align-items: center; justify-content: center;
+          padding: 3px; border-radius: 5px;
+          border: none; background: transparent;
+          cursor: pointer; color: #cbd5e1;
+          transition: color 0.12s, background 0.12s;
+          flex-shrink: 0;
+        }
+        .tp-milestone-delete-btn:hover { color: #ef4444; background: #fee2e2; }
+
         /* ── Checkbox ── */
         .tp-check {
           appearance: none;
@@ -974,9 +1097,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       <div style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
+        gap: '28px',
         flexWrap: 'wrap',
-        padding: '8px 14px',
+        padding: '10px 18px',
         marginBottom: '16px',
         background: 'white',
         borderRadius: '14px',
@@ -985,101 +1108,110 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         direction: 'rtl',
       }}>
 
-        {/* Status */}
-        <select
-          value={task.status}
-          onChange={e => patch('status', e.target.value as MedicalTask['status'])}
-          style={{
-            background: statusCfg.bg, color: statusCfg.color,
-            border: 'none', outline: 'none', borderRadius: '20px',
-            padding: '3px 11px', fontSize: '12px', fontWeight: '700',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          {(Object.entries(STATUS_CONFIG) as [MedicalTask['status'], typeof STATUS_CONFIG.open][]).map(([v, c]) => (
-            <option key={v} value={v}>{c.label}</option>
-          ))}
-        </select>
-
-        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
-
-        {/* Priority */}
-        <select
-          value={task.priority}
-          onChange={e => patch('priority', e.target.value as MedicalTask['priority'])}
-          style={{
-            background: priorityCfg.bg, color: priorityCfg.color,
-            border: 'none', outline: 'none', borderRadius: '20px',
-            padding: '3px 11px', fontSize: '12px', fontWeight: '700',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          {(Object.entries(PRIORITY_CONFIG) as [MedicalTask['priority'], typeof PRIORITY_CONFIG.P1][]).map(([v, c]) => (
-            <option key={v} value={v}>{c.label}</option>
-          ))}
-        </select>
-
-        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
-
-        {/* Lead */}
-        <select
-          value={task.assignedTo || ''}
-          onChange={e => patch('assignedTo', e.target.value || null)}
-          style={{
-            background: 'transparent', border: 'none', outline: 'none',
-            fontSize: '12px', color: task.assignedTo ? '#334155' : '#94a3b8',
-            cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >
-          <option value="">אחראי: —</option>
-          {profiles.map(p => (
-            <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
-          ))}
-        </select>
-
-        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
-
-        {/* Department */}
-        <input
-          type="text"
-          value={task.department}
-          onChange={e => patchLocal('department', e.target.value)}
-          onBlur={saveLatest}
-          placeholder="מחלקה"
-          style={{
-            background: 'transparent', border: 'none', outline: 'none',
-            fontSize: '12px', color: task.department ? '#334155' : '#94a3b8',
-            fontFamily: 'inherit', width: '80px', direction: 'rtl',
-          }}
-        />
-
-        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
-
-        {/* Due date */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {overdue && <AlertCircle size={11} style={{ color: '#ef4444' }} />}
-          <input
-            type="date"
-            value={task.dueDate || ''}
-            onChange={e => patch('dueDate', e.target.value)}
-            style={{
-              background: 'transparent', border: 'none', outline: 'none',
-              fontSize: '12px', color: overdue ? '#dc2626' : '#475569',
-              fontFamily: 'inherit', cursor: 'pointer', fontWeight: overdue ? '600' : '400',
-            }}
-          />
+        {/* ── Status ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+            סטטוס:
+          </span>
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center', gap: '5px',
+              background: statusCfg.bg, color: statusCfg.color,
+              borderRadius: '20px', padding: '4px 12px',
+              fontSize: '12px', fontWeight: '700', pointerEvents: 'none',
+              whiteSpace: 'nowrap',
+            }}>
+              {statusCfg.label}
+            </span>
+            <select
+              value={task.status}
+              onChange={e => patch('status', e.target.value as MedicalTask['status'])}
+              style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                opacity: 0, cursor: 'pointer', border: 'none',
+                fontFamily: 'inherit', direction: 'rtl',
+              }}
+            >
+              {(Object.entries(STATUS_CONFIG) as [MedicalTask['status'], typeof STATUS_CONFIG.open][]).map(([v, c]) => (
+                <option key={v} value={v}>{c.label}</option>
+              ))}
+            </select>
+          </div>
         </div>
 
-        {/* Progress chip — pushed to far left */}
-        <span style={{
-          marginInlineStart: 'auto',
-          fontSize: '12px', fontWeight: '700',
-          color: task.progress === 100 ? '#10b981' : task.progress >= 50 ? '#6366f1' : '#f59e0b',
-          background: task.progress === 100 ? '#d1fae5' : task.progress >= 50 ? '#ede9fe' : '#fef3c7',
-          padding: '3px 10px', borderRadius: '20px',
-        }}>
-          {task.progress}%
-        </span>
+        <span style={{ width: '1px', height: '18px', background: '#e2e8f0', flexShrink: 0 }} />
+
+        {/* ── Owner (אחראי משימה) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+            אחראי משימה:
+          </span>
+          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
+            <span style={{
+              display: 'inline-flex', alignItems: 'center',
+              background: task.assignedTo ? '#f1f5f9' : 'transparent',
+              borderRadius: '20px', padding: '4px 12px',
+              fontSize: '12.5px', fontWeight: task.assignedTo ? '600' : '400',
+              color: task.assignedTo ? '#1e293b' : '#94a3b8',
+              whiteSpace: 'nowrap', pointerEvents: 'none',
+            }}>
+              {assignedName || 'לא שויך'}
+            </span>
+            <select
+              value={task.assignedTo || ''}
+              onChange={e => patch('assignedTo', e.target.value || null)}
+              style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                opacity: 0, cursor: 'pointer', border: 'none',
+                fontFamily: 'inherit', direction: 'rtl',
+              }}
+            >
+              <option value="">לא שויך</option>
+              {profiles.map(p => (
+                <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <span style={{ width: '1px', height: '18px', background: '#e2e8f0', flexShrink: 0 }} />
+
+        {/* ── Due date (תאריך יעד) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+            תאריך יעד:
+          </span>
+          <label
+            style={{
+              position: 'relative', display: 'inline-flex', alignItems: 'center',
+              padding: '4px 12px', borderRadius: '20px', cursor: 'pointer',
+              background: task.dueDate ? (overdue ? '#fee2e2' : '#f1f5f9') : 'transparent',
+              fontSize: '12.5px', fontWeight: task.dueDate ? '600' : '400',
+              color: overdue ? '#dc2626' : (task.dueDate ? '#1e293b' : '#94a3b8'),
+              overflow: 'hidden', whiteSpace: 'nowrap',
+            }}
+            onClick={e => {
+              const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null;
+              try { inp?.showPicker?.(); } catch { inp?.focus(); }
+            }}
+          >
+            <span style={{ pointerEvents: 'none' }}>
+              {task.dueDate
+                ? new Date(task.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'long', year: 'numeric' })
+                : 'בחר תאריך'}
+            </span>
+            <input
+              type="date"
+              value={task.dueDate || ''}
+              onChange={e => patch('dueDate', e.target.value)}
+              style={{
+                position: 'absolute', inset: 0, width: '100%', height: '100%',
+                opacity: 0, cursor: 'pointer', border: 'none', padding: 0,
+              }}
+            />
+          </label>
+        </div>
+
       </div>
 
       {/* ── Management Overview ─────────────────────────────────────────────── */}
@@ -1407,55 +1539,156 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
         </Section>}
 
-        {/* CURRENT STATE */}
-        {activeSection === 'current-state' && <Section icon={Activity} title="מצב נוכחי — נקודת האפס">
-          <p className="tp-section-desc">תיעוד שיטתי של המצב לפני ההתערבות. נתונים אלו ישמשו למדידת שיפור.</p>
-          <div className="tp-grid-3">
-            <Field label="קו בסיס" className="tp-span-full">
-              <EditableArea value={task.currentState} onChange={v => patchLocal('currentState', v)} onBlur={saveLatest} placeholder={'מהו קו הבסיס התפעולי?\n• זמן המתנה ממוצע: ___ דקות\n• תפוסה: ___\n• שגיאות לחודש: ___'} minRows={3} />
-            </Field>
-            <Field label="נקודות כאב" className="tp-span-2">
-              <EditableArea value={task.painPoints ?? ''} onChange={v => patchLocal('painPoints', v)} onBlur={saveLatest} placeholder="מה לא עובד היום? תסכולים, עיכובים, שגיאות..." minRows={2} />
-            </Field>
-            <Field label="אילוצים">
-              <EditableArea value={task.constraints ?? ''} onChange={v => patchLocal('constraints', v)} onBlur={saveLatest} placeholder="תקציב, כוח אדם, רגולציה, תרבות..." minRows={2} />
-            </Field>
-            <Field label="תהליכים / מערכות קיימות" className="tp-span-2">
-              <EditableArea value={task.existingProcess ?? ''} onChange={v => patchLocal('existingProcess', v)} onBlur={saveLatest} placeholder="כיצד נעשה היום? כלים ונהלים פעילים." minRows={2} />
-            </Field>
-            <Field label="ראיות / נתונים">
-              <EditableArea value={task.evidence ?? ''} onChange={v => patchLocal('evidence', v)} onBlur={saveLatest} placeholder="דוחות, דשבורדים, סקרים..." minRows={2} />
-            </Field>
-          </div>
-        </Section>}
+        {/* SNAPSHOT — מצב נוכחי + KPI merged */}
+        {activeSection === 'snapshot' && <>
+          <Section icon={Activity} title="מצב נוכחי — נקודת האפס">
+            <p className="tp-section-desc">תיעוד שיטתי של המצב לפני ההתערבות. נתונים אלו ישמשו למדידת שיפור.</p>
+            <div className="tp-grid-3">
+              <Field label="קו בסיס" className="tp-span-full">
+                <EditableArea value={task.currentState} onChange={v => patchLocal('currentState', v)} onBlur={saveLatest} placeholder={'מהו קו הבסיס התפעולי?\n• זמן המתנה ממוצע: ___ דקות\n• תפוסה: ___\n• שגיאות לחודש: ___'} minRows={3} />
+              </Field>
+              <Field label="נקודות כאב" className="tp-span-2">
+                <EditableArea value={task.painPoints ?? ''} onChange={v => patchLocal('painPoints', v)} onBlur={saveLatest} placeholder="מה לא עובד היום? תסכולים, עיכובים, שגיאות..." minRows={2} />
+              </Field>
+              <Field label="אילוצים">
+                <EditableArea value={task.constraints ?? ''} onChange={v => patchLocal('constraints', v)} onBlur={saveLatest} placeholder="תקציב, כוח אדם, רגולציה, תרבות..." minRows={2} />
+              </Field>
+              <Field label="תהליכים / מערכות קיימות" className="tp-span-2">
+                <EditableArea value={task.existingProcess ?? ''} onChange={v => patchLocal('existingProcess', v)} onBlur={saveLatest} placeholder="כיצד נעשה היום? כלים ונהלים פעילים." minRows={2} />
+              </Field>
+              <Field label="ראיות / נתונים">
+                <EditableArea value={task.evidence ?? ''} onChange={v => patchLocal('evidence', v)} onBlur={saveLatest} placeholder="דוחות, דשבורדים, סקרים..." minRows={2} />
+              </Field>
+            </div>
+          </Section>
 
-        {/* SPEC */}
-        {activeSection === 'spec' && <Section icon={FileText} title="אפיון">
-          <p className="tp-section-desc">איך יראה הפתרון? מה יסופק, מה מוסכם מראש, ואילו החלטות נדרשות.</p>
-          <div className="tp-grid-3">
-            <Field label="שם התהליך">
-              <EditableArea value={task.processName} onChange={v => patchLocal('processName', v)} onBlur={saveLatest} placeholder="שם התהליך..." />
-            </Field>
-            <Field label="מחלקה">
-              <EditableArea value={task.department} onChange={v => patchLocal('department', v)} onBlur={saveLatest} placeholder="שם המחלקה..." />
-            </Field>
-            <Field label="החלטות נדרשות">
-              <EditableArea value={task.requiredDecisions ?? ''} onChange={v => patchLocal('requiredDecisions', v)} onBlur={saveLatest} placeholder="מה צריך אישור לפני ההמשך? ידי מי?" minRows={1} />
-            </Field>
-            <Field label="פתרון מוצע" className="tp-span-full">
-              <EditableArea value={task.proposedSolution ?? ''} onChange={v => patchLocal('proposedSolution', v)} onBlur={saveLatest} placeholder="מה יבוצע? טכנולוגיה, תהליך חדש, שינוי נוהל..." minRows={3} />
-            </Field>
-            <Field label="תוצרים (Deliverables)" className="tp-span-2">
-              <EditableArea value={task.deliverables ?? ''} onChange={v => patchLocal('deliverables', v)} onBlur={saveLatest} placeholder="מה יימסר? — מערכת, דוח, הדרכה, נוהל..." minRows={2} />
-            </Field>
-            <Field label="הנחות">
-              <EditableArea value={task.assumptions ?? ''} onChange={v => patchLocal('assumptions', v)} onBlur={saveLatest} placeholder="תקציב, שיתוף פעולה, זמינות..." minRows={2} />
-            </Field>
-            <Field label="קריטריוני קבלה" className="tp-span-full">
-              <EditableArea value={task.acceptanceCriteria ?? ''} onChange={v => patchLocal('acceptanceCriteria', v)} onBlur={saveLatest} placeholder="מה צריך להתקיים? — איכות, ביצועים, שביעות רצון..." minRows={2} />
-            </Field>
-          </div>
-        </Section>}
+          <div style={{ height: '12px' }} />
+
+          <Section icon={BarChart2} title="מדדי הצלחה — KPI">
+            <p className="tp-section-desc">הגדר מדדים מדידים שיוכיחו הצלחה — ספציפיים, בני השגה, ומבוססי נתונים.</p>
+
+            {/* Dynamic KPI list */}
+            {(task.kpis || []).length === 0 ? (
+              <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 12px', direction: 'rtl', textAlign: 'right' }}>
+                לא הוגדרו מדדים עדיין — לחץ "+ הוסף מדד" כדי להתחיל.
+              </p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '12px' }}>
+                {(task.kpis || []).map((kpi, idx) => (
+                  <div key={idx} className="tp-kpi-row">
+                    {/* Row number */}
+                    <span className="tp-kpi-num">{idx + 1}</span>
+
+                    {/* Fields grid */}
+                    <div className="tp-kpi-fields">
+                      <div className="tp-kpi-field tp-kpi-name">
+                        <span style={fieldLabelStyle}>שם המדד</span>
+                        <EditableArea value={kpi.name} onChange={v => patchKpi(idx, 'name', v)} onBlur={saveLatest} placeholder="זמן המתנה / שיעור זיהומים / עמידה ב-SLA" style={{ fontSize: '13px', fontWeight: '500' }} />
+                      </div>
+                      <div className="tp-kpi-field">
+                        <span style={fieldLabelStyle}>בסיס</span>
+                        <EditableArea value={kpi.baseline} onChange={v => patchKpi(idx, 'baseline', v)} onBlur={saveLatest} placeholder="ערך נוכחי..." style={{ fontSize: '13px' }} />
+                      </div>
+                      <div className="tp-kpi-field">
+                        <span style={fieldLabelStyle}>יעד</span>
+                        <EditableArea value={kpi.target} onChange={v => patchKpi(idx, 'target', v)} onBlur={saveLatest} placeholder="ערך יעד..." style={{ fontSize: '13px' }} />
+                      </div>
+                      <div className="tp-kpi-field">
+                        <span style={fieldLabelStyle}>תדירות</span>
+                        <EditableArea value={kpi.cadence} onChange={v => patchKpi(idx, 'cadence', v)} onBlur={saveLatest} placeholder="שבועי / חודשי..." style={{ fontSize: '13px' }} />
+                      </div>
+                      <div className="tp-kpi-field">
+                        <span style={fieldLabelStyle}>מקור נתונים</span>
+                        <EditableArea value={kpi.source} onChange={v => patchKpi(idx, 'source', v)} onBlur={saveLatest} placeholder="מערכת, דוח, סקר..." style={{ fontSize: '13px' }} />
+                      </div>
+                      <div className="tp-kpi-field">
+                        <span style={fieldLabelStyle}>אחראי על המדד</span>
+                        <EditableArea value={kpi.owner} onChange={v => patchKpi(idx, 'owner', v)} onBlur={saveLatest} placeholder="שם האחראי..." style={{ fontSize: '13px' }} />
+                      </div>
+                    </div>
+
+                    {/* Delete */}
+                    <button
+                      className="tp-kpi-delete"
+                      onClick={() => deleteKpi(idx)}
+                      title="מחק מדד"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add KPI button */}
+            <button className="tp-kpi-add-btn" onClick={addKpi}>
+              <Plus size={13} />
+              הוסף מדד
+            </button>
+          </Section>
+        </>}
+
+        {/* SPEC — אפיון + חסמים וסיכונים merged */}
+        {activeSection === 'spec' && <>
+          <Section icon={FileText} title="אפיון">
+            <p className="tp-section-desc">איך יראה הפתרון? מה יסופק, מה מוסכם מראש, ואילו החלטות נדרשות.</p>
+            <div className="tp-grid-3">
+              <Field label="שם התהליך">
+                <EditableArea value={task.processName} onChange={v => patchLocal('processName', v)} onBlur={saveLatest} placeholder="שם התהליך..." />
+              </Field>
+              <Field label="מחלקה">
+                <EditableArea value={task.department} onChange={v => patchLocal('department', v)} onBlur={saveLatest} placeholder="שם המחלקה..." />
+              </Field>
+              <Field label="החלטות נדרשות">
+                <EditableArea value={task.requiredDecisions ?? ''} onChange={v => patchLocal('requiredDecisions', v)} onBlur={saveLatest} placeholder="מה צריך אישור לפני ההמשך? ידי מי?" minRows={1} />
+              </Field>
+              <Field label="פתרון מוצע" className="tp-span-full">
+                <EditableArea value={task.proposedSolution ?? ''} onChange={v => patchLocal('proposedSolution', v)} onBlur={saveLatest} placeholder="מה יבוצע? טכנולוגיה, תהליך חדש, שינוי נוהל..." minRows={3} />
+              </Field>
+              <Field label="תוצרים (Deliverables)" className="tp-span-2">
+                <EditableArea value={task.deliverables ?? ''} onChange={v => patchLocal('deliverables', v)} onBlur={saveLatest} placeholder="מה יימסר? — מערכת, דוח, הדרכה, נוהל..." minRows={2} />
+              </Field>
+              <Field label="הנחות">
+                <EditableArea value={task.assumptions ?? ''} onChange={v => patchLocal('assumptions', v)} onBlur={saveLatest} placeholder="תקציב, שיתוף פעולה, זמינות..." minRows={2} />
+              </Field>
+              <Field label="קריטריוני קבלה" className="tp-span-full">
+                <EditableArea value={task.acceptanceCriteria ?? ''} onChange={v => patchLocal('acceptanceCriteria', v)} onBlur={saveLatest} placeholder="מה צריך להתקיים? — איכות, ביצועים, שביעות רצון..." minRows={2} />
+              </Field>
+            </div>
+          </Section>
+
+          <div style={{ height: '12px' }} />
+
+          <Section icon={AlertTriangle} title="חסמים וסיכונים">
+            <p className="tp-section-desc">מה עלול לעכב את הצלחת הפרויקט? תיעוד מוקדם מאפשר הכנה ומיתוג.</p>
+            <div className="tp-grid-3">
+              <Field label="סיכונים / חסמים" className="tp-span-2">
+                <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="התנגדות צוות, מגבלות רגולטוריות, תקציב, מחסור כוח אדם..." minRows={2} />
+              </Field>
+              <Field label="נתיב הסלמה">
+                <EditableArea value={task.escalationPath ?? ''} onChange={v => patchLocal('escalationPath', v)} onBlur={saveLatest} placeholder="למי פונים אם הסיכון מתממש?" minRows={2} />
+              </Field>
+              <Field label="תלויות" className="tp-span-2">
+                <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="אגפים, מערכות IT, ספקים, אישורים..." minRows={2} />
+              </Field>
+              <Field label="קישורים">
+                <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
+              </Field>
+              <Field label="תוכנית מיתוג" className="tp-span-full">
+                <EditableArea value={task.mitigationPlan ?? ''} onChange={v => patchLocal('mitigationPlan', v)} onBlur={saveLatest} placeholder="צעדים קונקרטיים להפחתת כל סיכון או מחסום..." minRows={2} />
+              </Field>
+              {task.stakeholders.length > 0 && (
+                <Field label="בעלי עניין">
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', direction: 'rtl', marginTop: '4px' }}>
+                    {task.stakeholders.map((s, i) => (
+                      <span key={i} style={{ padding: '3px 10px', borderRadius: '20px', background: '#ede9fe', color: '#6d28d9', fontSize: '12px', fontWeight: '500' }}>{s}</span>
+                    ))}
+                  </div>
+                </Field>
+              )}
+            </div>
+          </Section>
+        </>}
 
         {/* TIMELINE */}
         {activeSection === 'timeline' && <Section
@@ -1587,6 +1820,15 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         {actions.length === 0 ? 'פעולות' : ''}
                       </button>
 
+                      {/* Delete milestone */}
+                      <button
+                        onClick={() => deleteMilestone(mIdx)}
+                        title="מחק אבן דרך"
+                        className="tp-milestone-delete-btn"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+
                     </div>{/* end milestone-hd */}
 
                     {/* ── Action items (visible when expanded) ── */}
@@ -1710,30 +1952,6 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         </Section>}
 
         {/* KPI */}
-        {activeSection === 'kpi' && <Section icon={BarChart2} title="מדדי הצלחה — KPI">
-          <p className="tp-section-desc">הגדר מדדים מדידים שיוכיחו הצלחה — ספציפיים, בני השגה, ומבוססי נתונים.</p>
-          <div className="tp-grid-4">
-            {([
-              { key: 'kpiName',            label: 'שם המדד',             placeholder: 'זמן המתנה / שיעור זיהומים / עמידה ב-SLA' },
-              { key: 'baseline',           label: 'בסיס — נקודת פתיחה', placeholder: 'ערך נוכחי לפני ההתערבות...' },
-              { key: 'target',             label: 'יעד (Target)',          placeholder: 'ערך יעד בתום הפרויקט...' },
-              { key: 'measurementCadence', label: 'תדירות מדידה',         placeholder: 'שבועי / חודשי / רבעוני' },
-              { key: 'sourceOfTruth',      label: 'מקור נתונים',         placeholder: 'מערכת, דוח, סקר...' },
-              { key: 'metricOwner',        label: 'אחראי על המדד',       placeholder: 'מי מוודא שהמדד נאסף ונותח?' },
-            ] as const).map(({ key, label, placeholder }) => (
-              <div key={key} className="tp-field-card">
-                <div style={fieldLabelStyle}>{label}</div>
-                <EditableArea
-                  value={task[key] || ''}
-                  onChange={v => patchLocal(key, v)}
-                  onBlur={saveLatest}
-                  placeholder={placeholder}
-                  style={{ fontSize: '13px', fontWeight: '500', color: '#1e293b' }}
-                />
-              </div>
-            ))}
-          </div>
-        </Section>}
 
         {/* PARTICIPANTS */}
         {activeSection === 'participants' && <Section icon={Users} title="משתתפים">
@@ -1854,36 +2072,6 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
         </Section>}
 
-        {/* RISKS */}
-        {activeSection === 'risks' && <Section icon={AlertTriangle} title="סיכונים ותלויות">
-          <p className="tp-section-desc">מה עלול לעכב את הצלחת הפרויקט? תיעוד מוקדם מאפשר הכנה ומיתוג.</p>
-          <div className="tp-grid-3">
-            <Field label="סיכונים / חסמים" className="tp-span-2">
-              <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="התנגדות צוות, מגבלות רגולטוריות, תקציב, מחסור כוח אדם..." minRows={2} />
-            </Field>
-            <Field label="נתיב הסלמה">
-              <EditableArea value={task.escalationPath ?? ''} onChange={v => patchLocal('escalationPath', v)} onBlur={saveLatest} placeholder="למי פונים אם הסיכון מתממש?" minRows={2} />
-            </Field>
-            <Field label="תלויות" className="tp-span-2">
-              <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="אגפים, מערכות IT, ספקים, אישורים..." minRows={2} />
-            </Field>
-            <Field label="קישורים">
-              <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
-            </Field>
-            <Field label="תוכנית מיתוג" className="tp-span-full">
-              <EditableArea value={task.mitigationPlan ?? ''} onChange={v => patchLocal('mitigationPlan', v)} onBlur={saveLatest} placeholder="צעדים קונקרטיים להפחתת כל סיכון או מחסום..." minRows={2} />
-            </Field>
-            {task.stakeholders.length > 0 && (
-              <Field label="בעלי עניין">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', direction: 'rtl', marginTop: '4px' }}>
-                  {task.stakeholders.map((s, i) => (
-                    <span key={i} style={{ padding: '3px 10px', borderRadius: '20px', background: '#ede9fe', color: '#6d28d9', fontSize: '12px', fontWeight: '500' }}>{s}</span>
-                  ))}
-                </div>
-              </Field>
-            )}
-          </div>
-        </Section>}
 
         {/* DISCUSSION — דיון */}
         {activeSection === 'discussion' && <Section
