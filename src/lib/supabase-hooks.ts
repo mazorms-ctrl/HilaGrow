@@ -46,7 +46,17 @@ export interface MedicalTask {
   // ── Timeline (ציר זמן) ────────────────────────────────────────
   startDate: string;
   dueDate: string;
-  milestones: Array<{ text: string; done: boolean; owner?: string; dueDate?: string; note?: string }>;
+  milestones: Array<{
+    text: string;
+    done: boolean;
+    assignedTo?: string;        // profile ID
+    dueDate?: string;           // ISO date string
+    actionItems?: Array<{
+      text: string;
+      done: boolean;
+      assignedTo?: string;      // profile ID
+    }>;
+  }>;
   
   // ── KPI (מדדי הצלחה) ──────────────────────────────────────────
   kpiName: string;
@@ -181,7 +191,16 @@ function dbRowToMedicalTask(
     dueDate: metadata.dueDate || '',
     milestones: milestones
       .sort((a, b) => a.order - b.order)
-      .map(m => ({ text: m.title, done: m.done })),
+      .map((m, i) => {
+        const extra = (metadata.milestoneExtras || [])[i] || {};
+        return {
+          text: m.title,
+          done: m.done,
+          assignedTo: extra.assignedTo as string | undefined,
+          dueDate: extra.dueDate as string | undefined,
+          actionItems: (extra.actionItems || []) as Array<{ text: string; done: boolean; assignedTo?: string }>,
+        };
+      }),
     
     // KPI
     kpiName: metadata.kpiName || '',
@@ -630,6 +649,17 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     
     // Status
     status: task.status,
+
+    // Milestone extras (assignedTo + actionItems per milestone, indexed by order)
+    milestoneExtras: task.milestones.map(m => ({
+      assignedTo: m.assignedTo ?? null,
+      dueDate: m.dueDate ?? null,
+      actionItems: (m.actionItems || []).map(a => ({
+        text: a.text,
+        done: a.done,
+        assignedTo: a.assignedTo ?? null,
+      })),
+    })),
   };
 
   const { data: updatedTask, error: taskError } = await supabase
@@ -668,7 +698,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     .order('order', { ascending: true });
 
   const incomingKey = task.milestones
-    .map((m, i) => `${i}|${m.text}|${m.done}`)
+    .map((m, i) => `${i}|${m.text}|${m.done}|${m.assignedTo ?? ''}`)
     .join('||');
   const existingKey = (currentMilestones || [])
     .map(m => `${m.order}|${m.title}|${m.done}`)

@@ -2,9 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
+  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon,
 } from 'lucide-react';
 import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment } from '@/lib/supabase-hooks';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Toast } from '../Toast';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -39,18 +41,19 @@ const NAV_ITEMS = [
 
 const cardStyle: React.CSSProperties = {
   background: '#ffffff',
-  borderRadius: '24px',
-  border: '1px solid #e2e8f0',
-  padding: '32px',
-  boxShadow: '0 2px 10px rgba(15,23,42,0.04)',
+  borderRadius: '16px',
+  border: '1px solid #edf0f4',
+  padding: '20px',
+  boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
 };
 
 const fieldLabelStyle: React.CSSProperties = {
-  fontSize: '12px',
-  fontWeight: '700',
-  color: '#64748b',
-  letterSpacing: '0.2px',
-  marginBottom: '8px',
+  fontSize: '11px',
+  fontWeight: '600',
+  color: '#94a3b8',
+  letterSpacing: '0.5px',
+  textTransform: 'uppercase',
+  marginBottom: '2px',
   direction: 'rtl',
   textAlign: 'right',
 };
@@ -59,11 +62,13 @@ const sectionHeadStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: '8px',
-  fontSize: '12px',
+  fontSize: '13px',
   fontWeight: '700',
-  color: '#64748b',
-  letterSpacing: '0.2px',
-  marginBottom: '20px',
+  color: '#475569',
+  letterSpacing: '0.1px',
+  marginBottom: '14px',
+  paddingBottom: '10px',
+  borderBottom: '1px solid #f1f5f9',
   direction: 'rtl',
   textAlign: 'right',
 };
@@ -116,25 +121,22 @@ function EditableArea({
   useEffect(() => {
     if (ref.current) {
       ref.current.style.height = 'auto';
-      ref.current.style.height = Math.max(ref.current.scrollHeight, minRows * 24) + 'px';
+      ref.current.style.height = Math.max(ref.current.scrollHeight, minRows * 22) + 'px';
     }
   }, [value, minRows]);
 
+  const state = focused ? 'focused' : hovered ? 'hovered' : 'idle';
+
   return (
-    <div style={{
-      borderRadius: '14px',
-      background: focused ? '#ffffff' : hovered ? '#f8fafc' : 'transparent',
-      border: `1px solid ${focused ? '#c7d2fe' : hovered ? '#e2e8f0' : 'transparent'}`,
-      padding: focused || hovered ? '10px 12px' : '2px 0',
-      transition: 'all 0.12s ease',
-      boxShadow: focused ? '0 0 0 3px rgba(99,102,241,0.08)' : 'none',
-    }}>
+    <div
+      className={`tp-editable tp-editable--${state}`}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+    >
       <textarea
         ref={ref}
         value={value}
         onChange={e => onChange(e.target.value)}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
         onFocus={() => setFocused(true)}
         onBlur={() => { setFocused(false); onBlur(); }}
         placeholder={placeholder}
@@ -147,9 +149,10 @@ function EditableArea({
           resize: 'none',
           overflow: 'hidden',
           fontFamily: 'inherit',
-          fontSize: '14px',
-          lineHeight: '1.8',
-          color: '#1e293b',
+          fontSize: '13.5px',
+          lineHeight: '1.75',
+          fontWeight: '400',
+          color: value ? '#1e293b' : '#94a3b8',
           direction: 'rtl',
           textAlign: 'right',
           padding: 0,
@@ -163,17 +166,18 @@ function EditableArea({
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
-function Section({ icon: Icon, title, badge, children, style }: {
+function Section({ icon: Icon, title, badge, children, style, iconColor }: {
   icon: React.ElementType;
   title: string;
   badge?: React.ReactNode;
   children: React.ReactNode;
   style?: React.CSSProperties;
+  iconColor?: string;
 }) {
   return (
     <section style={{ ...cardStyle, ...style }}>
       <div style={sectionHeadStyle}>
-        <Icon size={13} />
+        <Icon size={16} style={{ color: iconColor ?? '#94a3b8', flexShrink: 0 }} />
         {title}
         {badge}
       </div>
@@ -218,6 +222,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [participantSearch, setParticipantSearch] = useState('');
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
+  const [expandedMilestones, setExpandedMilestones] = useState<Set<number>>(new Set());
+  const [expandedOverviewCard, setExpandedOverviewCard] = useState<number | null>(null);
 
   // Always-current ref so onBlur handlers don't use stale closure values
   const taskRef = useRef<MedicalTask | null>(null);
@@ -293,6 +299,69 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     setLocalTask(updated);
     await save(updated);
   };
+
+  // ── Milestone field patch (assignedTo, text) ──────────────────────────────
+  const patchMilestone = useCallback(<K extends keyof MedicalTask['milestones'][0]>(
+    idx: number, key: K, value: MedicalTask['milestones'][0][K]
+  ) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const milestones = prev.milestones.map((m, i) =>
+        i === idx ? { ...m, [key]: value } : m
+      );
+      const updated = { ...prev, milestones };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  // ── Action item helpers ────────────────────────────────────────────────────
+  const addActionItem = useCallback((mIdx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const milestones = prev.milestones.map((m, i) => {
+        if (i !== mIdx) return m;
+        return { ...m, actionItems: [...(m.actionItems || []), { text: '', done: false }] };
+      });
+      const updated = { ...prev, milestones };
+      // auto-expand
+      setExpandedMilestones(s => new Set([...s, mIdx]));
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  const patchActionItem = useCallback((
+    mIdx: number, aIdx: number, key: 'text' | 'done' | 'assignedTo', value: string | boolean
+  ) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const milestones = prev.milestones.map((m, i) => {
+        if (i !== mIdx) return m;
+        const actionItems = (m.actionItems || []).map((a, j) =>
+          j === aIdx ? { ...a, [key]: value } : a
+        );
+        return { ...m, actionItems };
+      });
+      const updated = { ...prev, milestones };
+      if (key !== 'text') save(updated);    // text saves on blur
+      return updated;
+    });
+  }, [save]);
+
+  const deleteActionItem = useCallback((mIdx: number, aIdx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const milestones = prev.milestones.map((m, i) => {
+        if (i !== mIdx) return m;
+        const actionItems = (m.actionItems || []).filter((_, j) => j !== aIdx);
+        return { ...m, actionItems };
+      });
+      const updated = { ...prev, milestones };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
 
   // ── Comment submission ──────────────────────────────────────────────────────
   const handleSendComment = async () => {
@@ -374,23 +443,35 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       <style>{`
         @keyframes tpSpin   { to { transform: rotate(360deg); } }
         @keyframes tpFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-        .tp-grid {
+
+        /* ── Base grids (mobile-first) ── */
+        .tp-grid, .tp-grid-3, .tp-grid-4 {
           display: grid;
           grid-template-columns: minmax(0, 1fr);
-          gap: 20px;
+          gap: 12px;
         }
-        .tp-grid-compact {
-          display: grid;
-          grid-template-columns: minmax(0, 1fr);
-          gap: 16px;
+        .tp-span-full  { grid-column: 1 / -1; }
+        .tp-span-2     { grid-column: span 2; }
+
+        /* ── 520px+: 2 columns for all grids ── */
+        @media (min-width: 520px) {
+          .tp-grid   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tp-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tp-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
         }
-        .tp-span-full { grid-column: 1 / -1; }
+        /* ── 860px+: 3-col and 4-col unlock ── */
+        @media (min-width: 860px) {
+          .tp-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+          .tp-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+        }
+
+        /* ── Tab bar ── */
         .tp-tabbar {
           display: flex;
           align-items: center;
-          gap: 20px;
-          padding: 0 0 0;
-          margin-bottom: 20px;
+          gap: 18px;
+          padding: 0;
+          margin-bottom: 16px;
           border-bottom: 1px solid #e2e8f0;
           direction: rtl;
           flex-wrap: wrap;
@@ -399,24 +480,27 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           display: inline-flex;
           align-items: center;
           gap: 5px;
-          padding: 0 0 10px;
+          padding: 4px 8px 10px;
           border: none;
           border-bottom: 2px solid transparent;
           background: transparent;
           cursor: pointer;
           color: #64748b;
           font: inherit;
-          font-size: 13px;
+          font-size: 12.5px;
           font-weight: 500;
           white-space: nowrap;
-          transition: color 0.15s ease, border-color 0.15s ease;
+          border-radius: 6px 6px 0 0;
+          transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
         }
-        .tp-tab-button:hover { color: #334155; }
+        .tp-tab-button:hover { color: #334155; background: rgba(0,0,0,0.025); }
         .tp-tab-button[data-active="true"] {
           color: #4f46e5;
           font-weight: 700;
           border-bottom-color: #4f46e5;
         }
+
+        /* ── Ghost action buttons ── */
         .tp-ghost-btn {
           display: flex;
           align-items: center;
@@ -428,18 +512,364 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           background: transparent;
           cursor: pointer;
           color: #94a3b8;
+          transition: background 0.14s, color 0.14s, transform 0.14s, opacity 0.14s;
+          flex-shrink: 0;
+        }
+        .tp-ghost-btn:hover { background: #f1f5f9; color: #475569; transform: scale(1.08); }
+        .tp-ghost-btn.danger:hover { background: #fee2e2; color: #ef4444; transform: scale(1.08); }
+        .tp-ghost-btn:active { transform: scale(0.94); }
+
+        /* ── Field inner card (for KPI-style boxed fields) ── */
+        .tp-field-card {
+          background: #f8fafc;
+          border-radius: 10px;
+          border: 1px solid #eef2f7;
+          padding: 10px 12px;
+          direction: rtl;
+          text-align: right;
+          transition: border-color 0.14s, box-shadow 0.14s;
+        }
+        .tp-field-card:hover {
+          border-color: #e2e8f0;
+          box-shadow: 0 1px 4px rgba(15,23,42,0.06);
+        }
+
+        /* ── Management Overview ── */
+        .tp-overview {
+          background: white;
+          border-radius: 14px;
+          border: 1px solid #edf0f4;
+          padding: 12px 16px;
+          margin-bottom: 14px;
+          box-shadow: 0 1px 5px rgba(15,23,42,0.04);
+          direction: rtl;
+        }
+        .tp-progress-bar-track {
+          height: 5px;
+          background: #f1f5f9;
+          border-radius: 99px;
+          overflow: hidden;
+          flex: 1;
+        }
+        .tp-progress-bar-fill {
+          height: 100%;
+          border-radius: 99px;
+          transition: width 0.4s ease;
+        }
+        .tp-done-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px;
+          border-radius: 20px;
+          background: #f0fdf4;
+          border: 1px solid #d1fae5;
+          color: #059669;
+          font-size: 11px;
+          font-weight: 500;
+          white-space: nowrap;
+          text-decoration: line-through;
+          text-decoration-color: #6ee7b7;
+        }
+        /* ── Active milestone card ── */
+        .tp-active-card {
+          display: flex;
+          flex-direction: column;
+          border-radius: 9px;
+          background: #ffffff;
+          border: 1px solid #edf0f4;
+          box-shadow: 0 1px 2px rgba(15,23,42,0.05);
+          width: 118px;
+          flex-shrink: 0;
+          transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+          cursor: pointer;
+          overflow: hidden;
+        }
+        .tp-active-card:hover {
+          border-color: #c7d2fe;
+          box-shadow: 0 3px 10px rgba(99,102,241,0.10);
+          transform: translateY(-1px);
+        }
+        .tp-active-card.overdue { border-color: #fecaca; background: #fff9f9; }
+        .tp-active-card.overdue:hover { border-color: #fca5a5; box-shadow: 0 3px 10px rgba(239,68,68,0.10); }
+
+        /* Card header strip */
+        .tp-card-head {
+          padding: 7px 9px 5px;
+          border-bottom: 1px solid #f4f6f9;
+        }
+        .tp-active-card.overdue .tp-card-head { border-bottom-color: #fee2e2; }
+
+        /* Card body */
+        .tp-card-body {
+          padding: 4px 9px 7px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        /* Thin scrollbar for the בעבודה row */
+        .tp-cards-scroll {
+          display: flex;
+          align-items: flex-start;
+          gap: 7px;
+          overflow-x: auto;
+          padding-bottom: 4px;
+          scrollbar-width: thin;
+          scrollbar-color: #e2e8f0 transparent;
+        }
+        .tp-cards-scroll::-webkit-scrollbar { height: 3px; }
+        .tp-cards-scroll::-webkit-scrollbar-track { background: transparent; }
+        .tp-cards-scroll::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 99px; }
+
+        /* ── Milestone Modal (portal) ── */
+        @keyframes tpModalIn {
+          from { opacity: 0; transform: scale(0.96) translateY(8px); }
+          to   { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        .tp-modal-backdrop {
+          position: fixed;
+          inset: 0;
+          background: rgba(15,23,42,0.35);
+          backdrop-filter: blur(2px);
+          z-index: 1000;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 16px;
+          animation: tpFadeIn 0.15s ease both;
+        }
+        .tp-modal {
+          background: #ffffff;
+          border-radius: 18px;
+          box-shadow: 0 24px 60px rgba(15,23,42,0.18);
+          width: 100%;
+          max-width: 480px;
+          max-height: 80vh;
+          display: flex;
+          flex-direction: column;
+          direction: rtl;
+          overflow: hidden;
+          animation: tpModalIn 0.18s ease both;
+        }
+        .tp-modal-header {
+          padding: 18px 20px 14px;
+          border-bottom: 1px solid #f1f5f9;
+          flex-shrink: 0;
+        }
+        .tp-modal-body {
+          overflow-y: auto;
+          flex: 1;
+          padding: 0;
+        }
+        .tp-modal-action-row {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 20px;
+          border-bottom: 1px solid #f8fafc;
+          direction: rtl;
+          transition: background 0.12s;
+        }
+        .tp-modal-action-row:last-child { border-bottom: none; }
+        .tp-modal-action-row:hover { background: #f8fafc; }
+        .tp-modal-empty {
+          padding: 28px 20px;
+          text-align: center;
+          color: #94a3b8;
+          font-size: 13px;
+        }
+        .tp-modal-footer {
+          padding: 12px 20px;
+          border-top: 1px solid #f1f5f9;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          flex-shrink: 0;
+          gap: 8px;
+        }
+
+        /* ── Section description ── */
+        .tp-section-desc {
+          font-size: 12px;
+          color: #94a3b8;
+          margin: 0 0 12px 0;
+          direction: rtl;
+          text-align: right;
+          line-height: 1.6;
+        }
+
+        /* ── Outcome tab — subtle indigo pill ── */
+        .tp-tab-button.outcome-tab {
+          color: #6366f1;
+          background: rgba(99,102,241,0.06);
+        }
+        .tp-tab-button.outcome-tab:hover {
+          background: rgba(99,102,241,0.10);
+          color: #4f46e5;
+        }
+        .tp-tab-button.outcome-tab[data-active="true"] {
+          color: #4338ca;
+          background: rgba(99,102,241,0.10);
+          border-bottom-color: #4338ca;
+        }
+
+        /* ── Inline editable fields ── */
+        .tp-editable {
+          border-radius: 7px;
+          padding: 4px 8px;
+          border: 1px solid transparent;
+          background: transparent;
+          transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+          cursor: text;
+        }
+        .tp-editable--hovered {
+          background: #f8fafc;
+          border-color: #e8edf3;
+        }
+        .tp-editable--focused {
+          background: #ffffff;
+          border-color: #a5b4fc;
+          box-shadow: 0 0 0 3px rgba(99,102,241,0.09);
+        }
+
+        /* ── Milestone rows ── */
+        .tp-milestone-row {
+          border-radius: 10px;
+          border: 1px solid #e8edf3;
+          background: #ffffff;
+          transition: border-color 0.14s, box-shadow 0.14s;
+          overflow: hidden;
+        }
+        .tp-milestone-row:hover { border-color: #c7d2fe; box-shadow: 0 1px 6px rgba(99,102,241,0.07); }
+        .tp-milestone-row.done { border-color: #d1fae5; background: #f9fffe; }
+
+        /* ── Milestone header ── */
+        .tp-milestone-hd {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 14px;
+          direction: rtl;
+          cursor: default;
+        }
+
+        /* ── Action item rows ── */
+        .tp-action-row {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 6px 14px 6px 14px;
+          border-top: 1px solid #f1f5f9;
+          direction: rtl;
+          background: #fafbfc;
+          transition: background 0.12s;
+        }
+        .tp-action-row:hover { background: #f4f6f9; }
+        .tp-action-row.done-action textarea { text-decoration: line-through; color: #94a3b8 !important; }
+
+        /* ── Assignee avatar pill ── */
+        .tp-assignee-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 4px;
+          padding: 2px 8px 2px 4px;
+          border-radius: 20px;
+          background: #ede9fe;
+          color: #6d28d9;
+          font-size: 11px;
+          font-weight: 600;
+          white-space: nowrap;
+          cursor: pointer;
+          border: none;
+          font-family: inherit;
+          transition: background 0.12s;
+          flex-shrink: 0;
+        }
+        .tp-assignee-pill:hover { background: #ddd6fe; }
+        .tp-assignee-pill.unassigned {
+          background: #f1f5f9;
+          color: #94a3b8;
+        }
+        .tp-assignee-pill.unassigned:hover { background: #e2e8f0; color: #64748b; }
+
+        /* ── Assignee dropdown ── */
+        .tp-assignee-select {
+          appearance: none;
+          -webkit-appearance: none;
+          border: none;
+          background: transparent;
+          font-family: inherit;
+          font-size: 11px;
+          font-weight: 600;
+          color: inherit;
+          cursor: pointer;
+          outline: none;
+          max-width: 110px;
+          direction: rtl;
+        }
+
+        /* ── Add action button ── */
+        .tp-add-action-btn {
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          padding: 6px 14px;
+          border-top: 1px solid #f1f5f9;
+          background: transparent;
+          border-right: none;
+          border-left: none;
+          border-bottom: none;
+          width: 100%;
+          cursor: pointer;
+          font-family: inherit;
+          font-size: 11.5px;
+          color: #94a3b8;
+          direction: rtl;
+          text-align: right;
+          transition: background 0.12s, color 0.12s;
+        }
+        .tp-add-action-btn:hover { background: #f8fafc; color: #6366f1; }
+
+        /* ── Expand toggle ── */
+        .tp-expand-btn {
+          display: flex; align-items: center; gap: 4px;
+          padding: 2px 6px; border-radius: 6px;
+          border: none; background: transparent;
+          cursor: pointer; color: #94a3b8; font-size: 11px;
+          font-family: inherit; font-weight: 600;
           transition: background 0.12s, color 0.12s;
           flex-shrink: 0;
         }
-        .tp-ghost-btn:hover { background: #f1f5f9; color: #475569; }
-        .tp-ghost-btn.danger:hover { background: #fee2e2; color: #ef4444; }
-        @media (min-width: 768px) {
-          .tp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-          .tp-grid-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .tp-expand-btn:hover { background: #f1f5f9; color: #475569; }
+
+        /* ── Checkbox ── */
+        .tp-check {
+          appearance: none;
+          -webkit-appearance: none;
+          width: 16px; height: 16px;
+          border-radius: 4px;
+          border: 1.5px solid #cbd5e1;
+          background: white;
+          cursor: pointer;
+          flex-shrink: 0;
+          position: relative;
+          transition: border-color 0.12s, background 0.12s;
         }
-        @media (min-width: 1280px) {
-          .tp-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        .tp-check:checked {
+          background: #10b981;
+          border-color: #10b981;
         }
+        .tp-check:checked::after {
+          content: '';
+          position: absolute;
+          left: 3px; top: 1px;
+          width: 5px; height: 8px;
+          border: 2px solid white;
+          border-top: none; border-left: none;
+          transform: rotate(45deg);
+        }
+        .tp-check:hover:not(:checked) { border-color: #6366f1; }
       `}</style>
 
       {/* ── Compact internal header: breadcrumb + title + actions ────────────── */}
@@ -611,6 +1041,247 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         </span>
       </div>
 
+      {/* ── Management Overview ─────────────────────────────────────────────── */}
+      {task.milestones.length > 0 && (() => {
+        const done = task.milestones.filter(m => m.done);
+        const active = task.milestones.filter(m => !m.done);
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const pct = task.progress;
+        const barColor = pct === 100 ? '#10b981' : pct >= 60 ? '#6366f1' : pct >= 30 ? '#f59e0b' : '#f87171';
+
+        return (
+          <div className="tp-overview">
+
+            {/* Progress row */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: done.length > 0 || active.length > 0 ? '10px' : '0' }}>
+              <span style={{ fontSize: '10.5px', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.4px', textTransform: 'uppercase', flexShrink: 0 }}>
+                התקדמות
+              </span>
+              <div className="tp-progress-bar-track">
+                <div className="tp-progress-bar-fill" style={{ width: `${pct}%`, background: barColor }} />
+              </div>
+              <span style={{ fontSize: '11.5px', fontWeight: '700', color: barColor, flexShrink: 0, minWidth: '30px', textAlign: 'left' }}>
+                {pct}%
+              </span>
+            </div>
+
+            {/* Completed badges */}
+            {done.length > 0 && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: active.length > 0 ? '8px' : '0' }}>
+                <span style={{ fontSize: '10.5px', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.4px', textTransform: 'uppercase', flexShrink: 0 }}>
+                  הושלמו:
+                </span>
+                {done.map((m, i) => (
+                  <span key={i} className="tp-done-badge">
+                    <CheckCircle2 size={10} />
+                    {m.text || `אבן דרך ${i + 1}`}
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {/* Active milestone cards */}
+            {active.length > 0 && (
+              <div className="tp-cards-scroll">
+                <span style={{ fontSize: '10px', fontWeight: '700', color: '#94a3b8', letterSpacing: '0.5px', textTransform: 'uppercase', flexShrink: 0, paddingTop: '6px' }}>
+                  בעבודה:
+                </span>
+                {active.map((m, i) => {
+                  const mIdx = task.milestones.indexOf(m);
+                  const assignee = m.assignedTo ? profiles.find(p => p.id === m.assignedTo) : null;
+                  const assigneeName = assignee ? (assignee.full_name || assignee.email || '').split(' ')[0] : null;
+                  const due = m.dueDate ? new Date(m.dueDate) : null;
+                  const isOverdue = due ? due < today : false;
+                  const dueFmt = due ? due.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : null;
+                  const actions = m.actionItems || [];
+                  const actionsDone = actions.filter(a => a.done).length;
+
+                  return (
+                    <div
+                      key={mIdx}
+                      className={`tp-active-card${isOverdue ? ' overdue' : ''}`}
+                      onClick={() => setExpandedOverviewCard(mIdx)}
+                    >
+                      {/* Header: name */}
+                      <div className="tp-card-head">
+                        <span style={{ fontSize: '11.5px', fontWeight: '500', color: '#334155', lineHeight: '1.35', display: 'block', wordBreak: 'break-word' }}>
+                          {m.text || `אבן דרך ${i + 1}`}
+                        </span>
+                        {/* Mini progress bar — only when action items exist */}
+                        {actions.length > 0 && (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '4px' }}>
+                            <div style={{ flex: 1, height: '2px', borderRadius: '99px', background: '#f1f5f9', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', borderRadius: '99px', background: actionsDone === actions.length ? '#10b981' : '#6366f1', width: `${Math.round((actionsDone / actions.length) * 100)}%`, transition: 'width 0.3s' }} />
+                            </div>
+                            <span style={{ fontSize: '9.5px', color: '#94a3b8', flexShrink: 0 }}>{actionsDone}/{actions.length}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Body: date + assignee on one row, status below */}
+                      <div className="tp-card-body">
+                        {/* Date & assignee row */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                          {dueFmt && (
+                            <span style={{ fontSize: '10px', color: isOverdue ? '#ef4444' : '#94a3b8' }}>
+                              {dueFmt}
+                            </span>
+                          )}
+                          {assigneeName && dueFmt && <span style={{ fontSize: '9px', color: '#cbd5e1' }}>·</span>}
+                          {assigneeName && (
+                            <span style={{ fontSize: '10px', color: '#94a3b8' }}>{assigneeName}</span>
+                          )}
+                        </div>
+                        {/* Status */}
+                        <span style={{ fontSize: '10px', color: isOverdue ? '#ef4444' : '#94a3b8', fontWeight: isOverdue ? '600' : '400' }}>
+                          {isOverdue ? 'בפיגור' : 'בזמן'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+          </div>
+        );
+      })()}
+
+      {/* ── Milestone modal (portal to body) ────────────────────────────────── */}
+      {expandedOverviewCard !== null && (() => {
+        const m = task.milestones[expandedOverviewCard];
+        if (!m) return null;
+        const mIdx = expandedOverviewCard;
+        const actions = m.actionItems || [];
+        const actionsDone = actions.filter(a => a.done).length;
+        const due = m.dueDate ? new Date(m.dueDate) : null;
+        const today2 = new Date(); today2.setHours(0,0,0,0);
+        const isOverdue = due ? due < today2 : false;
+        const dueFmt = due ? due.toLocaleDateString('he-IL', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+        const assignee = m.assignedTo ? profiles.find(p => p.id === m.assignedTo) : null;
+        const assigneeName = assignee ? (assignee.full_name || assignee.email) : null;
+
+        return createPortal(
+          <div
+            className="tp-modal-backdrop"
+            onClick={() => setExpandedOverviewCard(null)}
+          >
+            <div className="tp-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true">
+
+              {/* ── Modal header ── */}
+              <div className="tp-modal-header">
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '12px' }}>
+                  <div style={{ flex: 1 }}>
+                    <h2 style={{ margin: '0 0 6px', fontSize: '16px', fontWeight: '700', color: '#0f172a', lineHeight: '1.3' }}>
+                      {m.text || 'אבן דרך'}
+                    </h2>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                      {/* Status badge */}
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', fontWeight: isOverdue ? '700' : '500', color: isOverdue ? '#dc2626' : '#10b981' }}>
+                        {isOverdue ? <AlertOctagon size={13} /> : <CheckCircle2 size={13} />}
+                        {isOverdue ? 'בפיגור' : 'בזמן'}
+                      </span>
+                      {/* Due date */}
+                      {dueFmt && (
+                        <span style={{ fontSize: '12px', color: isOverdue ? '#ef4444' : '#64748b' }}>
+                          יעד: {dueFmt}
+                        </span>
+                      )}
+                      {/* Assignee */}
+                      {assigneeName && (
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#6366f1' }}>
+                          <UserCircle2 size={13} />
+                          {assigneeName}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {/* Close button */}
+                  <button
+                    onClick={() => setExpandedOverviewCard(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '2px', borderRadius: '6px', flexShrink: 0, lineHeight: 1 }}
+                    onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#475569'; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#94a3b8'; }}
+                    aria-label="סגור"
+                  >
+                    <span style={{ fontSize: '18px', lineHeight: 1 }}>×</span>
+                  </button>
+                </div>
+
+                {/* Action items overall bar */}
+                {actions.length > 0 && (
+                  <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div style={{ flex: 1, height: '4px', borderRadius: '99px', background: '#f1f5f9', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', borderRadius: '99px', transition: 'width 0.35s', background: actionsDone === actions.length ? '#10b981' : '#6366f1', width: `${Math.round((actionsDone / actions.length) * 100)}%` }} />
+                    </div>
+                    <span style={{ fontSize: '11px', fontWeight: '600', color: actionsDone === actions.length ? '#10b981' : '#6366f1', flexShrink: 0 }}>
+                      {actionsDone} / {actions.length} הושלמו
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Modal body: action items list ── */}
+              <div className="tp-modal-body">
+                {actions.length === 0 ? (
+                  <div className="tp-modal-empty">
+                    <ListChecks size={28} style={{ color: '#cbd5e1', margin: '0 auto 10px', display: 'block' }} />
+                    אין תתי-משימות לאבן דרך זו
+                  </div>
+                ) : (
+                  actions.map((a, aIdx) => {
+                    const ap = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
+                    const apName = ap ? (ap.full_name || ap.email || '').split(' ')[0] : null;
+                    return (
+                      <div key={aIdx} className="tp-modal-action-row">
+                        <input
+                          type="checkbox"
+                          className="tp-check"
+                          checked={a.done}
+                          onChange={e => patchActionItem(mIdx, aIdx, 'done', e.target.checked)}
+                        />
+                        <span style={{ flex: 1, fontSize: '13.5px', lineHeight: '1.45', color: a.done ? '#94a3b8' : '#1e293b', textDecoration: a.done ? 'line-through' : 'none' }}>
+                          {a.text || 'פעולה ללא שם'}
+                        </span>
+                        {apName && (
+                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', color: '#6366f1', fontWeight: '500', flexShrink: 0, background: '#ede9fe', padding: '2px 7px', borderRadius: '20px' }}>
+                            <UserCircle2 size={11} />
+                            {apName}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* ── Modal footer ── */}
+              <div className="tp-modal-footer">
+                <button
+                  onClick={() => { switchTab('timeline'); setExpandedMilestones(s => new Set([...s, mIdx])); setExpandedOverviewCard(null); }}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: '600', color: '#6366f1', cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, border-color 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; e.currentTarget.style.borderColor = '#a5b4fc'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
+                >
+                  <ListChecks size={13} />
+                  פתח בציר הזמן
+                </button>
+                <button
+                  onClick={() => setExpandedOverviewCard(null)}
+                  style={{ padding: '7px 16px', borderRadius: '8px', border: 'none', background: '#f1f5f9', fontSize: '12px', fontWeight: '600', color: '#475569', cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#e2e8f0'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = '#f1f5f9'; }}
+                >
+                  סגור
+                </button>
+              </div>
+
+            </div>
+          </div>,
+          document.body
+        );
+      })()}
+
       {/* ── Tab bar ──────────────────────────────────────────────────────────── */}
       <nav className="tp-tabbar">
         {NAV_ITEMS.map(({ id, Icon, label }) => {
@@ -619,7 +1290,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
             <button
               key={id}
               onClick={() => switchTab(id)}
-              className="tp-tab-button"
+              className={`tp-tab-button${id === 'outcome' ? ' outcome-tab' : ''}`}
               data-active={active}
             >
               <Icon size={12} />
@@ -634,145 +1305,61 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         {/* FOUNDATIONS — יסודות */}
         {activeSection === 'foundations' && <Section icon={BookOpen} title="יסודות">
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 18px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.7' }}>
-            בסיס הפרויקט: מהי הבעיה, למי הפתרון מיועד, ומה מצפים להשיג? הגדרת יסודות ברורים מבטיחה התאמה בין כל השותפים.
-          </p>
-          <div className="tp-grid tp-grid-3">
+          <p className="tp-section-desc">בסיס הפרויקט: מהי הבעיה, למי הפתרון מיועד, ומה מצפים להשיג?</p>
+          <div className="tp-grid-3">
             <Field label="תיאור כללי" className="tp-span-full">
-              <EditableArea
-                value={task.description}
-                onChange={v => patchLocal('description', v)}
-                onBlur={saveLatest}
-                placeholder="תאר בקצרה את הפרויקט — מה מתבצע, בידי מי, ובאיזה הקשר?"
-                minRows={2}
-              />
+              <EditableArea value={task.description} onChange={v => patchLocal('description', v)} onBlur={saveLatest} placeholder="תאר בקצרה את הפרויקט — מה מתבצע, בידי מי, ובאיזה הקשר?" minRows={2} />
             </Field>
             <Field label="בעיה / הזדמנות" className="tp-span-full">
-              <EditableArea
-                value={task.problemStatement}
-                onChange={v => patchLocal('problemStatement', v)}
-                onBlur={saveLatest}
-                placeholder="מהו הכשל, הבזבוז, העיכוב או הסיכון שמניע את הפרויקט?"
-                minRows={2}
-              />
+              <EditableArea value={task.problemStatement} onChange={v => patchLocal('problemStatement', v)} onBlur={saveLatest} placeholder="מהו הכשל, הבזבוז, העיכוב או הסיכון שמניע את הפרויקט?" minRows={2} />
             </Field>
-            <Field label="מטרה" className="tp-span-full">
-              <EditableArea
-                value={task.goal}
-                onChange={v => patchLocal('goal', v)}
-                onBlur={saveLatest}
-                placeholder="מה ישתנה בסיום? הגדר תוצאה מדידה — למשל: צמצום זמן המתנה ב-30%, הפחתת שגיאות ב-20%."
-                minRows={2}
-              />
+            <Field label="מטרה" className="tp-span-2">
+              <EditableArea value={task.goal} onChange={v => patchLocal('goal', v)} onBlur={saveLatest} placeholder="מה ישתנה בסיום? הגדר תוצאה מדידה — למשל: צמצום זמן המתנה ב-30%." minRows={2} />
             </Field>
             <Field label="קהל יעד">
-              <EditableArea
-                value={task.targetAudience}
-                onChange={v => patchLocal('targetAudience', v)}
-                onBlur={saveLatest}
-                placeholder="למי הפרויקט מיועד? אילו מחלקות, תפקידים, או מטופלים יושפעו ישירות?"
-                minRows={1}
-              />
-            </Field>
-            <Field label="השפעה רצויה" className="tp-span-full">
-              <EditableArea
-                value={task.desiredImpact}
-                onChange={v => patchLocal('desiredImpact', v)}
-                onBlur={saveLatest}
-                placeholder="מה היתרון המיידי או ארוך הטווח? — יעילות, איכות, חוויית מטופל, חיסכון, בטיחות..."
-                minRows={2}
-              />
+              <EditableArea value={task.targetAudience} onChange={v => patchLocal('targetAudience', v)} onBlur={saveLatest} placeholder="מחלקות, תפקידים, מטופלים..." minRows={2} />
             </Field>
             <Field label="היקף (Scope)">
-              <EditableArea
-                value={task.scope}
-                onChange={v => patchLocal('scope', v)}
-                onBlur={saveLatest}
-                placeholder="מה נכלל בפרויקט?"
-                minRows={2}
-              />
+              <EditableArea value={task.scope} onChange={v => patchLocal('scope', v)} onBlur={saveLatest} placeholder="מה נכלל בפרויקט?" minRows={2} />
             </Field>
-            <Field label="מחוץ להיקף (Out of Scope)">
-              <EditableArea
-                value={task.outOfScope}
-                onChange={v => patchLocal('outOfScope', v)}
-                onBlur={saveLatest}
-                placeholder="מה לא נכלל? רשום הנחות או מגבלות."
-                minRows={2}
-              />
+            <Field label="מחוץ להיקף">
+              <EditableArea value={task.outOfScope} onChange={v => patchLocal('outOfScope', v)} onBlur={saveLatest} placeholder="מה לא נכלל?" minRows={2} />
+            </Field>
+            <Field label="השפעה רצויה">
+              <EditableArea value={task.desiredImpact} onChange={v => patchLocal('desiredImpact', v)} onBlur={saveLatest} placeholder="יעילות, איכות, חוויית מטופל, חיסכון..." minRows={2} />
             </Field>
             <Field label="הגדרת הצלחה" className="tp-span-full">
-              <EditableArea
-                value={task.successDefinition}
-                onChange={v => patchLocal('successDefinition', v)}
-                onBlur={saveLatest}
-                placeholder="כיצד נדע שהפרויקט הצליח? קריטריונים ברורים להשגת המטרה."
-                minRows={2}
-              />
+              <EditableArea value={task.successDefinition} onChange={v => patchLocal('successDefinition', v)} onBlur={saveLatest} placeholder="כיצד נדע שהפרויקט הצליח? קריטריונים ברורים." minRows={2} />
             </Field>
           </div>
         </Section>}
 
         {/* CURRENT STATE */}
         {activeSection === 'current-state' && <Section icon={Activity} title="מצב נוכחי — נקודת האפס">
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
-            תיעוד שיטתי של המצב לפני ההתערבות. נתונים אלו ישמשו למדידת שיפור ולהוכחת הצלחה.
-          </p>
-          <div className="tp-grid tp-grid-3">
+          <p className="tp-section-desc">תיעוד שיטתי של המצב לפני ההתערבות. נתונים אלו ישמשו למדידת שיפור.</p>
+          <div className="tp-grid-3">
             <Field label="קו בסיס" className="tp-span-full">
-              <EditableArea
-                value={task.currentState}
-                onChange={v => patchLocal('currentState', v)}
-                onBlur={saveLatest}
-                placeholder={'מהו קו הבסיס התפעולי לפני ההתערבות?\n• זמן המתנה ממוצע: ___ דקות\n• תפוסה: ___\n• שגיאות לחודש: ___\n• מערכות קיימות: ...'}
-                minRows={3}
-              />
+              <EditableArea value={task.currentState} onChange={v => patchLocal('currentState', v)} onBlur={saveLatest} placeholder={'מהו קו הבסיס התפעולי?\n• זמן המתנה ממוצע: ___ דקות\n• תפוסה: ___\n• שגיאות לחודש: ___'} minRows={3} />
             </Field>
-            <Field label="נקודות כאב" className="tp-span-full">
-              <EditableArea
-                value={task.painPoints}
-                onChange={v => patchLocal('painPoints', v)}
-                onBlur={saveLatest}
-                placeholder="מה לא עובד היום? תאר תסכולים, עיכובים, שגיאות, או בזבוז שמתרחשים באופן קבוע."
-                minRows={2}
-              />
+            <Field label="נקודות כאב" className="tp-span-2">
+              <EditableArea value={task.painPoints} onChange={v => patchLocal('painPoints', v)} onBlur={saveLatest} placeholder="מה לא עובד היום? תסכולים, עיכובים, שגיאות..." minRows={2} />
             </Field>
             <Field label="אילוצים">
-              <EditableArea
-                value={task.constraints}
-                onChange={v => patchLocal('constraints', v)}
-                onBlur={saveLatest}
-                placeholder="מגבלות קיימות — תקציב, כוח אדם, טכנולוגיה, רגולציה, תרבות ארגונית..."
-                minRows={2}
-              />
+              <EditableArea value={task.constraints} onChange={v => patchLocal('constraints', v)} onBlur={saveLatest} placeholder="תקציב, כוח אדם, רגולציה, תרבות..." minRows={2} />
             </Field>
-            <Field label="תהליכים / מערכות קיימות" className="tp-span-full">
-              <EditableArea
-                value={task.existingProcess}
-                onChange={v => patchLocal('existingProcess', v)}
-                onBlur={saveLatest}
-                placeholder="כיצד נעשה היום? תאר תהליכים, כלים, או נהלים פעילים שצריך להתחשב בהם."
-                minRows={2}
-              />
+            <Field label="תהליכים / מערכות קיימות" className="tp-span-2">
+              <EditableArea value={task.existingProcess} onChange={v => patchLocal('existingProcess', v)} onBlur={saveLatest} placeholder="כיצד נעשה היום? כלים ונהלים פעילים." minRows={2} />
             </Field>
-            <Field label="ראיות / נתונים" className="tp-span-full">
-              <EditableArea
-                value={task.evidence}
-                onChange={v => patchLocal('evidence', v)}
-                onBlur={saveLatest}
-                placeholder="קישורים לדוחות, דשבורדים, סקרים, או צילומי מסך שמתעדים את המצב הנוכחי."
-                minRows={1}
-              />
+            <Field label="ראיות / נתונים">
+              <EditableArea value={task.evidence} onChange={v => patchLocal('evidence', v)} onBlur={saveLatest} placeholder="דוחות, דשבורדים, סקרים..." minRows={2} />
             </Field>
           </div>
         </Section>}
 
         {/* SPEC */}
         {activeSection === 'spec' && <Section icon={FileText} title="אפיון">
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
-            איך בדיוק יראה הפתרון? מה יסופק, מה מוסכם מראש, ואילו החלטות נדרשות.
-          </p>
-          <div className="tp-grid tp-grid-3">
+          <p className="tp-section-desc">איך יראה הפתרון? מה יסופק, מה מוסכם מראש, ואילו החלטות נדרשות.</p>
+          <div className="tp-grid-3">
             <Field label="שם התהליך">
               <EditableArea value={task.processName} onChange={v => patchLocal('processName', v)} onBlur={saveLatest} placeholder="שם התהליך..." />
             </Field>
@@ -780,49 +1367,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <EditableArea value={task.department} onChange={v => patchLocal('department', v)} onBlur={saveLatest} placeholder="שם המחלקה..." />
             </Field>
             <Field label="החלטות נדרשות">
-              <EditableArea
-                value={task.requiredDecisions}
-                onChange={v => patchLocal('requiredDecisions', v)}
-                onBlur={saveLatest}
-                placeholder="מה צריך להיות מאושר לפני שממשיכים? ידי מי?"
-                minRows={1}
-              />
+              <EditableArea value={task.requiredDecisions} onChange={v => patchLocal('requiredDecisions', v)} onBlur={saveLatest} placeholder="מה צריך אישור לפני ההמשך? ידי מי?" minRows={1} />
             </Field>
             <Field label="פתרון מוצע" className="tp-span-full">
-              <EditableArea
-                value={task.proposedSolution}
-                onChange={v => patchLocal('proposedSolution', v)}
-                onBlur={saveLatest}
-                placeholder="מה יבוצע? תאר בפירוט את הפתרון — טכנולוגיה, תהליך חדש, שינוי נוהל..."
-                minRows={3}
-              />
+              <EditableArea value={task.proposedSolution} onChange={v => patchLocal('proposedSolution', v)} onBlur={saveLatest} placeholder="מה יבוצע? טכנולוגיה, תהליך חדש, שינוי נוהל..." minRows={3} />
             </Field>
-            <Field label="תוצרים (Deliverables)" className="tp-span-full">
-              <EditableArea
-                value={task.deliverables}
-                onChange={v => patchLocal('deliverables', v)}
-                onBlur={saveLatest}
-                placeholder="מה יימסר? — מערכת, דוח, הדרכה, נוהל, אב-טיפוס..."
-                minRows={2}
-              />
+            <Field label="תוצרים (Deliverables)" className="tp-span-2">
+              <EditableArea value={task.deliverables} onChange={v => patchLocal('deliverables', v)} onBlur={saveLatest} placeholder="מה יימסר? — מערכת, דוח, הדרכה, נוהל..." minRows={2} />
             </Field>
-            <Field label="הנחות" className="tp-span-full">
-              <EditableArea
-                value={task.assumptions}
-                onChange={v => patchLocal('assumptions', v)}
-                onBlur={saveLatest}
-                placeholder="על מה מסתמכים? — תקציב, שיתוף פעולה, זמינות משאבים..."
-                minRows={2}
-              />
+            <Field label="הנחות">
+              <EditableArea value={task.assumptions} onChange={v => patchLocal('assumptions', v)} onBlur={saveLatest} placeholder="תקציב, שיתוף פעולה, זמינות..." minRows={2} />
             </Field>
             <Field label="קריטריוני קבלה" className="tp-span-full">
-              <EditableArea
-                value={task.acceptanceCriteria}
-                onChange={v => patchLocal('acceptanceCriteria', v)}
-                onBlur={saveLatest}
-                placeholder="מה צריך להתקיים כדי לאשר את התוצר? — תבדקי איכות, ביצועים, שביעות רצון..."
-                minRows={2}
-              />
+              <EditableArea value={task.acceptanceCriteria} onChange={v => patchLocal('acceptanceCriteria', v)} onBlur={saveLatest} placeholder="מה צריך להתקיים? — איכות, ביצועים, שביעות רצון..." minRows={2} />
             </Field>
           </div>
         </Section>}
@@ -848,57 +1405,228 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {task.milestones.map((m, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => toggleMilestone(idx)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '12px',
-                    padding: '12px 16px', borderRadius: '10px',
-                    border: `1px solid ${m.done ? '#d1fae5' : '#e2e8f0'}`,
-                    background: m.done ? '#f0fdf4' : '#f8fafc',
-                    cursor: 'pointer', textAlign: 'right',
-                    fontFamily: 'inherit', direction: 'rtl',
-                    transition: 'all 0.15s', width: '100%',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = m.done ? '#6ee7b7' : '#c7d2fe'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = m.done ? '#d1fae5' : '#e2e8f0'; }}
-                >
-                  {m.done
-                    ? <CheckCircle2 size={18} style={{ color: '#10b981', flexShrink: 0 }} />
-                    : <Circle size={18} style={{ color: '#cbd5e1', flexShrink: 0 }} />
-                  }
-                  <span style={{ fontSize: '14px', flex: 1, color: m.done ? '#059669' : '#334155', textDecoration: m.done ? 'line-through' : 'none' }}>
-                    {m.text}
-                  </span>
-                </button>
-              ))}
+              {task.milestones.map((m, mIdx) => {
+                const expanded = expandedMilestones.has(mIdx);
+                const actions = m.actionItems || [];
+                const actionsDone = actions.filter(a => a.done).length;
+                const assignedProfile = m.assignedTo ? profiles.find(p => p.id === m.assignedTo) : null;
+
+                return (
+                  <div key={mIdx} className={`tp-milestone-row${m.done ? ' done' : ''}`}>
+
+                    {/* ── Milestone header row ── */}
+                    <div className="tp-milestone-hd">
+
+                      {/* Toggle done */}
+                      <button
+                        onClick={() => toggleMilestone(mIdx)}
+                        style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center' }}
+                        title={m.done ? 'סמן כלא הושלם' : 'סמן כהושלם'}
+                      >
+                        {m.done
+                          ? <CheckCircle2 size={18} style={{ color: '#10b981' }} />
+                          : <Circle size={18} style={{ color: '#cbd5e1' }} />
+                        }
+                      </button>
+
+                      {/* Title — inline editable */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <EditableArea
+                          value={m.text}
+                          onChange={v => patchMilestone(mIdx, 'text', v)}
+                          onBlur={saveLatest}
+                          placeholder="שם אבן הדרך..."
+                          style={{
+                            fontSize: '13.5px',
+                            fontWeight: m.done ? '400' : '500',
+                            color: m.done ? '#6ee7b7' : '#1e293b',
+                            textDecoration: m.done ? 'line-through' : 'none',
+                          }}
+                        />
+                      </div>
+
+                      {/* Due date */}
+                      <input
+                        type="date"
+                        value={m.dueDate || ''}
+                        onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)}
+                        title="תאריך יעד"
+                        style={{
+                          background: 'transparent', border: 'none', outline: 'none',
+                          fontSize: '11px', color: (() => {
+                            if (!m.dueDate || m.done) return '#94a3b8';
+                            const d = new Date(m.dueDate); d.setHours(0,0,0,0);
+                            const t = new Date(); t.setHours(0,0,0,0);
+                            return d < t ? '#ef4444' : '#64748b';
+                          })(),
+                          fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0,
+                        }}
+                      />
+
+                      {/* Action items counter badge */}
+                      {actions.length > 0 && (
+                        <span style={{
+                          fontSize: '10.5px', fontWeight: '600', flexShrink: 0,
+                          color: actionsDone === actions.length ? '#10b981' : '#6366f1',
+                          background: actionsDone === actions.length ? '#d1fae5' : '#ede9fe',
+                          padding: '1px 7px', borderRadius: '10px',
+                        }}>
+                          {actionsDone}/{actions.length}
+                        </span>
+                      )}
+
+                      {/* Assignee pill */}
+                      <div style={{ flexShrink: 0, position: 'relative' }}>
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                          className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`}
+                          title="שייך אחראי"
+                        >
+                          <UserCircle2 size={12} />
+                          <select
+                            className="tp-assignee-select"
+                            value={m.assignedTo || ''}
+                            onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
+                          >
+                            <option value="">ללא</option>
+                            {profiles.map(p => (
+                              <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                            ))}
+                          </select>
+                          {assignedProfile && (
+                            <span>{(assignedProfile.full_name || assignedProfile.email || '').split(' ')[0]}</span>
+                          )}
+                        </label>
+                      </div>
+
+                      {/* Expand / collapse */}
+                      <button
+                        className="tp-expand-btn"
+                        onClick={() => setExpandedMilestones(s => {
+                          const n = new Set(s);
+                          n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx);
+                          return n;
+                        })}
+                        title={expanded ? 'כווץ' : 'הצג פעולות'}
+                      >
+                        {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                        {actions.length === 0 ? 'פעולות' : ''}
+                      </button>
+
+                    </div>{/* end milestone-hd */}
+
+                    {/* ── Action items (visible when expanded) ── */}
+                    {expanded && (
+                      <>
+                        {actions.map((a, aIdx) => {
+                          const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
+                          return (
+                            <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>
+
+                              {/* Indent line */}
+                              <div style={{ width: '1px', height: '100%', background: '#e2e8f0', flexShrink: 0, alignSelf: 'stretch', marginTop: '2px', marginBottom: '2px' }} />
+
+                              {/* Checkbox */}
+                              <input
+                                type="checkbox"
+                                className="tp-check"
+                                checked={a.done}
+                                onChange={e => patchActionItem(mIdx, aIdx, 'done', e.target.checked)}
+                              />
+
+                              {/* Text */}
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <EditableArea
+                                  value={a.text}
+                                  onChange={v => patchActionItem(mIdx, aIdx, 'text', v)}
+                                  onBlur={saveLatest}
+                                  placeholder="תיאור הפעולה..."
+                                  style={{
+                                    fontSize: '13px',
+                                    color: a.done ? '#94a3b8' : '#334155',
+                                    textDecoration: a.done ? 'line-through' : 'none',
+                                  }}
+                                />
+                              </div>
+
+                              {/* Assignee */}
+                              <label
+                                className={`tp-assignee-pill${!a.assignedTo ? ' unassigned' : ''}`}
+                                title="שייך לפעולה"
+                              >
+                                <UserCircle2 size={11} />
+                                <select
+                                  className="tp-assignee-select"
+                                  value={a.assignedTo || ''}
+                                  onChange={e => patchActionItem(mIdx, aIdx, 'assignedTo', e.target.value || '')}
+                                >
+                                  <option value="">ללא</option>
+                                  {profiles.map(p => (
+                                    <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                                  ))}
+                                </select>
+                                {aProfile && (
+                                  <span>{(aProfile.full_name || aProfile.email || '').split(' ')[0]}</span>
+                                )}
+                              </label>
+
+                              {/* Delete action item */}
+                              <button
+                                onClick={() => deleteActionItem(mIdx, aIdx)}
+                                title="הסר"
+                                style={{
+                                  background: 'none', border: 'none', cursor: 'pointer',
+                                  color: '#cbd5e1', padding: '2px', borderRadius: '4px',
+                                  fontSize: '13px', lineHeight: 1, flexShrink: 0,
+                                  transition: 'color 0.12s',
+                                }}
+                                onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
+                                onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; }}
+                              >
+                                ×
+                              </button>
+
+                            </div>
+                          );
+                        })}
+
+                        {/* Add action item */}
+                        <button
+                          className="tp-add-action-btn"
+                          onClick={() => addActionItem(mIdx)}
+                        >
+                          <Plus size={12} />
+                          הוסף פעולה
+                        </button>
+                      </>
+                    )}
+
+                  </div>
+                );
+              })}
             </div>
           )}
         </Section>}
 
         {/* KPI */}
         {activeSection === 'kpi' && <Section icon={BarChart2} title="מדדי הצלחה — KPI">
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
-            הגדר מדדים מדידים שיוכיחו הצלחה. הם צריכים להיות ספציפיים, בני השגה, ומבוססי נתונים.
-          </p>
-          <div className="tp-grid tp-grid-3">
+          <p className="tp-section-desc">הגדר מדדים מדידים שיוכיחו הצלחה — ספציפיים, בני השגה, ומבוססי נתונים.</p>
+          <div className="tp-grid-4">
             {([
-              { key: 'kpiName',            label: 'שם המדד',              placeholder: 'לדוגמה: זמן המתנה לחדר מיון / שיעור זיהומים / עמידה ב-SLA' },
-              { key: 'sourceOfTruth',      label: 'מקור נתונים',          placeholder: 'מהיכן מתקבלים הנתונים? — מערכת, דוח, סקר...' },
-              { key: 'measurementCadence', label: 'תדירות מדידה',          placeholder: 'לדוגמה: שבועי / חודשי / רבעוני' },
-              { key: 'metricOwner',        label: 'אחראי על המדד',        placeholder: 'מי מוודא שהמדד נאסף ונותח?' },
-              { key: 'baseline',           label: 'בסיס — נקודת פתיחה',   placeholder: 'ערך נוכחי לפני ההתערבות...' },
-              { key: 'target',             label: 'יעד (Target)',           placeholder: 'ערך יעד בתום הפרויקט...' },
+              { key: 'kpiName',            label: 'שם המדד',             placeholder: 'זמן המתנה / שיעור זיהומים / עמידה ב-SLA' },
+              { key: 'baseline',           label: 'בסיס — נקודת פתיחה', placeholder: 'ערך נוכחי לפני ההתערבות...' },
+              { key: 'target',             label: 'יעד (Target)',          placeholder: 'ערך יעד בתום הפרויקט...' },
+              { key: 'measurementCadence', label: 'תדירות מדידה',         placeholder: 'שבועי / חודשי / רבעוני' },
+              { key: 'sourceOfTruth',      label: 'מקור נתונים',         placeholder: 'מערכת, דוח, סקר...' },
+              { key: 'metricOwner',        label: 'אחראי על המדד',       placeholder: 'מי מוודא שהמדד נאסף ונותח?' },
             ] as const).map(({ key, label, placeholder }) => (
-              <div key={key} style={{ background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '14px', direction: 'rtl', textAlign: 'right' }}>
+              <div key={key} className="tp-field-card">
                 <div style={fieldLabelStyle}>{label}</div>
                 <EditableArea
                   value={task[key] || ''}
                   onChange={v => patchLocal(key, v)}
                   onBlur={saveLatest}
                   placeholder={placeholder}
-                  style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}
+                  style={{ fontSize: '13px', fontWeight: '500', color: '#1e293b' }}
                 />
               </div>
             ))}
@@ -1026,30 +1754,28 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         {/* RISKS */}
         {activeSection === 'risks' && <Section icon={AlertTriangle} title="סיכונים ותלויות">
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
-            מה עלול לעכב או למנוע את הצלחת הפרויקט? תיעוד מוקדם של סיכונים מאפשר הכנה ומיתוג.
-          </p>
-          <div className="tp-grid tp-grid-3">
-            <Field label="סיכונים / חסמים" className="tp-span-full">
-              <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="מה עלול לעכב? — התנגדות צוות, מגבלות רגולטוריות, תקציב, מחסור כוח אדם..." minRows={2} />
-            </Field>
-            <Field label="תלויות" className="tp-span-full">
-              <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="אילו אגפים, מערכות IT, ספקים או אישורים נדרשים לפני שניתן להתקדם?" minRows={2} />
-            </Field>
-            <Field label="תוכנית מיתוג" className="tp-span-full">
-              <EditableArea value={task.mitigationPlan} onChange={v => patchLocal('mitigationPlan', v)} onBlur={saveLatest} placeholder="כיצד נטפל בכל סיכון? מה הצעדים הקונקרטיים להפחתת הסיכון או המחסום?" minRows={2} />
+          <p className="tp-section-desc">מה עלול לעכב את הצלחת הפרויקט? תיעוד מוקדם מאפשר הכנה ומיתוג.</p>
+          <div className="tp-grid-3">
+            <Field label="סיכונים / חסמים" className="tp-span-2">
+              <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="התנגדות צוות, מגבלות רגולטוריות, תקציב, מחסור כוח אדם..." minRows={2} />
             </Field>
             <Field label="נתיב הסלמה">
-              <EditableArea value={task.escalationPath} onChange={v => patchLocal('escalationPath', v)} onBlur={saveLatest} placeholder="אם הסיכון מתממש — למי פונים? מה תהליך ההסלמה?" minRows={1} />
+              <EditableArea value={task.escalationPath} onChange={v => patchLocal('escalationPath', v)} onBlur={saveLatest} placeholder="למי פונים אם הסיכון מתממש?" minRows={2} />
             </Field>
-            <Field label="קישורים" className="tp-span-full">
+            <Field label="תלויות" className="tp-span-2">
+              <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="אגפים, מערכות IT, ספקים, אישורים..." minRows={2} />
+            </Field>
+            <Field label="קישורים">
               <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
+            </Field>
+            <Field label="תוכנית מיתוג" className="tp-span-full">
+              <EditableArea value={task.mitigationPlan} onChange={v => patchLocal('mitigationPlan', v)} onBlur={saveLatest} placeholder="צעדים קונקרטיים להפחתת כל סיכון או מחסום..." minRows={2} />
             </Field>
             {task.stakeholders.length > 0 && (
               <Field label="בעלי עניין">
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', direction: 'rtl', marginTop: '4px' }}>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', direction: 'rtl', marginTop: '4px' }}>
                   {task.stakeholders.map((s, i) => (
-                    <span key={i} style={{ padding: '4px 12px', borderRadius: '20px', background: '#ede9fe', color: '#6d28d9', fontSize: '13px', fontWeight: '500' }}>{s}</span>
+                    <span key={i} style={{ padding: '3px 10px', borderRadius: '20px', background: '#ede9fe', color: '#6d28d9', fontSize: '12px', fontWeight: '500' }}>{s}</span>
                   ))}
                 </div>
               </Field>
@@ -1071,9 +1797,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
             </span>
           ) : null}
         >
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 18px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
-            שיח פתוח בין המשתתפים. השתמש בדיון לעדכונים, שאלות, והחלטות בזמן אמת.
-          </p>
+          <p className="tp-section-desc">שיח פתוח בין המשתתפים — עדכונים, שאלות, והחלטות בזמן אמת.</p>
 
           {/* Comments list */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
@@ -1222,51 +1946,27 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         {activeSection === 'outcome' && <Section
           icon={CheckCircle2}
           title="תוצר סופי"
+          iconColor="#6366f1"
           style={{
             borderColor: '#c7d2fe',
-            boxShadow: '0 8px 24px rgba(79,70,229,0.06)',
-            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+            borderWidth: '1.5px',
+            boxShadow: '0 4px 20px rgba(79,70,229,0.08)',
+            background: 'linear-gradient(160deg, #fefeff 0%, #f5f3ff 100%)',
           }}
         >
-          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
-            תיעוד של מה שנמסר בפועל, איך הפרויקט יצא לדרך, והתוצאות בפועל מול היעדים.
-          </p>
-          <div className="tp-grid tp-grid-3">
-            <Field label="תוצר מסירה" className="tp-span-full">
-              <EditableArea
-                value={task.finalDeliverable}
-                onChange={v => patchLocal('finalDeliverable', v)}
-                onBlur={saveLatest}
-                placeholder="מה הושלם ונמסר בפועל? — מערכת עובדת, נוהל חדש, הדרכה, אב-טיפוס..."
-                minRows={2}
-              />
+          <p className="tp-section-desc">תיעוד מה שנמסר בפועל, כיצד הפרויקט יצא לדרך, והתוצאות מול היעדים.</p>
+          <div className="tp-grid-3">
+            <Field label="תוצר מסירה" className="tp-span-2">
+              <EditableArea value={task.finalDeliverable} onChange={v => patchLocal('finalDeliverable', v)} onBlur={saveLatest} placeholder="מה הושלם ונמסר? — מערכת, נוהל, הדרכה, אב-טיפוס..." minRows={2} />
             </Field>
-            <Field label="הערות יציאה לפרודקשן / rollout" className="tp-span-full">
-              <EditableArea
-                value={task.rolloutNotes}
-                onChange={v => patchLocal('rolloutNotes', v)}
-                onBlur={saveLatest}
-                placeholder="איך התבצע השילוב בשטח? מה התייחסותו של הצוות? האם היו תקלות?"
-                minRows={2}
-              />
+            <Field label="הערות Rollout">
+              <EditableArea value={task.rolloutNotes} onChange={v => patchLocal('rolloutNotes', v)} onBlur={saveLatest} placeholder="כיצד התבצע השילוב? תקלות? תגובות?" minRows={2} />
             </Field>
-            <Field label="תוצאות מדודות" className="tp-span-full">
-              <EditableArea
-                value={task.measuredResult}
-                onChange={v => patchLocal('measuredResult', v)}
-                onBlur={saveLatest}
-                placeholder="מה ה-KPI בפועל אחרי היישום? האם השגנו את היעד? השווה לנקודת הבסיס."
-                minRows={2}
-              />
+            <Field label="תוצאות מדודות" className="tp-span-2">
+              <EditableArea value={task.measuredResult} onChange={v => patchLocal('measuredResult', v)} onBlur={saveLatest} placeholder="KPI בפועל אחרי היישום — השווה לנקודת הבסיס." minRows={2} />
             </Field>
-            <Field label="לקחים" className="tp-span-full">
-              <EditableArea
-                value={task.lessonsLearned}
-                onChange={v => patchLocal('lessonsLearned', v)}
-                onBlur={saveLatest}
-                placeholder="מה למדנו? מה היינו עושים אחרת בפעם הבאה?"
-                minRows={2}
-              />
+            <Field label="לקחים">
+              <EditableArea value={task.lessonsLearned} onChange={v => patchLocal('lessonsLearned', v)} onBlur={saveLatest} placeholder="מה למדנו? מה אחרת בפעם הבאה?" minRows={2} />
             </Field>
           </div>
         </Section>}
