@@ -1,11 +1,17 @@
-import { useState, useEffect, useRef } from 'react';
-import { TreePine, X, Cloud, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useNavigate, useMatch } from 'react-router-dom';
+import { TreePine, X, LogOut, LogIn } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
+import { LoginModal } from './components/auth/LoginModal';
+import { Sidebar } from './components/Sidebar';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button, Card } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
+import { TaskPageContent } from './components/tasks/TaskPage';
+import { QuickViewModal } from './components/tasks/QuickViewModal';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB } from './lib/supabase-hooks';
+import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -271,38 +277,36 @@ const initialTasks = [
 ];
 
 // Type for medical task to match TasksDashboard expectations
-interface MedicalTask {
-  id: string; // UUID from Supabase — never convert to/from integer
-  title: string;
-  description: string;
-  category: string;
-  color: string;
-  owner: string;
-  priority: 'P1' | 'P2' | 'P3';
-  progress: number;
-  department: string;
-  processName: string;
-  problemStatement: string;
-  goal: string;
-  kpiName: string;
-  baseline: string;
-  target: string;
-  measurementCadence: string;
-  startDate: string;
-  dueDate: string;
-  stakeholders: string[];
-  risksBlockers: string;
-  dependencies: string;
-  links: string;
-  milestones: Array<{ text: string; done: boolean }>;
-}
 
 function App() {
-  // Load tasks from Supabase with real-time sync
-  const { tasks: supabaseTasks, loading: tasksLoading } = useTasks();
-  
-  // Use Supabase tasks or fallback to initial tasks while loading
-  const tasks = supabaseTasks.length > 0 ? supabaseTasks : (tasksLoading ? [] : initialTasks as MedicalTask[]);
+  const { user, profile, signOut } = useAuth();
+  const navigate = useNavigate();
+  // Detect task page route — renders TaskPageContent inside the normal layout
+  const taskMatch = useMatch('/task/:taskId');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [quickViewTask, setQuickViewTask] = useState<MedicalTask | null>(null);
+
+  // ── Project workspace state ────────────────────────────────────────────────
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Load all profiles for assignment dropdowns (only when logged in)
+  const { profiles } = useProfiles();
+  // Load projects — must be before useTasks so we can derive effectiveProjectId first
+  const { projects, loading: projectsLoading } = useProjects(user?.id);
+
+  // Derive the active project without waiting for a useEffect → setState round-trip.
+  // If the user has manually picked a project, use that; otherwise fall back to the first
+  // project from the DB so tasks start loading in the same render that projects arrive.
+  const effectiveProjectId = user && projects.length > 0 ? projects[0].id : null;
+
+  // Load tasks from Supabase for the effective project (null = no fetch)
+  const { tasks: supabaseTasks } = useTasks(user ? effectiveProjectId : null);
+
+  // Guest view (not logged in) → show mock data.
+  // User view (logged in) → show their project's tasks from Supabase.
+  const tasks = user
+    ? supabaseTasks
+    : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('dashboard');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
@@ -333,8 +337,6 @@ function App() {
   const [categoryModalFilter, setCategoryModalFilter] = useState<null | 'p1' | 'overdue' | 'blockers' | 'unassigned' | 'kpi'>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   
-  // Auto-save status tracking
-  const [showSavedIndicator, setShowSavedIndicator] = useState(false);
 
   // Project name state with localStorage persistence
   const [projectName, setProjectName] = useState(() => {
@@ -349,7 +351,8 @@ function App() {
     localStorage.setItem('grow.projectName', projectName);
   }, [projectName]);
 
-  const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
+
+const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
   // Tree zoom functions
   const zoomIn = () => setTreeZoom(prev => Math.min(prev + 0.2, 2.0));
@@ -504,18 +507,6 @@ function App() {
     });
   }, [tasks]);
 
-  // 💾 AUTO-SAVE: Now handled by Supabase real-time sync
-  // Show saved indicator when Supabase tasks update
-  useEffect(() => {
-    if (supabaseTasks.length > 0 && !tasksLoading) {
-      setShowSavedIndicator(true);
-      console.log('💾 Synced with Supabase at', new Date().toLocaleTimeString('he-IL'));
-      
-      // Hide "saved" indicator after 2 seconds
-      const timer = setTimeout(() => setShowSavedIndicator(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [supabaseTasks, tasksLoading]);
 
   // Auto-set active step to first incomplete when opening drawer
   useEffect(() => {
@@ -601,11 +592,13 @@ function App() {
 
     // Update tasks in Supabase
     const tasksToUpdate = tasks.filter(t => normalizeOwnerName(t.owner) === from);
-    Promise.all(tasksToUpdate.map(task => updateTask({ ...task, owner: to })))
-      .catch(error => {
-        console.error('Error updating owner in tasks:', error);
-        showToast('שגיאה בעדכון האחראי במשימות', 'error');
-      });
+    if (effectiveProjectId) {
+      Promise.all(tasksToUpdate.map(task => updateTask({ ...task, owner: to }, effectiveProjectId)))
+        .catch(error => {
+          console.error('Error updating owner in tasks:', error);
+          showToast('שגיאה בעדכון האחראי במשימות', 'error');
+        });
+    }
     
     setSelectedTask((prev) => (prev && normalizeOwnerName(prev.owner) === from ? { ...prev, owner: to } : prev));
     setEditingTask((prev) => (prev && normalizeOwnerName(prev.owner) === from ? { ...prev, owner: to } : prev));
@@ -638,8 +631,8 @@ function App() {
         return;
       }
 
-      // N - New Task
-      if (e.key === 'n' || e.key === 'N') {
+      // N - New Task (only when authenticated)
+      if ((e.key === 'n' || e.key === 'N') && user) {
         setShowNewTaskModal(true);
         e.preventDefault();
       }
@@ -740,11 +733,9 @@ function App() {
   };
 
   const handleSaveTask = async () => {
-    if (editingTask) {
+    if (editingTask && effectiveProjectId) {
       try {
-        // Update in Supabase
-        await updateTask(editingTask);
-        // The real-time subscription will update the UI automatically
+        await updateTask(editingTask, effectiveProjectId);
         setSelectedTask(editingTask);
         setEditingTask(null);
         showToast('השינויים נשמרו בהצלחה!', 'success');
@@ -804,10 +795,9 @@ function App() {
   };
 
   const addNewTask = async (newTask: typeof tasks[0]) => {
+    if (!effectiveProjectId) return;
     try {
-      // Create in Supabase
-      await createTask(newTask);
-      // The real-time subscription will update the UI automatically
+      await createTask(newTask, effectiveProjectId, user?.id);
       setShowNewTaskModal(false);
       showToast('המשימה נוספה בהצלחה!', 'success');
     } catch (error) {
@@ -851,9 +841,9 @@ function App() {
   };
 
   const updateCategoryColor = async (categoryName: string, newColor: string) => {
+    if (!effectiveProjectId) return;
     try {
-      // Update the category color directly in the database
-      await updateCategoryColorInDB(categoryName, newColor);
+      await updateCategoryColorInDB(categoryName, newColor, effectiveProjectId);
       showToast('צבע הקטגוריה עודכן', 'success');
     } catch (error) {
       console.error('Error updating category color:', error);
@@ -862,14 +852,13 @@ function App() {
   };
 
   const renameCategory = async (oldName: string, newName: string) => {
-    if (!newName.trim() || oldName === newName) return;
+    if (!newName.trim() || oldName === newName || !effectiveProjectId) return;
     if (categories.includes(newName)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
     }
     try {
-      // Rename the category directly in the database
-      await renameCategoryInDB(oldName, newName);
+      await renameCategoryInDB(oldName, newName, effectiveProjectId);
       setExpandedCategories(prev => prev.map(c => c === oldName ? newName : c));
       setEditingCategory(null);
       showToast('שם הקטגוריה עודכן', 'success');
@@ -894,19 +883,20 @@ function App() {
   };
 
   const addCategory = async (name: string, color: string) => {
-    if (!name.trim()) return;
+    if (!name.trim() || !effectiveProjectId) return;
     if (categories.includes(name)) {
       showToast('שם קטגוריה כבר קיים', 'error');
       return;
     }
     try {
-      // Add a dummy task to create the category
       const newTask: Omit<MedicalTask, 'id'> = {
         title: 'משימה ראשונה ב-' + name,
         description: 'תיאור המשימה',
         category: name,
         color: color,
         owner: 'ללא אחראי',
+        assignedTo: null,
+        participants: [],
         priority: 'P2' as const,
         progress: 0,
         department: '',
@@ -923,9 +913,11 @@ function App() {
         risksBlockers: '',
         dependencies: '',
         links: '',
-        milestones: [{ text: 'שלב ראשון', done: false }]
+        milestones: [{ text: 'שלב ראשון', done: false }],
+        status: 'open',
+        currentState: '',
       };
-      await createTask(newTask);
+      await createTask(newTask, effectiveProjectId);
       setExpandedCategories([...expandedCategories, name]);
       setShowAddCategory(false);
       showToast('קטגוריה חדשה נוספה', 'success');
@@ -1191,7 +1183,7 @@ function App() {
                       <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                         {idx === 0 && <div style={{ width: '2px', height: '20px', background: color }} />}
                         <div
-                          onClick={() => { setSelectedTask(task); setEditingTask(task); }}
+                          onClick={() => navigate(`/task/${task.id}`)}
                           onMouseEnter={() => setHoveredTaskInTree(task)}
                           onMouseLeave={() => setHoveredTaskInTree(null)}
                           style={{
@@ -1308,92 +1300,47 @@ function App() {
     );
   };
 
-  // Header button styles: fixed colors regardless of "selected/pressed" state
+  // Header button styles
   const headerButtonCommon = {
-    borderRadius: '10px',
+    borderRadius: '8px',
     cursor: 'pointer',
     fontFamily: 'inherit',
-    fontSize: '12px',
-    fontWeight: '700',
-    transition: 'transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease',
+    fontSize: '13px',
+    fontWeight: '500',
+    transition: 'all 0.15s ease',
     display: 'flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '6px',
     whiteSpace: 'nowrap',
-    userSelect: 'none'
+    userSelect: 'none',
   } as const;
 
-  const elevateHeaderButton = (e: any, shadow: string) => {
-    e.currentTarget.style.transform = 'translateY(-1px)';
-    e.currentTarget.style.boxShadow = shadow;
-    e.currentTarget.style.filter = 'brightness(1.03)';
+  const elevateHeaderButton = (e: any, _shadow: string) => {
+    e.currentTarget.style.opacity = '0.75';
   };
 
-  const resetHeaderButton = (e: any, shadow: string) => {
-    e.currentTarget.style.transform = 'translateY(0)';
-    e.currentTarget.style.boxShadow = shadow;
-    e.currentTarget.style.filter = 'brightness(1)';
+  const resetHeaderButton = (e: any, _shadow: string) => {
+    e.currentTarget.style.opacity = '1';
   };
 
-  const headerActionButtonSpec = {
-    newTask: {
-      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-      shadow: '0 2px 8px rgba(34, 197, 94, 0.30)',
-      hoverShadow: '0 4px 12px rgba(34, 197, 94, 0.40)'
-    },
-    export: {
-      background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-      shadow: '0 2px 8px rgba(139, 92, 246, 0.30)',
-      hoverShadow: '0 4px 12px rgba(139, 92, 246, 0.40)'
-    }
-  } as const;
-
-  const headerModeButtonSpec = {
-    dashboard: {
-      background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-      shadow: '0 2px 8px rgba(14, 165, 233, 0.26)',
-      hoverShadow: '0 4px 12px rgba(14, 165, 233, 0.36)'
-    },
-    rows: {
-      background: 'linear-gradient(135deg, #64748b, #475569)',
-      shadow: '0 2px 8px rgba(71, 85, 105, 0.24)',
-      hoverShadow: '0 4px 12px rgba(71, 85, 105, 0.34)'
-    },
-    tree: {
-      background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-      shadow: '0 2px 8px rgba(34, 197, 94, 0.26)',
-      hoverShadow: '0 4px 12px rgba(34, 197, 94, 0.36)'
-    }
-  } as const;
-
-  const getHeaderActionButtonStyle = (kind: keyof typeof headerActionButtonSpec) => {
-    const spec = headerActionButtonSpec[kind];
-    return {
-      ...headerButtonCommon,
-      padding: '6px 12px',
-      border: 'none',
-      color: 'white',
-      background: spec.background,
-      boxShadow: spec.shadow
-    } as const;
-  };
 
   const getHeaderModeButtonStyle = (
-    mode: keyof typeof headerModeButtonSpec,
+    _mode: string,
+    isActive: boolean,
     size: 'desktop' | 'mobile' = 'desktop'
   ) => {
-    const spec = headerModeButtonSpec[mode];
     return {
       ...headerButtonCommon,
-      padding: size === 'mobile' ? '12px' : '6px 12px',
+      padding: size === 'mobile' ? '12px 20px' : '7px 12px',
+      color: isActive ? '#4f46e5' : '#475569',
+      background: 'transparent',
       border: 'none',
-      color: 'white',
-      background: spec.background,
-      boxShadow: spec.shadow,
-      borderRadius: size === 'mobile' ? '12px' : '10px',
-      fontSize: size === 'mobile' ? '14px' : '12px',
-      justifyContent: size === 'mobile' ? 'center' : undefined
-    } as const;
+      fontWeight: isActive ? '700' : '500',
+      fontSize: size === 'mobile' ? '14px' : '13px',
+      justifyContent: size === 'mobile' ? 'center' : undefined,
+      borderBottom: isActive && size === 'desktop' ? '2px solid #4f46e5' : '2px solid transparent',
+      borderRadius: 0,
+    } as CSSProperties;
   };
 
   return (
@@ -1420,58 +1367,38 @@ function App() {
       
       {/* Header */}
       <header style={{
-        borderBottom: '2px solid #e5e5e5',
-        background: 'linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.08)',
+        borderBottom: '1px solid #e2e8f0',
+        background: '#ffffff',
         position: 'sticky',
         top: 0,
         zIndex: 30
       }}>
-        <div style={{
-          maxWidth: '1920px',
-          margin: '0 auto',
-          display: 'flex',
-          alignItems: 'center',
-          position: 'relative',
-          gap: '12px',
-          backgroundColor: 'rgba(255, 255, 255, 1)'
-        }}
-        className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px] md:justify-between flex-nowrap"
-        >
-          {/* Desktop Navigation - Left side on desktop */}
-          <div className="desktop-only" style={{ 
-            display: 'flex', 
-            gap: '8px', 
+        <div
+          style={{
+            maxWidth: '1920px',
+            margin: '0 auto',
+            display: 'flex',
             alignItems: 'center',
-            flexShrink: 0,
-            flex: 1,
-            justifyContent: 'flex-start'
-          }}>
-            <button
-              onClick={exportData}
-              style={getHeaderActionButtonStyle('export')}
-              onMouseEnter={(e) => {
-                elevateHeaderButton(e, headerActionButtonSpec.export.hoverShadow);
-              }}
-              onMouseLeave={(e) => {
-                resetHeaderButton(e, headerActionButtonSpec.export.shadow);
-              }}
-            >
-              <span>ייצוא</span>
-            </button>
+            direction: 'rtl',
+            position: 'relative',
+            backgroundColor: '#ffffff',
+          }}
+          className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px]"
+        >
+          {/* Nav buttons — desktop, stuck to the right (flex-start in RTL) */}
+          <div
+            className="desktop-only"
+            style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
+          >
             {(['dashboard', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
-                onClick={() => setViewMode(mode)}
-                aria-pressed={viewMode === mode}
-                style={getHeaderModeButtonStyle(mode, 'desktop')}
+                onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
+                aria-pressed={!taskMatch && viewMode === mode}
+                style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
                 title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
-                onMouseEnter={(e) => {
-                  elevateHeaderButton(e, headerModeButtonSpec[mode].hoverShadow);
-                }}
-                onMouseLeave={(e) => {
-                  resetHeaderButton(e, headerModeButtonSpec[mode].shadow);
-                }}
+                onMouseEnter={(e) => { elevateHeaderButton(e, ''); }}
+                onMouseLeave={(e) => { resetHeaderButton(e, ''); }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {mode === 'tree' && <TreePine size={14} aria-hidden="true" />}
@@ -1481,103 +1408,78 @@ function App() {
             ))}
           </div>
 
-          {/* Mobile spacer to balance menu button - only visible on mobile */}
-          <div 
-            className="mobile-only"
-            style={{ 
-              minWidth: '54px', // Match menu button width (44px + some margin)
-              flexShrink: 0 
-            }} 
-          />
-
-          {/* Logo and Title - Centered on all screen sizes */}
-          <div 
-            className="flex-1 md:flex-1 flex items-center justify-center gap-2 md:gap-3 min-w-0"
+          {/* Logo — absolutely centered in the header, independent of other items */}
+          <div
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              transform: 'translate(-50%, -50%)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              pointerEvents: 'none',
+              direction: 'rtl',
+            }}
           >
-            <img 
+            <img
               src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
               alt="הלל יפה"
-              style={{
-                filter: 'brightness(1) contrast(1.1)'
-              }}
-              className="h-[48px] md:h-[56px] lg:h-[64px] w-auto max-w-[120px] md:max-w-[180px] lg:max-w-[220px] object-contain shrink-0"
+              style={{ filter: 'brightness(1) contrast(1.1)', pointerEvents: 'auto' }}
+              className="h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
             />
-            <div style={{ 
-              display: 'flex', 
-              flexDirection: 'column', 
-              alignItems: 'flex-start',
-              textAlign: 'right',
-              minWidth: 0,
-              overflow: 'hidden'
-            }}>
-              <h1 
-                style={{ 
-                  fontWeight: typography.fontWeight.black, 
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'right', pointerEvents: 'auto' }}>
+              <h1
+                style={{
+                  fontWeight: typography.fontWeight.black,
                   color: '#000000',
                   letterSpacing: '-0.5px',
                   fontFamily: typography.fontFamily,
-                  textAlign: 'right',
-                  margin: 0,
-                  padding: 0,
-                  whiteSpace: 'nowrap'
+                  margin: 0, padding: 0, whiteSpace: 'nowrap',
                 }}
-                className="leading-none text-[19px] md:text-3xl lg:text-4xl"
+                className="leading-none text-[19px] md:text-2xl lg:text-3xl"
               >
                 GROW
               </h1>
-              <p 
-                style={{ 
-                  color: '#1a1a1a', 
-                  margin: 0,
-                  marginTop: '2px',
-                  padding: 0,
+              <p
+                style={{
+                  color: '#1a1a1a',
+                  margin: 0, marginTop: '2px', padding: 0,
                   fontWeight: typography.fontWeight.medium,
                   fontFamily: typography.fontFamily,
-                  whiteSpace: 'nowrap'
+                  whiteSpace: 'nowrap',
                 }}
-                className="leading-tight text-[9.5px] md:text-sm lg:text-base"
+                className="leading-tight text-[9px] md:text-xs lg:text-sm"
               >
                 פיתוח וחיזוק מחוברות ארגונית
               </p>
             </div>
           </div>
 
-          {/* Auto-Save Indicator */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            padding: '6px',
-            borderRadius: '8px',
-            background: showSavedIndicator ? '#f0fdf4' : '#f8fafc',
-            border: showSavedIndicator ? '1px solid #86efac' : '1px solid #e2e8f0',
-            transition: 'all 0.3s ease',
-            fontSize: '13px',
-            fontWeight: '500',
-            color: showSavedIndicator ? '#16a34a' : '#64748b',
-            flexShrink: 0
-          }}
-          className="hidden md:flex lg:gap-2 lg:px-3"
-          title={showSavedIndicator ? 'נשמר' : 'שמירה אוטומטית מופעלת'}
+          {/* Left side — sign-in for guests (pushes to the left via margin-inline-start auto) */}
+          <div
+            className="desktop-only"
+            style={{ marginInlineStart: 'auto', flexShrink: 0 }}
           >
-            {showSavedIndicator ? (
-              <>
-                <CheckCircle2 size={16} style={{ color: '#16a34a' }} />
-                <span className="hidden lg:inline">נשמר</span>
-              </>
-            ) : (
-              <>
-                <Cloud size={16} style={{ color: '#94a3b8' }} />
-                <span className="hidden lg:inline">שמירה אוטומטית</span>
-              </>
+            {!user && (
+              <button
+                onClick={() => setShowLoginModal(true)}
+                title="כניסה"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-white text-xs font-medium transition-colors"
+                style={{ background: colors.brand.primary }}
+              >
+                <LogIn size={14} />
+                <span>כניסה</span>
+              </button>
             )}
           </div>
 
-          {/* Mobile Menu Button - Right side on mobile */}
+          {/* Mobile: logo centered (handled by absolute above), hamburger on the left */}
           <button
             className="mobile-only"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
             style={{
+              marginInlineStart: 'auto',
               padding: '10px',
               background: 'white',
               border: '2px solid #e5e5e5',
@@ -1585,20 +1487,14 @@ function App() {
               cursor: 'pointer',
               fontSize: '24px',
               transition: 'all 0.2s',
-              position: 'absolute',
-              left: 'auto',
-              right: 'max(12px, env(safe-area-inset-right))',
-              top: '50%',
-              transform: 'translateY(-50%)',
               minHeight: '44px',
-              minWidth: '44px'
+              minWidth: '44px',
+              flexShrink: 0,
             }}
           >
             {isMobileMenuOpen ? '✕' : '☰'}
           </button>
 
-          {/* Spacer for desktop to push logo to center */}
-          <div className="desktop-only" style={{ flex: 1, minWidth: 0 }} />
         </div>
 
         {/* Mobile Menu Dropdown */}
@@ -1623,35 +1519,13 @@ function App() {
             `}</style>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button
-                onClick={() => { exportData(); setIsMobileMenuOpen(false); }}
-                style={{
-                  padding: '16px',
-                  minHeight: '44px',
-                  background: 'linear-gradient(135deg, #8b5cf6, #7c3aed)',
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: '12px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: '700',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px'
-                }}
-              >
-                <span>ייצוא</span>
-              </button>
-
-              <div style={{ height: '2px', background: '#e5e5e5', margin: '8px 0' }} />
 
               {(['dashboard', 'rows', 'tree'] as const).map(mode => (
                 <button
                   key={mode}
-                  onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); }}
-                  aria-pressed={viewMode === mode}
-                  style={{...getHeaderModeButtonStyle(mode, 'mobile'), minHeight: '44px'}}
+                  onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
+                  aria-pressed={!taskMatch && viewMode === mode}
+                  style={{...getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'mobile'), minHeight: '44px'}}
                   title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
@@ -1660,32 +1534,114 @@ function App() {
                   </span>
                 </button>
               ))}
+
+              {user && (
+                <button
+                  onClick={() => { setIsMobileMenuOpen(false); signOut(); }}
+                  style={{
+                    padding: '16px', minHeight: '44px',
+                    background: '#fee2e2', color: '#dc2626',
+                    border: '1.5px solid #fca5a5',
+                    borderRadius: '12px', cursor: 'pointer',
+                    fontSize: '14px', fontWeight: '700',
+                    display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', gap: '8px',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  <LogOut size={16} />
+                  יציאה
+                </button>
+              )}
             </div>
           </div>
         )}
       </header>
 
+      {/* Body: Sidebar (when logged in) + Main content */}
+      {/* direction: rtl puts sidebar on the RIGHT, main content on the LEFT */}
+      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', direction: 'rtl' }}>
+
+      {/* Sidebar — visible only when authenticated, desktop only */}
+      {user && (
+        <div className="hidden md:flex">
+          <Sidebar
+            user={user}
+            profile={profile}
+            onSignOut={signOut}
+            collapsed={sidebarCollapsed}
+            onToggleCollapse={() => setSidebarCollapsed(v => !v)}
+          />
+        </div>
+      )}
+
       {/* Content */}
-      <main style={{ 
-        width: '100%',
-        maxWidth: '1920px', 
-        margin: '0 auto', 
-        padding: '16px',
-        backgroundColor: 'rgba(255, 255, 255, 1)',
-        boxShadow: 'inset 0px 4px 12px 0px rgba(0, 0, 0, 0.15)',
-        flex: 1
-      }}>
+      <main
+        className={taskMatch ? 'task-active' : undefined}
+        style={{
+          width: '100%',
+          maxWidth: '1920px',
+          margin: '0 auto',
+          padding: taskMatch ? '0' : '16px',
+          backgroundColor: taskMatch ? '#f8fafc' : 'rgba(255, 255, 255, 1)',
+          boxShadow: taskMatch ? 'none' : 'inset 0px 4px 12px 0px rgba(0, 0, 0, 0.15)',
+          flex: 1,
+          overflow: 'auto',
+          direction: 'rtl',
+        }}>
         <style>{`
           @media (min-width: 768px) {
-            main { padding: 24px !important; }
-            main > div:not(.no-main-padding) { padding: 32px !important; }
+            main:not(.task-active) { padding: 24px !important; }
+            main:not(.task-active) > div:not(.no-main-padding) { padding: 32px !important; }
           }
           @media (max-width: 767px) {
-            main { padding: 12px !important; }
-            main > div:not(.no-main-padding) { padding: 16px !important; }
+            main:not(.task-active) { padding: 12px !important; }
+            main:not(.task-active) > div:not(.no-main-padding) { padding: 16px !important; }
           }
         `}</style>
-          
+
+          {/* Empty state: logged in but no project selected yet (hide while projects are still loading) */}
+          {user && !effectiveProjectId && !taskMatch && !projectsLoading && (
+            <div style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              height: '100%',
+              minHeight: '60vh',
+              gap: '16px',
+              color: colors.text.secondary,
+              fontFamily: typography.fontFamily,
+              textAlign: 'center',
+              padding: spacing.xxl,
+            }}>
+              <div style={{ fontSize: '48px' }}>📂</div>
+              <h2 style={{ fontSize: typography.fontSize.h2, fontWeight: typography.fontWeight.bold, color: colors.text.primary, margin: 0 }}>
+                בחר פרויקט
+              </h2>
+              <p style={{ fontSize: typography.fontSize.base, margin: 0, maxWidth: '320px' }}>
+                בחר פרויקט מהסרגל הצדדי, או צור פרויקט חדש כדי להתחיל.
+              </p>
+              <p className="md:hidden" style={{ fontSize: typography.fontSize.sm, color: colors.text.tertiary, margin: 0 }}>
+                (הסרגל הצדדי זמין במסך גדול יותר)
+              </p>
+            </div>
+          )}
+
+          {/* Task page — renders TaskPageContent inside the normal layout shell */}
+          {/* key={taskId} forces a full remount when navigating between tasks,
+              clearing all local state (localTask, activeSection, etc.) */}
+          {taskMatch && taskMatch.params.taskId && (
+            <TaskPageContent
+              key={taskMatch.params.taskId}
+              taskId={taskMatch.params.taskId!}
+            />
+          )}
+
+          {/* Main views — shown when guest OR when a project is selected (and not on task page) */}
+          {!taskMatch && (!user || effectiveProjectId) && (
+          <>
+
           {/* Dashboard View - Hybrid Dashboard */}
           {viewMode === 'dashboard' && (
             <div style={{ padding: spacing.xxl, maxWidth: '1600px', margin: '0 auto' }}>
@@ -1982,7 +1938,6 @@ function App() {
 
                     const completedMilestones = task.milestones.filter(m => m.done).length;
                     const totalMilestones = task.milestones.length;
-                    const openCount = totalMilestones - completedMilestones;
 
                     return (
                       <WorkItemRow
@@ -1991,29 +1946,12 @@ function App() {
                         priority={(task.priority || 'P2') as 'P1' | 'P2' | 'P3'}
                         category={{ label: task.category, variant: getCategoryVariant(task.color) }}
                         owner={task.owner}
-                        progress={{
-                          current: completedMilestones,
-                          total: totalMilestones,
-                          openCount: openCount > 0 ? openCount : undefined,
-                        }}
+                        progress={{ current: completedMilestones, total: totalMilestones }}
                         nextStep={task.goal || undefined}
                         milestones={task.milestones}
-                        onClick={() => {
-                          setSelectedTask(task);
-                          setEditingTask(task);
-                        }}
-                        onEdit={() => {
-                          setSelectedTask(task);
-                          setEditingTask(task);
-                        }}
+                        onClick={() => navigate(`/task/${task.id}`)}
+                        onQuickView={() => setQuickViewTask(task)}
                         className="cursor-pointer"
-                        description={task.description}
-                        department={task.department}
-                        processName={task.processName}
-                        startDate={task.startDate}
-                        dueDate={task.dueDate}
-                        stakeholders={task.stakeholders}
-                        risksBlockers={task.risksBlockers}
                       />
                     );
                   })}
@@ -2033,13 +1971,12 @@ function App() {
               <TasksDashboard 
                 tasks={tasks}
                 onSelectTask={(task) => {
-                  setSelectedTask(task);
-                  setEditingTask(task);
+                  navigate(`/task/${task.id}`);
                 }}
                 onRenameCategory={renameCategory}
                 onAddCategory={addCategory}
                 onUpdateCategoryColor={updateCategoryColor}
-                onRequestAddTask={() => setShowNewTaskModal(true)}
+                onRequestAddTask={user ? () => setShowNewTaskModal(true) : undefined}
                 owners={owners}
                 onAddOwner={addOwner}
                 onRenameOwner={renameOwner}
@@ -2701,8 +2638,7 @@ function App() {
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setSelectedTask(task);
-                                    setEditingTask(task);
+                                    navigate(`/task/${task.id}`);
                                   }}
                                   style={{
                                     padding: '8px 16px',
@@ -3180,7 +3116,13 @@ function App() {
               )}
             </div>
           )}
+
+          </> /* end main views fragment */
+          )}
+
       </main>
+
+      </div>{/* end body flex wrapper */}
 
       {/* Category Details Modal */}
       {isCategoryModalOpen && selectedCategory && (() => {
@@ -3520,8 +3462,6 @@ function App() {
                       const completedMilestones = Array.isArray(t.milestones)
                         ? t.milestones.filter((m) => m.done).length
                         : 0;
-                      const openCount = safeTotal - completedMilestones;
-
                       // Compute reason badges if filter is active
                       const reasons: string[] = [];
                       if (categoryModalFilter) {
@@ -3591,7 +3531,6 @@ function App() {
                             progress={{
                               current: completedMilestones,
                               total: safeTotal,
-                              openCount: openCount > 0 ? openCount : undefined,
                             }}
                             nextStep={t.goal || undefined}
                             milestones={t.milestones}
@@ -3600,27 +3539,7 @@ function App() {
                               setEditingTask(t);
                               closeCategoryModal();
                             }}
-                            onEdit={() => {
-                              setSelectedTask(t);
-                              setEditingTask(t);
-                              closeCategoryModal();
-                            }}
                             className="cursor-pointer"
-                            description={t.description}
-                            department={t.department}
-                            processName={t.processName}
-                            problemStatement={t.problemStatement}
-                            goal={t.goal}
-                            kpiName={t.kpiName}
-                            baseline={t.baseline}
-                            target={t.target}
-                            measurementCadence={t.measurementCadence}
-                            startDate={t.startDate}
-                            dueDate={t.dueDate}
-                            stakeholders={t.stakeholders}
-                            risksBlockers={t.risksBlockers}
-                            dependencies={t.dependencies}
-                            links={t.links}
                           />
                         </div>
                       );
@@ -3851,34 +3770,94 @@ function App() {
                       />
                     </div>
 
-                    {/* Owner Input */}
+                    {/* Owner / Assigned-to dropdown */}
                     <div>
                       <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#525252', marginBottom: '8px' }}>
-                        אחראי <span style={{ color: '#ef4444' }}>*</span>
+                        אחראי
                       </label>
-                      <input
-                        type="text"
-                        value={editingTask.owner}
-                        onChange={(e) => setEditingTask({ ...editingTask, owner: e.target.value })}
-                        list="owners-directory-edit"
-                        placeholder="שם מלא של האחראי"
+                      <select
+                        value={editingTask.assignedTo ?? ''}
+                        onChange={(e) => {
+                          const profileId = e.target.value || null;
+                          const profile = profiles.find(p => p.id === profileId);
+                          setEditingTask({
+                            ...editingTask,
+                            assignedTo: profileId,
+                            owner: profile ? (profile.full_name || profile.email) : '',
+                          });
+                        }}
                         style={{
                           width: '100%',
                           padding: '12px',
-                          border: !editingTask.owner?.trim() ? '2px solid #fca5a5' : '1px solid #e5e5e5',
+                          border: '1px solid #e5e5e5',
                           borderRadius: '8px',
                           fontSize: '14px',
-                          fontFamily: 'inherit'
+                          fontFamily: 'inherit',
+                          background: 'white',
+                          cursor: 'pointer',
                         }}
-                      />
-                      <datalist id="owners-directory-edit">
-                        {owners.map((o) => (
-                          <option key={o} value={o} />
+                      >
+                        <option value="">— ללא אחראי —</option>
+                        {profiles.map(p => (
+                          <option key={p.id} value={p.id}>
+                            {p.full_name || p.email}
+                          </option>
                         ))}
-                      </datalist>
-                      {!editingTask.owner?.trim() && (
-                        <div style={{ fontSize: '12px', color: '#dc2626', marginTop: '4px' }}>
-                          שדה חובה - יש להזין אחראי
+                      </select>
+                    </div>
+
+                    {/* Participants multi-select */}
+                    <div>
+                      <label style={{ display: 'block', fontSize: '14px', fontWeight: '600', color: '#525252', marginBottom: '8px' }}>
+                        משתתפים
+                      </label>
+                      <div style={{
+                        border: '1px solid #e5e5e5',
+                        borderRadius: '8px',
+                        padding: '8px 12px',
+                        maxHeight: '180px',
+                        overflowY: 'auto',
+                        background: 'white',
+                      }}>
+                        {profiles.length === 0 ? (
+                          <div style={{ fontSize: '13px', color: '#94a3b8', padding: '4px 0' }}>אין משתמשים זמינים</div>
+                        ) : profiles.map(p => {
+                          const currentParticipants = editingTask.participants ?? [];
+                          const checked = currentParticipants.includes(p.id);
+                          return (
+                            <label
+                              key={p.id}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '10px',
+                                padding: '6px 4px',
+                                cursor: 'pointer',
+                                borderRadius: '4px',
+                                fontSize: '14px',
+                                color: '#374151',
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={(e) => {
+                                  const prev = editingTask.participants ?? [];
+                                  const newParticipants = e.target.checked
+                                    ? [...prev, p.id]
+                                    : prev.filter(id => id !== p.id);
+                                  setEditingTask({ ...editingTask, participants: newParticipants });
+                                }}
+                                style={{ width: '16px', height: '16px', cursor: 'pointer' }}
+                              />
+                              {p.full_name || p.email}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {(editingTask.participants ?? []).length > 0 && (
+                        <div style={{ fontSize: '12px', color: '#6366f1', marginTop: '4px' }}>
+                          {(editingTask.participants ?? []).length} משתתף{(editingTask.participants ?? []).length > 1 ? 'ים' : ''} נבחר{(editingTask.participants ?? []).length > 1 ? 'ו' : ''}
                         </div>
                       )}
                     </div>
@@ -4444,26 +4423,28 @@ function App() {
                   ← הקודם
                 </button>
 
-                <button
-                  onClick={handleSaveTask}
-                  style={{
-                    flex: 2,
-                    padding: '14px',
-                    background: '#0ea5e9',
-                    color: 'white',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '15px',
-                    fontWeight: '600',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    fontFamily: 'inherit'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#0284c7'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#0ea5e9'}
-                >
-                  💾 שמור שינויים
-                </button>
+                {user && (
+                  <button
+                    onClick={handleSaveTask}
+                    style={{
+                      flex: 2,
+                      padding: '14px',
+                      background: '#0ea5e9',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '8px',
+                      fontSize: '15px',
+                      fontWeight: '600',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                      fontFamily: 'inherit'
+                    }}
+                    onMouseEnter={(e) => e.currentTarget.style.background = '#0284c7'}
+                    onMouseLeave={(e) => e.currentTarget.style.background = '#0ea5e9'}
+                  >
+                    💾 שמור שינויים
+                  </button>
+                )}
 
                 <button
                   onClick={() => setActiveStep(Math.min(stepConfig.length - 1, activeStep + 1))}
@@ -4486,33 +4467,35 @@ function App() {
                 </button>
               </div>
 
-              {/* Delete Task Button */}
-              <button
-                onClick={() => deleteTask(editingTask.id)}
-                style={{
-                  width: '100%',
-                  padding: '12px',
-                  background: '#fee2e2',
-                  color: '#991b1b',
-                  border: '1px solid #fecaca',
-                  borderRadius: '8px',
-                  fontSize: '13px',
-                  fontWeight: '600',
-                  cursor: 'pointer',
-                  marginTop: '16px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#fecaca';
-                  e.currentTarget.style.color = '#7f1d1d';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#fee2e2';
-                  e.currentTarget.style.color = '#991b1b';
-                }}
-              >
-                🗑️ מחק משימה
-              </button>
+              {/* Delete Task Button — only for authenticated users */}
+              {user && (
+                <button
+                  onClick={() => deleteTask(editingTask.id)}
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    background: '#fee2e2',
+                    color: '#991b1b',
+                    border: '1px solid #fecaca',
+                    borderRadius: '8px',
+                    fontSize: '13px',
+                    fontWeight: '600',
+                    cursor: 'pointer',
+                    marginTop: '16px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#fecaca';
+                    e.currentTarget.style.color = '#7f1d1d';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#fee2e2';
+                    e.currentTarget.style.color = '#991b1b';
+                  }}
+                >
+                  🗑️ מחק משימה
+                </button>
+              )}
 
               {/* Keyboard Shortcuts Hint */}
               <div style={{ marginTop: '16px', padding: '12px', background: '#f8fafc', borderRadius: '8px', border: '1px solid #e5e5e5' }}>
@@ -4615,6 +4598,8 @@ function App() {
                   category: formData.get('category') as string,
                   color: tasks.find(t => t.category === formData.get('category'))?.color || '#7dd3fc',
                   owner: formData.get('owner') as string || 'ללא אחראי',
+                  assignedTo: null,
+                  participants: [],
                   priority: (formData.get('priority') as 'P1' | 'P2' | 'P3') || 'P2',
                   progress: 0,
                   department: formData.get('department') as string || '',
@@ -4631,7 +4616,9 @@ function App() {
                   risksBlockers: formData.get('risksBlockers') as string || '',
                   dependencies: formData.get('dependencies') as string || '',
                   links: formData.get('links') as string || '',
-                  milestones: milestonesText.length > 0 ? milestonesText.map(text => ({ text, done: false })) : [{ text: 'שלב ראשון', done: false }]
+                  milestones: milestonesText.length > 0 ? milestonesText.map(text => ({ text, done: false })) : [{ text: 'שלב ראשון', done: false }],
+                  status: 'open' as const,
+                  currentState: '',
                 };
 
                 addNewTask(newTask);
@@ -5304,6 +5291,16 @@ function App() {
       }}>
         פיתוח: שי שבו, המרכז הרפואי הלל יפה
       </footer>
+
+      {/* Login Modal */}
+      {showLoginModal && (
+        <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
+
+      {/* Quick View Modal — Work Queue section */}
+      {quickViewTask && (
+        <QuickViewModal task={quickViewTask} onClose={() => setQuickViewTask(null)} />
+      )}
     </div>
   );
 }

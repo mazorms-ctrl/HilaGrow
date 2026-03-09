@@ -1,8 +1,10 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // MedicalTask interface matching the app's expectations
+// Expanded to support full idea-to-delivery lifecycle
 export interface MedicalTask {
   id: string; // UUID from Supabase — never convert to/from integer
   title: string;
@@ -10,32 +12,104 @@ export interface MedicalTask {
   category: string;
   color: string;
   owner: string;
+  assignedTo: string | null;   // UUID of assigned profile
+  participants: string[];      // Array of profile UUIDs
   priority: 'P1' | 'P2' | 'P3';
   progress: number;
-  department: string;
-  processName: string;
+  status: 'open' | 'in_progress' | 'blocked' | 'done';
+  
+  // ── Foundations (יסודות) ────────────────────────────────────
   problemStatement: string;
   goal: string;
+  targetAudience?: string;
+  desiredImpact?: string;
+  scope?: string;
+  outOfScope?: string;
+  successDefinition?: string;
+  
+  // ── Current State (מצב נוכחי) ────────────────────────────────
+  currentState: string;
+  painPoints?: string;
+  constraints?: string;
+  existingProcess?: string;
+  evidence?: string;
+  
+  // ── Specification (אפיון) ────────────────────────────────────
+  department: string;
+  processName: string;
+  proposedSolution?: string;
+  deliverables?: string;
+  assumptions?: string;
+  requiredDecisions?: string;
+  acceptanceCriteria?: string;
+  
+  // ── Timeline (ציר זמן) ────────────────────────────────────────
+  startDate: string;
+  dueDate: string;
+  milestones: Array<{
+    text: string;
+    done: boolean;
+    assignedTo?: string;        // profile ID
+    dueDate?: string;           // ISO date string
+    actionItems?: Array<{
+      text: string;
+      done: boolean;
+      assignedTo?: string;      // profile ID
+      dueDate?: string;         // ISO date string
+    }>;
+  }>;
+  
+  // ── KPI (מדדי הצלחה) ──────────────────────────────────────────
   kpiName: string;
   baseline: string;
   target: string;
+  sourceOfTruth?: string;
   measurementCadence: string;
-  startDate: string;
-  dueDate: string;
-  stakeholders: string[];
+  metricOwner?: string;
+  // Dynamic KPI list (replaces the flat fields above)
+  kpis?: Array<{
+    name: string;
+    baseline: string;
+    target: string;
+    cadence: string;
+    source: string;
+    owner: string;
+  }>;
+  
+  // ── Participants (משתתפים) ───────────────────────────────────
+  stakeholders: string[];   // Array of profile names/emails
+  approvers?: string[];     // Array of profile names/emails who must approve
+  
+  // ── Risks (סיכונים ותלויות) ──────────────────────────────────
   risksBlockers: string;
   dependencies: string;
   links: string;
-  milestones: Array<{ text: string; done: boolean }>;
+  mitigationPlan?: string;
+  escalationPath?: string;
+  
+  // ── Outcome (תוצר סופי) ───────────────────────────────────────
+  finalDeliverable?: string;
+  rolloutNotes?: string;
+  measuredResult?: string;
+  lessonsLearned?: string;
 }
 
-// Database row type
+// ── Profile types ──────────────────────────────────────────────────────────────
+
+export interface ProfileSummary {
+  id: string;
+  full_name: string | null;
+  email: string;
+}
+
+// Database row types
 interface TaskRow {
   id: string;
   group_id: string;
   title: string;
   description: string | null;
   owner_name: string | null;
+  assigned_to: string | null;
   priority: 'P1' | 'P2' | 'P3' | null;
   progress_mode: 'auto' | 'manual';
   progress_manual: number | null;
@@ -58,20 +132,24 @@ interface MilestoneRow {
   order: number;
 }
 
-// Default project ID (from seed.sql)
-const DEFAULT_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
+// ── Project summary type (used by Sidebar) ────────────────────────────────────
 
-/**
- * Convert database rows to MedicalTask format
- */
+export interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+}
+
+// ── Convert DB rows to MedicalTask ────────────────────────────────────────────
+
 function dbRowToMedicalTask(
   taskRow: TaskRow,
   groupRow: GroupRow,
-  milestones: MilestoneRow[]
+  milestones: MilestoneRow[],
+  participantIds: string[] = []
 ): MedicalTask {
   const metadata = taskRow.metadata || {};
-  
-  // Calculate progress from milestones if auto mode
+
   let progress = 0;
   if (taskRow.progress_mode === 'auto' && milestones.length > 0) {
     const completed = milestones.filter(m => m.done).length;
@@ -87,167 +165,471 @@ function dbRowToMedicalTask(
     category: groupRow.name,
     color: groupRow.color || '#7dd3fc',
     owner: taskRow.owner_name || '',
+    assignedTo: taskRow.assigned_to || null,
+    participants: participantIds,
     priority: taskRow.priority || 'P2',
     progress,
-    department: metadata.department || '',
-    processName: metadata.processName || '',
+    status: metadata.status || 'open',
+    
+    // Foundations
     problemStatement: metadata.problemStatement || '',
     goal: metadata.goal || '',
+    targetAudience: metadata.targetAudience || '',
+    desiredImpact: metadata.desiredImpact || '',
+    scope: metadata.scope || '',
+    outOfScope: metadata.outOfScope || '',
+    successDefinition: metadata.successDefinition || '',
+    
+    // Current State
+    currentState: metadata.currentState || '',
+    painPoints: metadata.painPoints || '',
+    constraints: metadata.constraints || '',
+    existingProcess: metadata.existingProcess || '',
+    evidence: metadata.evidence || '',
+    
+    // Specification
+    department: metadata.department || '',
+    processName: metadata.processName || '',
+    proposedSolution: metadata.proposedSolution || '',
+    deliverables: metadata.deliverables || '',
+    assumptions: metadata.assumptions || '',
+    requiredDecisions: metadata.requiredDecisions || '',
+    acceptanceCriteria: metadata.acceptanceCriteria || '',
+    
+    // Timeline
+    startDate: metadata.startDate || '',
+    dueDate: metadata.dueDate || '',
+    milestones: milestones
+      .sort((a, b) => a.order - b.order)
+      .map((m, i) => {
+        const extra = (metadata.milestoneExtras || [])[i] || {};
+        return {
+          text: m.title,
+          done: m.done,
+          assignedTo: extra.assignedTo as string | undefined,
+          dueDate: extra.dueDate as string | undefined,
+          actionItems: (extra.actionItems || []) as Array<{ text: string; done: boolean; assignedTo?: string }>,
+        };
+      }),
+    
+    // KPI (flat legacy fields kept for compat)
     kpiName: metadata.kpiName || '',
     baseline: metadata.baseline || '',
     target: metadata.target || '',
+    sourceOfTruth: metadata.sourceOfTruth || '',
     measurementCadence: metadata.measurementCadence || '',
-    startDate: metadata.startDate || '',
-    dueDate: metadata.dueDate || '',
+    metricOwner: metadata.metricOwner || '',
+    // Dynamic KPI list — falls back to one entry built from legacy flat fields
+    kpis: Array.isArray(metadata.kpis) && metadata.kpis.length > 0
+      ? metadata.kpis
+      : (metadata.kpiName || metadata.baseline || metadata.target)
+        ? [{ name: metadata.kpiName || '', baseline: metadata.baseline || '', target: metadata.target || '', cadence: metadata.measurementCadence || '', source: metadata.sourceOfTruth || '', owner: metadata.metricOwner || '' }]
+        : [],
+    
+    // Participants
     stakeholders: metadata.stakeholders || [],
+    approvers: metadata.approvers || [],
+    
+    // Risks
     risksBlockers: metadata.risksBlockers || '',
     dependencies: metadata.dependencies || '',
     links: metadata.links || '',
-    milestones: milestones
-      .sort((a, b) => a.order - b.order)
-      .map(m => ({ text: m.title, done: m.done })),
+    mitigationPlan: metadata.mitigationPlan || '',
+    escalationPath: metadata.escalationPath || '',
+    
+    // Outcome
+    finalDeliverable: metadata.finalDeliverable || '',
+    rolloutNotes: metadata.rolloutNotes || '',
+    measuredResult: metadata.measuredResult || '',
+    lessonsLearned: metadata.lessonsLearned || '',
   };
 }
 
+// ── useTaskById ───────────────────────────────────────────────────────────────
+
 /**
- * Hook to fetch and sync tasks from Supabase
+ * Fetches a single task by ID, resolving its group + project context.
+ * Cached by React Query — navigating back is instant.
+ * 2 sequential round-trips: (task+group joined) → parallel(milestones, participants).
  */
-export function useTasks() {
-  const [tasks, setTasks] = useState<MedicalTask[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function useTaskById(taskId: string | null) {
+  const queryClient = useQueryClient();
 
-  // Fetch tasks from database
-  const fetchTasks = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch groups (categories)
-      const { data: groups, error: groupsError } = await supabase
-        .from('groups')
-        .select('*')
-        .eq('project_id', DEFAULT_PROJECT_ID)
-        .order('order', { ascending: true });
-
-      if (groupsError) throw groupsError;
-
-      // Fetch tasks
-      const { data: tasksData, error: tasksError } = await supabase
+  const { data, isLoading: loading } = useQuery({
+    queryKey: ['task', taskId],
+    enabled: !!taskId,
+    staleTime: 15_000,
+    queryFn: async () => {
+      // task + group in one query via foreign key join
+      const { data: taskRow, error } = await supabase
         .from('tasks')
-        .select('*')
-        .in('group_id', groups?.map(g => g.id) || [])
-        .order('order', { ascending: true });
+        .select('*, group:groups!inner(id, name, color, order, project_id)')
+        .eq('id', taskId!)
+        .single();
 
-      if (tasksError) throw tasksError;
+      if (error || !taskRow) throw error ?? new Error('Task not found');
 
-      // Fetch all milestones
-      const { data: milestones, error: milestonesError } = await supabase
-        .from('milestones')
-        .select('*')
-        .in('task_id', tasksData?.map(t => t.id) || [])
-        .order('order', { ascending: true });
+      const group = taskRow.group as GroupRow & { project_id: string };
 
-      if (milestonesError) throw milestonesError;
+      // milestones + participants in parallel
+      const [{ data: milestones }, { data: participantRows }] = await Promise.all([
+        supabase.from('milestones').select('*').eq('task_id', taskId!).order('order'),
+        supabase.from('task_participants').select('profile_id').eq('task_id', taskId!),
+      ]);
 
-      // Group milestones by task_id
-      const milestonesByTask = new Map<string, MilestoneRow[]>();
-      milestones?.forEach(m => {
-        if (!milestonesByTask.has(m.task_id)) {
-          milestonesByTask.set(m.task_id, []);
+      const participants = (participantRows || []).map((p: { profile_id: string }) => p.profile_id);
+      return {
+        task: dbRowToMedicalTask(taskRow as unknown as TaskRow, group, milestones || [], participants),
+        projectId: group.project_id,
+      };
+    },
+  });
+
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ['task', taskId] });
+
+  return {
+    task: data?.task ?? null,
+    projectId: data?.projectId ?? null,
+    loading,
+    refetch,
+  };
+}
+
+// ── useProjects ───────────────────────────────────────────────────────────────
+
+/**
+ * Fetches and real-time-syncs the current user's projects (cached by React Query).
+ */
+export function useProjects(userId?: string) {
+  const queryClient = useQueryClient();
+
+  const { data: projects = [], isLoading: loading } = useQuery({
+    queryKey: ['projects', userId],
+    enabled: !!userId,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('id, name, description')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data || []) as ProjectSummary[];
+    },
+  });
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('projects-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, () => {
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
+
+  return { projects, loading };
+}
+
+// ── createProject ─────────────────────────────────────────────────────────────
+
+/**
+ * Creates a new project owned by the current user.
+ * Returns the new project's UUID.
+ */
+export async function createProject(name: string, description?: string): Promise<string> {
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) throw new Error('Not authenticated');
+
+  const { data, error } = await supabase
+    .from('projects')
+    .insert({ name, description: description || null, user_id: user.id })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return data.id;
+}
+
+// ── useProfiles ───────────────────────────────────────────────────────────────
+
+/**
+ * Fetches all user profiles (for dropdowns/selects). Cached for 5 min.
+ */
+export function useProfiles() {
+  const { data: profiles = [], error, status } = useQuery({
+    queryKey: ['profiles'],
+    staleTime: 5 * 60_000,
+    queryFn: async () => {
+      console.log('[useProfiles] fetching profiles from Supabase...');
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, full_name, email')
+        .order('full_name', { ascending: true });
+      console.log('[useProfiles] result:', { count: data?.length ?? 0, error: error ?? null });
+      if (error) throw error;
+      return (data || []) as ProfileSummary[];
+    },
+  });
+
+  if (error) {
+    console.error('[useProfiles] query failed (RLS / auth / network):', error);
+  }
+  console.log(`[useProfiles] status=${status} profiles=${profiles.length}`);
+
+  return { profiles };
+}
+
+// ── useMyTasks ────────────────────────────────────────────────────────────────
+
+export interface MyTaskSummary {
+  id: string;
+  title: string;
+  priority: 'P1' | 'P2' | 'P3';
+  projectId: string;
+  projectName: string;
+  category: string;
+  dueDate: string;
+  progress: number;
+}
+
+/**
+ * Fetches tasks where the current user is either assigned_to or a participant.
+ * Cached by React Query — sidebar re-renders are instant on section switches.
+ */
+export function useMyTasks() {
+  const queryClient = useQueryClient();
+  const { data: myTasks = [], isLoading: loading } = useQuery({
+    queryKey: ['myTasks'],
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [] as MyTaskSummary[];
+
+      // assigned tasks + participant links in parallel
+      const [{ data: assignedRows }, { data: participantLinks }] = await Promise.all([
+        supabase
+          .from('tasks')
+          .select('id, title, priority, metadata, progress_mode, progress_manual, group_id')
+          .eq('assigned_to', user.id),
+        supabase
+          .from('task_participants')
+          .select('task_id')
+          .eq('profile_id', user.id),
+      ]);
+
+      const assignedIds = new Set((assignedRows || []).map(t => t.id));
+      const extraIds = (participantLinks || [])
+        .map(p => p.task_id)
+        .filter(id => !assignedIds.has(id));
+
+      let allTaskRows = [...(assignedRows || [])];
+
+      if (extraIds.length > 0) {
+        const { data: extraRows } = await supabase
+          .from('tasks')
+          .select('id, title, priority, metadata, progress_mode, progress_manual, group_id')
+          .in('id', extraIds);
+        allTaskRows = [...allTaskRows, ...(extraRows || [])];
+      }
+
+      if (allTaskRows.length === 0) return [] as MyTaskSummary[];
+
+      const groupIds = [...new Set(allTaskRows.map(t => t.group_id))];
+      const autoIds = allTaskRows.filter(t => t.progress_mode === 'auto').map(t => t.id);
+
+      // groups + milestones in parallel
+      const [{ data: groups }, { data: milestones }] = await Promise.all([
+        supabase.from('groups').select('id, name, project_id').in('id', groupIds),
+        autoIds.length > 0
+          ? supabase.from('milestones').select('task_id, done').in('task_id', autoIds)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const projectIds = [...new Set((groups || []).map(g => g.project_id))];
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id, name')
+        .in('id', projectIds);
+
+      const groupMap = new Map((groups || []).map(g => [g.id, g]));
+      const projectMap = new Map((projects || []).map(p => [p.id, p]));
+
+      const milestoneCountByTask = new Map<string, { total: number; done: number }>();
+      (milestones || []).forEach(m => {
+        const cur = milestoneCountByTask.get(m.task_id) || { total: 0, done: 0 };
+        milestoneCountByTask.set(m.task_id, { total: cur.total + 1, done: cur.done + (m.done ? 1 : 0) });
+      });
+
+      const result: MyTaskSummary[] = [];
+      for (const task of allTaskRows) {
+        const group = groupMap.get(task.group_id);
+        const project = group ? projectMap.get(group.project_id) : null;
+        if (!group || !project) continue;
+
+        let progress = 0;
+        if (task.progress_mode === 'auto') {
+          const counts = milestoneCountByTask.get(task.id);
+          progress = counts && counts.total > 0 ? Math.round((counts.done / counts.total) * 100) : 0;
+        } else {
+          progress = task.progress_manual || 0;
         }
+
+        result.push({
+          id: task.id,
+          title: task.title,
+          priority: task.priority || 'P2',
+          projectId: project.id,
+          projectName: project.name,
+          category: group.name,
+          dueDate: task.metadata?.dueDate || '',
+          progress,
+        });
+      }
+
+      return result;
+    },
+  });
+
+  // Realtime: invalidate whenever tasks or participants change so the sidebar
+  // updates immediately when someone assigns a task to the current user.
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['myTasks'] });
+
+    const tasksChannel = supabase
+      .channel('my-tasks-rt-tasks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidate)
+      .subscribe();
+
+    const participantsChannel = supabase
+      .channel('my-tasks-rt-participants')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_participants' }, invalidate)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tasksChannel);
+      supabase.removeChannel(participantsChannel);
+    };
+  }, [queryClient]);
+
+  return { myTasks, loading };
+}
+
+// ── useTasks ──────────────────────────────────────────────────────────────────
+
+/**
+ * Fetches and real-time-syncs tasks for a given project.
+ * Pass null to skip fetching (e.g. when no project is selected).
+ */
+export function useTasks(projectId: string | null) {
+  const queryClient = useQueryClient();
+
+  const {
+    data: tasks = [],
+    isLoading: loading,
+    error: queryError,
+  } = useQuery({
+    queryKey: ['tasks', projectId],
+    enabled: !!projectId,
+    staleTime: 10_000,
+    queryFn: async () => {
+      // Groups + tasks in a single nested Supabase query (saves 1 sequential round-trip)
+      const { data: groupsWithTasks, error: gError } = await supabase
+        .from('groups')
+        .select('*, tasks(*)')
+        .eq('project_id', projectId!)
+        .order('order', { ascending: true });
+
+      if (gError) throw gError;
+
+      // Flatten and build a group lookup map
+      type GroupWithTasks = GroupRow & { tasks: TaskRow[] };
+      const allTaskRows: TaskRow[] = [];
+      const groupMap = new Map<string, GroupRow>();
+
+      (groupsWithTasks as GroupWithTasks[] || []).forEach(g => {
+        const { tasks: groupTasks, ...groupRow } = g;
+        groupMap.set(g.id, groupRow as GroupRow);
+        (groupTasks || []).forEach(t => allTaskRows.push(t));
+      });
+
+      const taskIds = allTaskRows.map(t => t.id);
+      if (taskIds.length === 0) return [] as MedicalTask[];
+
+      // Milestones + participants in parallel
+      const [{ data: milestones, error: mError }, { data: participantRows }] = await Promise.all([
+        supabase.from('milestones').select('*').in('task_id', taskIds).order('order', { ascending: true }),
+        supabase.from('task_participants').select('task_id, profile_id').in('task_id', taskIds),
+      ]);
+
+      if (mError) throw mError;
+
+      const milestonesByTask = new Map<string, MilestoneRow[]>();
+      (milestones || []).forEach(m => {
+        if (!milestonesByTask.has(m.task_id)) milestonesByTask.set(m.task_id, []);
         milestonesByTask.get(m.task_id)!.push(m);
       });
 
-      // Convert to MedicalTask format
-      const medicalTasks: MedicalTask[] = [];
-      tasksData?.forEach(task => {
-        const group = groups?.find(g => g.id === task.group_id);
-        if (group) {
-          const taskMilestones = milestonesByTask.get(task.id) || [];
-          medicalTasks.push(dbRowToMedicalTask(task, group, taskMilestones));
-        }
+      const participantsByTask = new Map<string, string[]>();
+      (participantRows || []).forEach(p => {
+        if (!participantsByTask.has(p.task_id)) participantsByTask.set(p.task_id, []);
+        participantsByTask.get(p.task_id)!.push(p.profile_id);
       });
 
-      setTasks(medicalTasks);
-    } catch (err) {
-      console.error('Error fetching tasks:', err);
-      setError(err instanceof Error ? err.message : 'Failed to fetch tasks');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      return allTaskRows
+        .map(task => {
+          const group = groupMap.get(task.group_id);
+          if (!group) return null;
+          return dbRowToMedicalTask(task, group, milestonesByTask.get(task.id) || [], participantsByTask.get(task.id) || []);
+        })
+        .filter(Boolean) as MedicalTask[];
+    },
+  });
 
-  // Initial fetch
+  // Real-time: invalidate cache instead of manually re-fetching
   useEffect(() => {
-    fetchTasks();
-  }, [fetchTasks]);
+    if (!projectId) return;
 
-  // Set up real-time subscriptions
-  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
     const channels: RealtimeChannel[] = [];
 
-    // Subscribe to tasks changes
     const tasksChannel = supabase
-      .channel('tasks-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks' },
-        () => {
-          console.log('Tasks changed, refetching...');
-          fetchTasks();
-        }
-      )
+      .channel(`tasks-rt-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidate)
       .subscribe();
 
-    // Subscribe to milestones changes
     const milestonesChannel = supabase
-      .channel('milestones-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'milestones' },
-        () => {
-          console.log('Milestones changed, refetching...');
-          fetchTasks();
-        }
-      )
+      .channel(`milestones-rt-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, invalidate)
       .subscribe();
 
-    // Subscribe to groups changes
     const groupsChannel = supabase
-      .channel('groups-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'groups' },
-        () => {
-          console.log('Groups changed, refetching...');
-          fetchTasks();
-        }
-      )
+      .channel(`groups-rt-${projectId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'groups' }, () => {
+        invalidate();
+      })
       .subscribe();
 
     channels.push(tasksChannel, milestonesChannel, groupsChannel);
 
-    // Cleanup subscriptions
     return () => {
-      channels.forEach(channel => {
-        supabase.removeChannel(channel);
-      });
+      channels.forEach(channel => { supabase.removeChannel(channel); });
     };
-  }, [fetchTasks]);
+  }, [projectId, queryClient]);
 
-  return { tasks, loading, error, refetch: fetchTasks };
+  const error = queryError instanceof Error ? queryError.message : null;
+  const refetch = () => queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
+
+  return { tasks, loading, error, refetch };
 }
 
-/**
- * Function to update a task in Supabase
- */
-export async function updateTask(task: MedicalTask): Promise<void> {
-  // Find the task's group by category name
+// ── updateTask ────────────────────────────────────────────────────────────────
+
+export async function updateTask(task: MedicalTask, projectId: string): Promise<void> {
+  // Find the task's group by category name within the project
   const { data: groups } = await supabase
     .from('groups')
     .select('id')
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', task.category)
     .single();
 
@@ -255,35 +637,84 @@ export async function updateTask(task: MedicalTask): Promise<void> {
     throw new Error(`Group not found for category: ${task.category}`);
   }
 
-  // Prepare metadata
   const metadata = {
-    department: task.department,
-    processName: task.processName,
+    // Foundations
     problemStatement: task.problemStatement,
     goal: task.goal,
+    targetAudience: task.targetAudience,
+    desiredImpact: task.desiredImpact,
+    scope: task.scope,
+    outOfScope: task.outOfScope,
+    successDefinition: task.successDefinition,
+    
+    // Current State
+    currentState: task.currentState,
+    painPoints: task.painPoints,
+    constraints: task.constraints,
+    existingProcess: task.existingProcess,
+    evidence: task.evidence,
+    
+    // Specification
+    department: task.department,
+    processName: task.processName,
+    proposedSolution: task.proposedSolution,
+    deliverables: task.deliverables,
+    assumptions: task.assumptions,
+    requiredDecisions: task.requiredDecisions,
+    acceptanceCriteria: task.acceptanceCriteria,
+    
+    // Timeline
+    startDate: task.startDate,
+    dueDate: task.dueDate,
+    
+    // KPI
     kpiName: task.kpiName,
     baseline: task.baseline,
     target: task.target,
+    sourceOfTruth: task.sourceOfTruth,
     measurementCadence: task.measurementCadence,
-    startDate: task.startDate,
-    dueDate: task.dueDate,
+    metricOwner: task.metricOwner,
+    kpis: task.kpis || [],
+    
+    // Participants
     stakeholders: task.stakeholders,
+    approvers: task.approvers,
+    
+    // Risks
     risksBlockers: task.risksBlockers,
     dependencies: task.dependencies,
     links: task.links,
+    mitigationPlan: task.mitigationPlan,
+    escalationPath: task.escalationPath,
+    
+    // Outcome
+    finalDeliverable: task.finalDeliverable,
+    rolloutNotes: task.rolloutNotes,
+    measuredResult: task.measuredResult,
+    lessonsLearned: task.lessonsLearned,
+    
+    // Status
+    status: task.status,
+
+    // Milestone extras (assignedTo + actionItems per milestone, indexed by order)
+    milestoneExtras: task.milestones.map(m => ({
+      assignedTo: m.assignedTo ?? null,
+      dueDate: m.dueDate ?? null,
+      actionItems: (m.actionItems || []).map(a => ({
+        text: a.text,
+        done: a.done,
+        assignedTo: a.assignedTo ?? null,
+      })),
+    })),
   };
 
-  // Update task — select('id') returns the real UUID from Postgres so we
-  // never rely on the reconstructed taskUuid for child writes (fixes FK 23503
-  // for tasks created outside the seed data whose UUIDs don't follow the
-  // 20000000-… pattern). maybeSingle() returns null instead of erroring when
-  // no row is matched, so we can surface a clear message.
   const { data: updatedTask, error: taskError } = await supabase
     .from('tasks')
     .update({
       title: task.title,
       description: task.description,
       owner_name: task.owner,
+      assigned_to: task.assignedTo || null,
       priority: task.priority,
       metadata,
     })
@@ -294,11 +725,18 @@ export async function updateTask(task: MedicalTask): Promise<void> {
   if (taskError) throw taskError;
   if (!updatedTask) throw new Error(`Task not found (id: ${task.id}).`);
 
-  // Use the confirmed real UUID for all milestone operations.
   const confirmedUuid = updatedTask.id;
 
-  // Only re-sync milestones if they actually changed — skip the DB writes
-  // entirely when only basic task properties (name, owner, etc.) were edited.
+  // Sync task_participants (delete all, re-insert)
+  await supabase.from('task_participants').delete().eq('task_id', confirmedUuid);
+  if (task.participants.length > 0) {
+    const { error: participantsError } = await supabase.from('task_participants').insert(
+      task.participants.map(profileId => ({ task_id: confirmedUuid, profile_id: profileId }))
+    );
+    if (participantsError) throw participantsError;
+  }
+
+  // Only re-sync milestones if they changed
   const { data: currentMilestones } = await supabase
     .from('milestones')
     .select('title, done, order')
@@ -306,15 +744,14 @@ export async function updateTask(task: MedicalTask): Promise<void> {
     .order('order', { ascending: true });
 
   const incomingKey = task.milestones
-    .map((m, i) => `${i}|${m.text}|${m.done}`)
+    .map((m, i) => `${i}|${m.text}|${m.done}|${m.assignedTo ?? ''}`)
     .join('||');
   const existingKey = (currentMilestones || [])
     .map(m => `${m.order}|${m.title}|${m.done}`)
     .join('||');
 
-  if (incomingKey === existingKey) return; // Milestones unchanged — nothing more to do.
+  if (incomingKey === existingKey) return;
 
-  // Milestones changed: delete all then reinsert cleanly.
   const { error: deleteError } = await supabase
     .from('milestones')
     .delete()
@@ -335,28 +772,30 @@ export async function updateTask(task: MedicalTask): Promise<void> {
   }
 }
 
-/**
- * Function to create a new task in Supabase
- */
-export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<MedicalTask> {
-  // Find or create the group (category)
+// ── createTask ────────────────────────────────────────────────────────────────
+
+export async function createTask(
+  task: Omit<MedicalTask, 'id'>,
+  projectId: string,
+  createdBy?: string
+): Promise<MedicalTask> {
+  // Find or create the group (category) within this project
   const { data: existingGroup } = await supabase
     .from('groups')
     .select('id')
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', task.category)
-    .single();
+    .maybeSingle();
 
   let groupId: string;
 
   if (existingGroup) {
     groupId = existingGroup.id;
   } else {
-    // Create new group
     const { data: newGroup, error: groupError } = await supabase
       .from('groups')
       .insert({
-        project_id: DEFAULT_PROJECT_ID,
+        project_id: projectId,
         name: task.category,
         color: task.color,
         order: 0,
@@ -369,7 +808,6 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
     groupId = newGroup.id;
   }
 
-  // Prepare metadata
   const metadata = {
     department: task.department,
     processName: task.processName,
@@ -385,9 +823,11 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
     risksBlockers: task.risksBlockers,
     dependencies: task.dependencies,
     links: task.links,
+    status: task.status,
+    currentState: task.currentState,
+    kpis: task.kpis || [],
   };
 
-  // Create task
   const { data: newTask, error: taskError } = await supabase
     .from('tasks')
     .insert({
@@ -395,16 +835,24 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
       title: task.title,
       description: task.description,
       owner_name: task.owner,
+      assigned_to: task.assignedTo || null,
       priority: task.priority,
       progress_mode: 'auto',
       metadata,
+      ...(createdBy ? { created_by: createdBy } : {}),
     })
     .select()
     .single();
 
   if (taskError) throw taskError;
 
-  // Create milestones
+  if (task.participants.length > 0) {
+    const { error: participantsError } = await supabase.from('task_participants').insert(
+      task.participants.map(profileId => ({ task_id: newTask.id, profile_id: profileId }))
+    );
+    if (participantsError) throw participantsError;
+  }
+
   if (task.milestones.length > 0) {
     const { error: milestonesError } = await supabase.from('milestones').insert(
       task.milestones.map((m, idx) => ({
@@ -414,11 +862,9 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
         order: idx,
       }))
     );
-
     if (milestonesError) throw milestonesError;
   }
 
-  // Fetch and return the created task
   const { data: groups } = await supabase
     .from('groups')
     .select('*')
@@ -431,40 +877,165 @@ export async function createTask(task: Omit<MedicalTask, 'id'>): Promise<Medical
     .eq('task_id', newTask.id)
     .order('order');
 
-  return dbRowToMedicalTask(newTask, groups!, milestones || []);
+  return dbRowToMedicalTask(newTask, groups!, milestones || [], task.participants);
 }
 
-/**
- * Function to delete a task from Supabase
- */
+// ── deleteTask ────────────────────────────────────────────────────────────────
+
 export async function deleteTask(taskId: string): Promise<void> {
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
-
   if (error) throw error;
 }
 
-/**
- * Function to rename a category/group in Supabase
- */
-export async function renameCategory(oldName: string, newName: string): Promise<void> {
+// ── renameCategory ────────────────────────────────────────────────────────────
+
+export async function renameCategory(
+  oldName: string,
+  newName: string,
+  projectId: string
+): Promise<void> {
   const { error } = await supabase
     .from('groups')
     .update({ name: newName })
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', oldName);
 
   if (error) throw error;
 }
 
-/**
- * Function to update a category/group color in Supabase
- */
-export async function updateCategoryColor(categoryName: string, color: string): Promise<void> {
+// ── updateCategoryColor ───────────────────────────────────────────────────────
+
+export async function updateCategoryColor(
+  categoryName: string,
+  color: string,
+  projectId: string
+): Promise<void> {
   const { error } = await supabase
     .from('groups')
     .update({ color })
-    .eq('project_id', DEFAULT_PROJECT_ID)
+    .eq('project_id', projectId)
     .eq('name', categoryName);
 
   if (error) throw error;
 }
+
+// ── Task Comments ─────────────────────────────────────────────────────────────
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  author?: ProfileSummary;
+}
+
+// ── useTaskComments ───────────────────────────────────────────────────────────
+// Fetches comments for a task with realtime subscription
+
+export function useTaskComments(taskId: string | null) {
+  const queryClient = useQueryClient();
+
+  const { data: comments = [], isLoading } = useQuery({
+    queryKey: ['task-comments', taskId],
+    queryFn: async () => {
+      if (!taskId) return [];
+
+      const { data, error } = await supabase
+        .from('task_comments')
+        .select(`
+          id,
+          task_id,
+          author_id,
+          content,
+          created_at,
+          updated_at
+        `)
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      // Fetch author profiles
+      const authorIds = [...new Set((data || []).map(c => c.author_id))];
+      if (authorIds.length === 0) return (data || []).map(c => ({ ...c, author: undefined })) as TaskComment[];
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .in('id', authorIds);
+
+      const profileMap = new Map<string, ProfileSummary>();
+      (profiles || []).forEach(p => profileMap.set(p.id, p));
+
+      return (data || []).map(c => ({
+        ...c,
+        author: profileMap.get(c.author_id),
+      })) as TaskComment[];
+    },
+    enabled: !!taskId,
+  });
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!taskId) return;
+
+    const channel = supabase
+      .channel(`task-comments-${taskId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'task_comments',
+          filter: `task_id=eq.${taskId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [taskId, queryClient]);
+
+  return { comments, loading: isLoading };
+}
+
+// ── createComment ─────────────────────────────────────────────────────────────
+
+export async function createComment(
+  taskId: string,
+  content: string,
+  authorId: string
+): Promise<TaskComment> {
+  const { data, error } = await supabase
+    .from('task_comments')
+    .insert({
+      task_id: taskId,
+      author_id: authorId,
+      content,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error('Failed to create comment');
+
+  return data as TaskComment;
+}
+
+// ── deleteComment ─────────────────────────────────────────────────────────────
+
+export async function deleteComment(commentId: string): Promise<void> {
+  const { error } = await supabase
+    .from('task_comments')
+    .delete()
+    .eq('id', commentId);
+
+  if (error) throw error;
+}
+

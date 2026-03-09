@@ -1,12 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { BrowserRouter } from 'react-router-dom'
 import './index.css'
-// Original design with auto-save functionality
-import App from './App.tsx'
-// New design version: ./App.new-supabase.tsx
-// Safe version for debugging: ./App.safe.tsx
-// Debug version: ./App.debug.tsx
+import { AppRouter } from './AppRouter.tsx'
 import { QueryProvider } from './providers/QueryProvider.tsx'
+import { AuthProvider } from './contexts/AuthContext.tsx'
 
 // Global error handler
 window.addEventListener('error', (event) => {
@@ -25,9 +23,13 @@ console.log('🚀 Starting GROW+ application...');
 try {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      <QueryProvider>
-        <App />
-      </QueryProvider>
+      <BrowserRouter>
+        <QueryProvider>
+          <AuthProvider>
+            <AppRouter />
+          </AuthProvider>
+        </QueryProvider>
+      </BrowserRouter>
     </StrictMode>,
   );
   console.log('✅ React app rendered successfully');
