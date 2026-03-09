@@ -356,18 +356,25 @@ export async function createProject(name: string, description?: string): Promise
  * Fetches all user profiles (for dropdowns/selects). Cached for 5 min.
  */
 export function useProfiles() {
-  const { data: profiles = [] } = useQuery({
+  const { data: profiles = [], error, status } = useQuery({
     queryKey: ['profiles'],
     staleTime: 5 * 60_000,
     queryFn: async () => {
+      console.log('[useProfiles] fetching profiles from Supabase...');
       const { data, error } = await supabase
         .from('profiles')
         .select('id, full_name, email')
         .order('full_name', { ascending: true });
+      console.log('[useProfiles] result:', { count: data?.length ?? 0, error: error ?? null });
       if (error) throw error;
       return (data || []) as ProfileSummary[];
     },
   });
+
+  if (error) {
+    console.error('[useProfiles] query failed (RLS / auth / network):', error);
+  }
+  console.log(`[useProfiles] status=${status} profiles=${profiles.length}`);
 
   return { profiles };
 }
