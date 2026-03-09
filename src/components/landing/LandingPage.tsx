@@ -268,8 +268,8 @@ export function LandingPage() {
           50%       { transform: translateY(-5px); }
         }
         .lp-sub      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.08s both; }
-        .lp-cluster  { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.30s both; }
-        .lp-cta      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.44s both; }
+        .lp-cta      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.22s both; }
+        .lp-cluster  { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.38s both; }
         .lp-cf0 { animation: lp-chipFloat 4.0s ease-in-out infinite 0.0s; }
         .lp-cf1 { animation: lp-chipFloat 4.5s ease-in-out infinite 0.7s; }
         .lp-cf2 { animation: lp-chipFloat 3.8s ease-in-out infinite 1.3s; }
@@ -299,7 +299,7 @@ export function LandingPage() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '72px 24px 96px',
+            padding: '48px 24px 40px',
             position: 'relative',
             textAlign: 'center',
             overflow: 'hidden',
@@ -308,41 +308,45 @@ export function LandingPage() {
           {/* Faint neural network watermark */}
           <NeuralWatermark />
 
-          {/* Very subtle gradient tints behind the text */}
+          {/* Subtle blue radial tint */}
           <div aria-hidden="true" style={{
             position: 'absolute', inset: 0, pointerEvents: 'none',
-            background: 'radial-gradient(ellipse 70% 60% at 50% 40%, rgba(219,234,254,0.35) 0%, transparent 70%)',
+            background: 'radial-gradient(ellipse 70% 60% at 50% 45%, rgba(219,234,254,0.35) 0%, transparent 70%)',
           }} />
 
-          {/* Content — above watermark */}
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          {/* Content stack */}
+          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
 
-            {/* Mission statement — the sole main text */}
+            {/* 1 — Mission statement */}
             <p
               className="lp-sub"
               style={{
-                margin: '0 auto 52px',
-                maxWidth: '620px',
-                fontSize: 'clamp(18px, 2.2vw, 26px)',
+                margin: '0 auto 32px',
+                maxWidth: '600px',
+                fontSize: 'clamp(17px, 2vw, 22px)',
                 fontWeight: '500',
-                lineHeight: '1.65',
+                lineHeight: '1.7',
                 color: '#1E3A5F',
                 direction: 'rtl',
-                letterSpacing: '-0.2px',
+                letterSpacing: '-0.1px',
               }}
             >
               המרחב הדיגיטלי לניהול יוזמות רוחביות, טיפוח מצוינות וחיזוק המחוברות הארגונית בבית החולים
             </p>
 
-            {/* Constellation cluster */}
+            {/* 2 — CTA button */}
+            <div className="lp-cta" style={{ marginBottom: '48px' }}>
+              <CtaButton onClick={() => setShowLogin(true)} />
+            </div>
+
+            {/* 3 — Chips cluster */}
             <div
               className="lp-cluster"
               style={{
                 position: 'relative',
-                width: '700px',
-                maxWidth: '96vw',
-                height: '168px',
-                marginBottom: '60px',
+                width: '660px',
+                maxWidth: '94vw',
+                height: '148px',
               }}
             >
               {CATEGORIES.map((cat, i) => (
@@ -354,9 +358,9 @@ export function LandingPage() {
                   <div style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    padding: '8px 18px',
+                    padding: '7px 16px',
                     borderRadius: '100px',
-                    fontSize: '13px',
+                    fontSize: '12px',
                     fontWeight: '600',
                     color: cat.text,
                     background: cat.bg,
@@ -369,11 +373,6 @@ export function LandingPage() {
                   </div>
                 </div>
               ))}
-            </div>
-
-            {/* CTA */}
-            <div className="lp-cta">
-              <CtaButton onClick={() => setShowLogin(true)} />
             </div>
 
           </div>
