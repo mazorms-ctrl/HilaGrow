@@ -12,6 +12,7 @@ import { TaskPageContent } from './components/tasks/TaskPage';
 import { QuickViewModal } from './components/tasks/QuickViewModal';
 import { WorkItemRow } from './components/ui/WorkItemRow';
 import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
+import { CommandCenter } from './components/dashboard/CommandCenter';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -308,7 +309,7 @@ function App() {
     ? supabaseTasks
     : (initialTasks as MedicalTask[]);
   
-  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('dashboard');
+  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard' | 'command'>('command');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
@@ -661,7 +662,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         e.preventDefault();
       }
 
-      // 1-3 - Switch views
+      // 1-4 - Switch views
       if (e.key === '1') {
         setViewMode('dashboard');
         e.preventDefault();
@@ -672,6 +673,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       }
       if (e.key === '3') {
         setViewMode('tree');
+        e.preventDefault();
+      }
+      if (e.key === '4') {
+        setViewMode('command');
         e.preventDefault();
       }
 
@@ -1390,19 +1395,19 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             className="desktop-only"
             style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
           >
-            {(['dashboard', 'rows', 'tree'] as const).map(mode => (
+            {(['dashboard', 'rows', 'tree', 'command'] as const).map(mode => (
               <button
                 key={mode}
                 onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
                 aria-pressed={!taskMatch && viewMode === mode}
                 style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
-                title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
+                title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'מרכז פיקוד' : undefined}
                 onMouseEnter={(e) => { elevateHeaderButton(e, ''); }}
                 onMouseLeave={(e) => { resetHeaderButton(e, ''); }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {mode === 'tree' && <TreePine size={14} aria-hidden="true" />}
-                  {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
+                  {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : mode === 'tree' ? 'התמונה הגדולה' : 'מרכז פיקוד'}
                 </span>
               </button>
             ))}
@@ -1520,17 +1525,17 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-              {(['dashboard', 'rows', 'tree'] as const).map(mode => (
+              {(['dashboard', 'rows', 'tree', 'command'] as const).map(mode => (
                 <button
                   key={mode}
                   onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
                   aria-pressed={!taskMatch && viewMode === mode}
                   style={{...getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'mobile'), minHeight: '44px'}}
-                  title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
+                  title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'מרכז פיקוד' : undefined}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                     {mode === 'tree' && <TreePine size={18} aria-hidden="true" />}
-                    {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
+                    {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : mode === 'tree' ? 'התמונה הגדולה' : 'מרכז פיקוד'}
                   </span>
                 </button>
               ))}
@@ -1637,6 +1642,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               taskId={taskMatch.params.taskId!}
             />
           )}
+
+          {/* Command Center — shown for any authenticated user or guest, no project required */}
+          {!taskMatch && viewMode === 'command' && <CommandCenter />}
 
           {/* Main views — shown when guest OR when a project is selected (and not on task page) */}
           {!taskMatch && (!user || effectiveProjectId) && (

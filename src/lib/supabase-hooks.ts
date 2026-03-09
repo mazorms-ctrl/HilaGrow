@@ -717,6 +717,11 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
       assigned_to: task.assignedTo || null,
       priority: task.priority,
       metadata,
+      // Dashboard-critical columns — written explicitly so the Command Center
+      // stays in sync without relying solely on the DB trigger.
+      due_date: task.dueDate || null,
+      progress_manual: task.milestones.length === 0 ? task.progress : null,
+      progress_mode:   task.milestones.length  >  0 ? 'auto' : 'manual',
     })
     .eq('id', task.id)
     .select('id')
@@ -1010,7 +1015,8 @@ export function useTaskComments(taskId: string | null) {
 export async function createComment(
   taskId: string,
   content: string,
-  authorId: string
+  authorId: string,
+  activityId?: string | null
 ): Promise<TaskComment> {
   const { data, error } = await supabase
     .from('task_comments')
@@ -1018,6 +1024,7 @@ export async function createComment(
       task_id: taskId,
       author_id: authorId,
       content,
+      ...(activityId ? { activity_id: activityId } : {}),
     })
     .select()
     .single();
@@ -1037,5 +1044,277 @@ export async function deleteComment(commentId: string): Promise<void> {
     .eq('id', commentId);
 
   if (error) throw error;
+}
+
+// ── Dashboard realtime sync ───────────────────────────────────────────────────
+// Single subscription on the tasks table that invalidates all dashboard query
+// keys whenever any task is created, updated, or deleted.
+// Call once from CommandCenter so there is exactly one channel per page load.
+
+export function useDashboardRealtime() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard_tasks_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['dashboard_kpis'] });
+          queryClient.invalidateQueries({ queryKey: ['active_leaf_tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['idea_leaf_tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['group_progress_stats'] });
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
+}
+
+// ── Dashboard KPIs (from dashboard_kpis view) ─────────────────────────────────
+
+export interface DashboardKpis {
+  active_tasks: number;
+  overdue_tasks: number;
+  days_remaining: number | null;
+}
+
+export function useDashboardKpis() {
+  return useQuery({
+    queryKey: ['dashboard_kpis'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('dashboard_kpis')
+        .select('active_tasks, overdue_tasks, days_remaining')
+        .single();
+      if (error) throw error;
+      return data as DashboardKpis;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Activity Feed ─────────────────────────────────────────────────────────────
+
+export interface ActivityFeedEntry {
+  id: string;
+  task_id: string;
+  user_id: string;
+  action_type: string;
+  content: string | null;
+  created_at: string;
+  task_title: string | null;
+  profile: {
+    full_name: string | null;
+    avatar_url: string | null;
+    email: string;
+  };
+}
+
+export function useActivityFeed(limit = 10) {
+  const queryClient = useQueryClient();
+
+  // Realtime subscription — invalidate on any change to activity_feed OR tasks.
+  // Global scope: no group_id / assigned_to filter — radar for the entire system.
+  // Uses the stable key ['activity_feed'] so both channels hit the same cache entry.
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['activity_feed'] });
+    const channel = supabase
+      .channel('activity_feed_global_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_feed' }, invalidate)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'activity_feed' }, invalidate)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, invalidate)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, invalidate)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  return useQuery({
+    // Stable key — does not include `limit` so invalidation always hits this entry
+    queryKey: ['activity_feed'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activity_feed')
+        .select(`
+          id,
+          task_id,
+          user_id,
+          action_type,
+          content,
+          created_at,
+          tasks ( title ),
+          profiles ( full_name, avatar_url, email )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return ((data ?? []) as any[]).map((row): ActivityFeedEntry => ({
+        id: row.id,
+        task_id: row.task_id,
+        user_id: row.user_id,
+        action_type: row.action_type,
+        content: row.content ?? null,
+        created_at: row.created_at,
+        task_title: row.tasks?.title ?? null,
+        profile: {
+          full_name: row.profiles?.full_name ?? null,
+          avatar_url: row.profiles?.avatar_url ?? null,
+          email: row.profiles?.email ?? '',
+        },
+      }));
+    },
+    staleTime: 0, // always refetch on invalidation — feed is real-time critical
+  });
+}
+
+// ── Active Leaf Tasks (from active_leaf_tasks view) ───────────────────────────
+
+export interface ActiveLeafTask {
+  id: string;
+  group_id: string;
+  parent_id: string | null;
+  title: string;
+  owner_name: string | null;
+  assigned_to: string | null;
+  priority: 'P1' | 'P2' | 'P3' | null;
+  due_date: string | null;
+  status_percent: number;
+  group_name: string;
+  group_color: string | null;
+  project_id: string;
+  project_name: string;
+  parent_title: string | null; // resolved client-side
+}
+
+export function useActiveLeafTasks(limit = 100) {
+  return useQuery({
+    queryKey: ['active_leaf_tasks', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('active_leaf_tasks')
+        .select(
+          'id, group_id, parent_id, title, owner_name, assigned_to, priority, due_date, status_percent, group_name, group_color, project_id, project_name'
+        )
+        .limit(limit);
+
+      if (error) throw error;
+      const rows = (data ?? []) as Omit<ActiveLeafTask, 'parent_title'>[];
+
+      // Resolve parent titles in a single extra query
+      const parentIds = [...new Set(rows.filter((r) => r.parent_id).map((r) => r.parent_id as string))];
+      let parentMap = new Map<string, string>();
+      if (parentIds.length > 0) {
+        const { data: parents } = await supabase
+          .from('tasks')
+          .select('id, title')
+          .in('id', parentIds);
+        (parents ?? []).forEach((p: { id: string; title: string }) => parentMap.set(p.id, p.title));
+      }
+
+      return rows.map((r): ActiveLeafTask => ({
+        ...r,
+        parent_title: r.parent_id ? (parentMap.get(r.parent_id) ?? null) : null,
+      }));
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Idea Leaf Tasks (from idea_leaf_tasks view) ───────────────────────────────
+// Tasks with 0% progress, no due_date, and no activity — pure backlog ideas.
+
+export interface IdeaLeafTask {
+  id: string;
+  group_id: string;
+  parent_id: string | null;
+  title: string;
+  owner_name: string | null;
+  priority: 'P1' | 'P2' | 'P3' | null;
+  group_name: string;
+  group_color: string | null;
+  project_id: string;
+  project_name: string;
+  created_at: string;
+}
+
+export function useIdeaLeafTasks(limit = 100) {
+  return useQuery({
+    queryKey: ['idea_leaf_tasks', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('idea_leaf_tasks')
+        .select('id, group_id, parent_id, title, owner_name, priority, group_name, group_color, project_id, project_name, created_at')
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as IdeaLeafTask[];
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Batch task participants (for dashboard table) ─────────────────────────────
+
+export function useTasksParticipants(taskIds: string[]) {
+  const key = taskIds.slice().sort().join(',');
+  return useQuery({
+    queryKey: ['tasks_participants', key],
+    enabled: taskIds.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_participants')
+        .select('task_id, profile_id')
+        .in('task_id', taskIds);
+      if (error) throw error;
+      const map = new Map<string, string[]>();
+      for (const row of data ?? []) {
+        const arr = map.get(row.task_id) ?? [];
+        arr.push(row.profile_id);
+        map.set(row.task_id, arr);
+      }
+      return map;
+    },
+  });
+}
+
+// ── Group Progress Stats (from group_progress_stats view) ─────────────────────
+
+export interface GroupProgressStat {
+  group_id: string;
+  project_id: string;
+  group_name: string;
+  group_color: string | null;
+  group_order: number;
+  project_name: string;
+  leaf_task_count: number;
+  completed_count: number;
+  overdue_count: number;
+  avg_progress: number;
+  current_work: string | null;
+}
+
+export function useGroupProgressStats() {
+  return useQuery({
+    queryKey: ['group_progress_stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('group_progress_stats')
+        .select(
+          'group_id, project_id, group_name, group_color, group_order, project_name, leaf_task_count, completed_count, overdue_count, avg_progress, current_work'
+        )
+        .order('group_order', { ascending: true });
+
+      if (error) throw error;
+      return (data ?? []) as GroupProgressStat[];
+    },
+    staleTime: 30_000,
+  });
 }
 
