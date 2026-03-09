@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // MedicalTask interface matching the app's expectations
+// Expanded to support full idea-to-delivery lifecycle
 export interface MedicalTask {
   id: string; // UUID from Supabase — never convert to/from integer
   title: string;
@@ -15,23 +16,62 @@ export interface MedicalTask {
   participants: string[];      // Array of profile UUIDs
   priority: 'P1' | 'P2' | 'P3';
   progress: number;
-  department: string;
-  processName: string;
+  status: 'open' | 'in_progress' | 'blocked' | 'done';
+  
+  // ── Foundations (יסודות) ────────────────────────────────────
   problemStatement: string;
   goal: string;
+  targetAudience: string;
+  desiredImpact: string;
+  scope: string;
+  outOfScope: string;
+  successDefinition: string;
+  
+  // ── Current State (מצב נוכחי) ────────────────────────────────
+  currentState: string;
+  painPoints: string;
+  constraints: string;
+  existingProcess: string;
+  evidence: string;
+  
+  // ── Specification (אפיון) ────────────────────────────────────
+  department: string;
+  processName: string;
+  proposedSolution: string;
+  deliverables: string;
+  assumptions: string;
+  requiredDecisions: string;
+  acceptanceCriteria: string;
+  
+  // ── Timeline (ציר זמן) ────────────────────────────────────────
+  startDate: string;
+  dueDate: string;
+  milestones: Array<{ text: string; done: boolean; owner?: string; dueDate?: string; note?: string }>;
+  
+  // ── KPI (מדדי הצלחה) ──────────────────────────────────────────
   kpiName: string;
   baseline: string;
   target: string;
+  sourceOfTruth: string;
   measurementCadence: string;
-  startDate: string;
-  dueDate: string;
-  stakeholders: string[];
+  metricOwner: string;
+  
+  // ── Participants (משתתפים) ───────────────────────────────────
+  stakeholders: string[];   // Array of profile names/emails
+  approvers: string[];      // Array of profile names/emails who must approve
+  
+  // ── Risks (סיכונים ותלויות) ──────────────────────────────────
   risksBlockers: string;
   dependencies: string;
   links: string;
-  milestones: Array<{ text: string; done: boolean }>;
-  status: 'open' | 'in_progress' | 'blocked' | 'done';
-  currentState: string;  // נקודת האפס — stored in metadata JSON
+  mitigationPlan: string;
+  escalationPath: string;
+  
+  // ── Outcome (תוצר סופי) ───────────────────────────────────────
+  finalDeliverable: string;
+  rolloutNotes: string;
+  measuredResult: string;
+  lessonsLearned: string;
 }
 
 // ── Profile types ──────────────────────────────────────────────────────────────
@@ -109,25 +149,64 @@ function dbRowToMedicalTask(
     participants: participantIds,
     priority: taskRow.priority || 'P2',
     progress,
-    department: metadata.department || '',
-    processName: metadata.processName || '',
+    status: metadata.status || 'open',
+    
+    // Foundations
     problemStatement: metadata.problemStatement || '',
     goal: metadata.goal || '',
-    kpiName: metadata.kpiName || '',
-    baseline: metadata.baseline || '',
-    target: metadata.target || '',
-    measurementCadence: metadata.measurementCadence || '',
+    targetAudience: metadata.targetAudience || '',
+    desiredImpact: metadata.desiredImpact || '',
+    scope: metadata.scope || '',
+    outOfScope: metadata.outOfScope || '',
+    successDefinition: metadata.successDefinition || '',
+    
+    // Current State
+    currentState: metadata.currentState || '',
+    painPoints: metadata.painPoints || '',
+    constraints: metadata.constraints || '',
+    existingProcess: metadata.existingProcess || '',
+    evidence: metadata.evidence || '',
+    
+    // Specification
+    department: metadata.department || '',
+    processName: metadata.processName || '',
+    proposedSolution: metadata.proposedSolution || '',
+    deliverables: metadata.deliverables || '',
+    assumptions: metadata.assumptions || '',
+    requiredDecisions: metadata.requiredDecisions || '',
+    acceptanceCriteria: metadata.acceptanceCriteria || '',
+    
+    // Timeline
     startDate: metadata.startDate || '',
     dueDate: metadata.dueDate || '',
-    stakeholders: metadata.stakeholders || [],
-    risksBlockers: metadata.risksBlockers || '',
-    dependencies: metadata.dependencies || '',
-    links: metadata.links || '',
-    status: metadata.status || 'open',
-    currentState: metadata.currentState || '',
     milestones: milestones
       .sort((a, b) => a.order - b.order)
       .map(m => ({ text: m.title, done: m.done })),
+    
+    // KPI
+    kpiName: metadata.kpiName || '',
+    baseline: metadata.baseline || '',
+    target: metadata.target || '',
+    sourceOfTruth: metadata.sourceOfTruth || '',
+    measurementCadence: metadata.measurementCadence || '',
+    metricOwner: metadata.metricOwner || '',
+    
+    // Participants
+    stakeholders: metadata.stakeholders || [],
+    approvers: metadata.approvers || [],
+    
+    // Risks
+    risksBlockers: metadata.risksBlockers || '',
+    dependencies: metadata.dependencies || '',
+    links: metadata.links || '',
+    mitigationPlan: metadata.mitigationPlan || '',
+    escalationPath: metadata.escalationPath || '',
+    
+    // Outcome
+    finalDeliverable: metadata.finalDeliverable || '',
+    rolloutNotes: metadata.rolloutNotes || '',
+    measuredResult: metadata.measuredResult || '',
+    lessonsLearned: metadata.lessonsLearned || '',
   };
 }
 
@@ -495,22 +574,62 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
   }
 
   const metadata = {
-    department: task.department,
-    processName: task.processName,
+    // Foundations
     problemStatement: task.problemStatement,
     goal: task.goal,
+    targetAudience: task.targetAudience,
+    desiredImpact: task.desiredImpact,
+    scope: task.scope,
+    outOfScope: task.outOfScope,
+    successDefinition: task.successDefinition,
+    
+    // Current State
+    currentState: task.currentState,
+    painPoints: task.painPoints,
+    constraints: task.constraints,
+    existingProcess: task.existingProcess,
+    evidence: task.evidence,
+    
+    // Specification
+    department: task.department,
+    processName: task.processName,
+    proposedSolution: task.proposedSolution,
+    deliverables: task.deliverables,
+    assumptions: task.assumptions,
+    requiredDecisions: task.requiredDecisions,
+    acceptanceCriteria: task.acceptanceCriteria,
+    
+    // Timeline
+    startDate: task.startDate,
+    dueDate: task.dueDate,
+    
+    // KPI
     kpiName: task.kpiName,
     baseline: task.baseline,
     target: task.target,
+    sourceOfTruth: task.sourceOfTruth,
     measurementCadence: task.measurementCadence,
-    startDate: task.startDate,
-    dueDate: task.dueDate,
+    metricOwner: task.metricOwner,
+    
+    // Participants
     stakeholders: task.stakeholders,
+    approvers: task.approvers,
+    
+    // Risks
     risksBlockers: task.risksBlockers,
     dependencies: task.dependencies,
     links: task.links,
+    mitigationPlan: task.mitigationPlan,
+    escalationPath: task.escalationPath,
+    
+    // Outcome
+    finalDeliverable: task.finalDeliverable,
+    rolloutNotes: task.rolloutNotes,
+    measuredResult: task.measuredResult,
+    lessonsLearned: task.lessonsLearned,
+    
+    // Status
     status: task.status,
-    currentState: task.currentState,
   };
 
   const { data: updatedTask, error: taskError } = await supabase
@@ -722,3 +841,124 @@ export async function updateCategoryColor(
 
   if (error) throw error;
 }
+
+// ── Task Comments ─────────────────────────────────────────────────────────────
+
+export interface TaskComment {
+  id: string;
+  task_id: string;
+  author_id: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+  author?: ProfileSummary;
+}
+
+// ── useTaskComments ───────────────────────────────────────────────────────────
+// Fetches comments for a task with realtime subscription
+
+export function useTaskComments(taskId: string | null) {
+  const queryClient = useQueryClient();
+
+  const { data: comments = [], isLoading } = useQuery({
+    queryKey: ['task-comments', taskId],
+    queryFn: async () => {
+      if (!taskId) return [];
+
+      const { data, error } = await supabase
+        .from('task_comments')
+        .select(`
+          id,
+          task_id,
+          author_id,
+          content,
+          created_at,
+          updated_at
+        `)
+        .eq('task_id', taskId)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+
+      // Fetch author profiles
+      const authorIds = [...new Set((data || []).map(c => c.author_id))];
+      if (authorIds.length === 0) return data || [];
+
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .in('id', authorIds);
+
+      const profileMap = new Map<string, ProfileSummary>();
+      (profiles || []).forEach(p => profileMap.set(p.id, p));
+
+      return (data || []).map(c => ({
+        ...c,
+        author: profileMap.get(c.author_id),
+      })) as TaskComment[];
+    },
+    enabled: !!taskId,
+  });
+
+  // Realtime subscription
+  useEffect(() => {
+    if (!taskId) return;
+
+    const channel = supabase
+      .channel(`task-comments-${taskId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'task_comments',
+          filter: `task_id=eq.${taskId}`,
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['task-comments', taskId] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [taskId, queryClient]);
+
+  return { comments, loading: isLoading };
+}
+
+// ── createComment ─────────────────────────────────────────────────────────────
+
+export async function createComment(
+  taskId: string,
+  content: string,
+  authorId: string
+): Promise<TaskComment> {
+  const { data, error } = await supabase
+    .from('task_comments')
+    .insert({
+      task_id: taskId,
+      author_id: authorId,
+      content,
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  if (!data) throw new Error('Failed to create comment');
+
+  return data as TaskComment;
+}
+
+// ── deleteComment ─────────────────────────────────────────────────────────────
+
+export async function deleteComment(commentId: string): Promise<void> {
+  const { error } = await supabase
+    .from('task_comments')
+    .delete()
+    .eq('id', commentId);
+
+  if (error) throw error;
+}
+

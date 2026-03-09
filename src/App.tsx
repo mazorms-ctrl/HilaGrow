@@ -1576,25 +1576,27 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       )}
 
       {/* Content */}
-      <main style={{
-        width: '100%',
-        maxWidth: '1920px',
-        margin: '0 auto',
-        padding: '16px',
-        backgroundColor: 'rgba(255, 255, 255, 1)',
-        boxShadow: 'inset 0px 4px 12px 0px rgba(0, 0, 0, 0.15)',
-        flex: 1,
-        overflow: 'auto',
-        direction: 'rtl',
-      }}>
+      <main
+        className={taskMatch ? 'task-active' : undefined}
+        style={{
+          width: '100%',
+          maxWidth: '1920px',
+          margin: '0 auto',
+          padding: taskMatch ? '0' : '16px',
+          backgroundColor: taskMatch ? '#f8fafc' : 'rgba(255, 255, 255, 1)',
+          boxShadow: taskMatch ? 'none' : 'inset 0px 4px 12px 0px rgba(0, 0, 0, 0.15)',
+          flex: 1,
+          overflow: 'auto',
+          direction: 'rtl',
+        }}>
         <style>{`
           @media (min-width: 768px) {
-            main { padding: 24px !important; }
-            main > div:not(.no-main-padding) { padding: 32px !important; }
+            main:not(.task-active) { padding: 24px !important; }
+            main:not(.task-active) > div:not(.no-main-padding) { padding: 32px !important; }
           }
           @media (max-width: 767px) {
-            main { padding: 12px !important; }
-            main > div:not(.no-main-padding) { padding: 16px !important; }
+            main:not(.task-active) { padding: 12px !important; }
+            main:not(.task-active) > div:not(.no-main-padding) { padding: 16px !important; }
           }
         `}</style>
 

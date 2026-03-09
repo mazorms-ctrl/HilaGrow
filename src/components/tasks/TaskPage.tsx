@@ -1,11 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
-  BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2,
+  BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
 } from 'lucide-react';
-import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask } from '@/lib/supabase-hooks';
+import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment } from '@/lib/supabase-hooks';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Toast } from '../Toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -23,32 +24,33 @@ const PRIORITY_CONFIG = {
 } as const;
 
 const NAV_ITEMS = [
-  { id: 'foundations',   Icon: BookOpen,      label: 'יסודות'    },
-  { id: 'current-state', Icon: Activity,      label: 'מצב נוכחי' },
-  { id: 'spec',          Icon: FileText,      label: 'אפיון'      },
-  { id: 'timeline',      Icon: ListChecks,    label: 'ציר זמן'   },
-  { id: 'kpi',           Icon: BarChart2,     label: 'KPI'        },
-  { id: 'participants',  Icon: Users,         label: 'משתתפים'   },
-  { id: 'risks',         Icon: AlertTriangle, label: 'סיכונים'   },
+  { id: 'foundations',   Icon: BookOpen,      label: 'יסודות'        },
+  { id: 'current-state', Icon: Activity,      label: 'מצב נוכחי'     },
+  { id: 'spec',          Icon: FileText,      label: 'אפיון'          },
+  { id: 'timeline',      Icon: ListChecks,    label: 'ציר זמן'       },
+  { id: 'kpi',           Icon: BarChart2,     label: 'KPI'            },
+  { id: 'participants',  Icon: Users,         label: 'משתתפים'       },
+  { id: 'risks',         Icon: AlertTriangle, label: 'סיכונים'       },
+  { id: 'discussion',    Icon: MessageSquare, label: 'דיון'           },
+  { id: 'outcome',       Icon: CheckCircle2,  label: 'תוצר סופי'     },
 ] as const;
 
 // ── Shared style objects ───────────────────────────────────────────────────────
 
 const cardStyle: React.CSSProperties = {
-  background: 'white',
-  borderRadius: '16px',
+  background: '#ffffff',
+  borderRadius: '24px',
   border: '1px solid #e2e8f0',
-  padding: '24px 28px',
-  boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
+  padding: '32px',
+  boxShadow: '0 2px 10px rgba(15,23,42,0.04)',
 };
 
 const fieldLabelStyle: React.CSSProperties = {
-  fontSize: '11px',
+  fontSize: '12px',
   fontWeight: '700',
-  color: '#94a3b8',
-  textTransform: 'uppercase',
-  letterSpacing: '0.8px',
-  marginBottom: '6px',
+  color: '#64748b',
+  letterSpacing: '0.2px',
+  marginBottom: '8px',
   direction: 'rtl',
   textAlign: 'right',
 };
@@ -56,13 +58,12 @@ const fieldLabelStyle: React.CSSProperties = {
 const sectionHeadStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
-  gap: '7px',
-  fontSize: '11px',
+  gap: '8px',
+  fontSize: '12px',
   fontWeight: '700',
   color: '#64748b',
-  textTransform: 'uppercase',
-  letterSpacing: '1px',
-  marginBottom: '18px',
+  letterSpacing: '0.2px',
+  marginBottom: '20px',
   direction: 'rtl',
   textAlign: 'right',
 };
@@ -109,6 +110,7 @@ function EditableArea({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const [focused, setFocused] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   // Auto-resize
   useEffect(() => {
@@ -120,16 +122,19 @@ function EditableArea({
 
   return (
     <div style={{
-      borderRadius: '8px',
-      background: focused ? '#f8fafc' : 'transparent',
-      outline: focused ? '1px solid #c7d2fe' : 'none',
-      padding: focused ? '8px 10px' : '0',
-      transition: 'all 0.12s',
+      borderRadius: '14px',
+      background: focused ? '#ffffff' : hovered ? '#f8fafc' : 'transparent',
+      border: `1px solid ${focused ? '#c7d2fe' : hovered ? '#e2e8f0' : 'transparent'}`,
+      padding: focused || hovered ? '10px 12px' : '2px 0',
+      transition: 'all 0.12s ease',
+      boxShadow: focused ? '0 0 0 3px rgba(99,102,241,0.08)' : 'none',
     }}>
       <textarea
         ref={ref}
         value={value}
         onChange={e => onChange(e.target.value)}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onFocus={() => setFocused(true)}
         onBlur={() => { setFocused(false); onBlur(); }}
         placeholder={placeholder}
@@ -144,7 +149,7 @@ function EditableArea({
           fontFamily: 'inherit',
           fontSize: '14px',
           lineHeight: '1.8',
-          color: '#334155',
+          color: '#1e293b',
           direction: 'rtl',
           textAlign: 'right',
           padding: 0,
@@ -158,14 +163,15 @@ function EditableArea({
 
 // ── Section wrapper ────────────────────────────────────────────────────────────
 
-function Section({ icon: Icon, title, badge, children }: {
+function Section({ icon: Icon, title, badge, children, style }: {
   icon: React.ElementType;
   title: string;
   badge?: React.ReactNode;
   children: React.ReactNode;
+  style?: React.CSSProperties;
 }) {
   return (
-    <section style={cardStyle}>
+    <section style={{ ...cardStyle, ...style }}>
       <div style={sectionHeadStyle}>
         <Icon size={13} />
         {title}
@@ -178,9 +184,17 @@ function Section({ icon: Icon, title, badge, children }: {
 
 // ── FieldGroup ─────────────────────────────────────────────────────────────────
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+function Field({
+  label,
+  children,
+  className,
+}: {
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div>
+    <div className={className} style={{ minWidth: 0 }}>
       <div style={fieldLabelStyle}>{label}</div>
       {children}
     </div>
@@ -191,8 +205,10 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 
 export function TaskPageContent({ taskId }: { taskId: string }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const { task: fetchedTask, projectId, loading, refetch } = useTaskById(taskId);
   const { profiles } = useProfiles();
+  const { comments, loading: commentsLoading } = useTaskComments(taskId);
 
   const [localTask, setLocalTask] = useState<MedicalTask | null>(null);
   const [saving, setSaving] = useState(false);
@@ -200,6 +216,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeSection, setActiveSection] = useState<string>('foundations');
   const [participantSearch, setParticipantSearch] = useState('');
+  const [commentText, setCommentText] = useState('');
+  const [sendingComment, setSendingComment] = useState(false);
 
   // Always-current ref so onBlur handlers don't use stale closure values
   const taskRef = useRef<MedicalTask | null>(null);
@@ -276,6 +294,31 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     await save(updated);
   };
 
+  // ── Comment submission ──────────────────────────────────────────────────────
+  const handleSendComment = async () => {
+    if (!commentText.trim() || !user) return;
+    setSendingComment(true);
+    try {
+      await createComment(taskId, commentText.trim(), user.id);
+      setCommentText('');
+    } catch (e) {
+      console.error('Failed to send comment:', e);
+      setToast({ message: 'שגיאה בשליחת ההודעה', type: 'error' });
+    } finally {
+      setSendingComment(false);
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    if (!window.confirm('האם למחוק הודעה זו?')) return;
+    try {
+      await deleteComment(commentId);
+    } catch (e) {
+      console.error('Failed to delete comment:', e);
+      setToast({ message: 'שגיאה במחיקת ההודעה', type: 'error' });
+    }
+  };
+
   // ── Loading / error states ───────────────────────────────────────────────────
   if (loading) {
     return (
@@ -316,65 +359,159 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div dir="rtl" style={{ fontFamily: 'inherit', maxWidth: '860px', margin: '0 auto', paddingBottom: '48px' }}>
+    <div
+      dir="rtl"
+      style={{
+        fontFamily: 'inherit',
+        width: '100%',
+        maxWidth: 'none',
+        margin: '0',
+        padding: '0 2.5% 24px',
+        background: '#f8fafc',
+      }}
+    >
 
       <style>{`
         @keyframes tpSpin   { to { transform: rotate(360deg); } }
-        @keyframes tpFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes tpFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        .tp-grid {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 20px;
+        }
+        .tp-grid-compact {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          gap: 16px;
+        }
+        .tp-span-full { grid-column: 1 / -1; }
+        .tp-tabbar {
+          display: flex;
+          align-items: center;
+          gap: 20px;
+          padding: 0 0 0;
+          margin-bottom: 20px;
+          border-bottom: 1px solid #e2e8f0;
+          direction: rtl;
+          flex-wrap: wrap;
+        }
+        .tp-tab-button {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          padding: 0 0 10px;
+          border: none;
+          border-bottom: 2px solid transparent;
+          background: transparent;
+          cursor: pointer;
+          color: #64748b;
+          font: inherit;
+          font-size: 13px;
+          font-weight: 500;
+          white-space: nowrap;
+          transition: color 0.15s ease, border-color 0.15s ease;
+        }
+        .tp-tab-button:hover { color: #334155; }
+        .tp-tab-button[data-active="true"] {
+          color: #4f46e5;
+          font-weight: 700;
+          border-bottom-color: #4f46e5;
+        }
+        .tp-ghost-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 30px;
+          height: 30px;
+          border-radius: 8px;
+          border: none;
+          background: transparent;
+          cursor: pointer;
+          color: #94a3b8;
+          transition: background 0.12s, color 0.12s;
+          flex-shrink: 0;
+        }
+        .tp-ghost-btn:hover { background: #f1f5f9; color: #475569; }
+        .tp-ghost-btn.danger:hover { background: #fee2e2; color: #ef4444; }
+        @media (min-width: 768px) {
+          .tp-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tp-grid-compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        }
+        @media (min-width: 1280px) {
+          .tp-grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
       `}</style>
 
-      {/* ── Breadcrumb ───────────────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '8px', direction: 'rtl' }}>
+      {/* ── Compact internal header: breadcrumb + title + actions ────────────── */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px',
+        padding: '10px 0 8px',
+        direction: 'rtl',
+      }}>
+
+        {/* Back crumb + category dot */}
         <button onClick={() => navigate(-1)} style={crumbLinkStyle}>לוח</button>
-        <span style={{ color: '#cbd5e1', fontSize: '12px', lineHeight: 1 }}>›</span>
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#94a3b8' }}>
-          <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: task.color, display: 'inline-block', flexShrink: 0 }} />
-          <span style={{ maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.category}</span>
+        <span style={{ color: '#cbd5e1', fontSize: '12px' }}>›</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#94a3b8', flexShrink: 0 }}>
+          <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: task.color, display: 'inline-block' }} />
+          <span style={{ maxWidth: '140px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{task.category}</span>
         </span>
+
+        {/* Editable title — grows to fill */}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <EditableArea
+            value={task.title}
+            onChange={v => patchLocal('title', v)}
+            onBlur={saveLatest}
+            placeholder="כותרת המשימה..."
+            style={{ fontSize: 'clamp(16px, 2.4vw, 22px)', fontWeight: '700', color: '#0f172a', lineHeight: '1.3' }}
+          />
+        </div>
+
+        {/* Saving indicator */}
         {saving && (
-          <span style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#94a3b8' }}>
-            <div style={{ width: '9px', height: '9px', border: '2px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite', flexShrink: 0 }} />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#94a3b8', flexShrink: 0 }}>
+            <div style={{ width: '8px', height: '8px', border: '2px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite' }} />
             שומר...
           </span>
         )}
-        {/* Delete button */}
-        <button
-          onClick={handleDelete}
-          disabled={deleting}
-          title="מחק משימה"
-          style={{
-            marginRight: saving ? '0' : 'auto',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            width: '28px', height: '28px', borderRadius: '8px',
-            border: '1px solid #fecaca', background: '#fff5f5',
-            color: '#ef4444', cursor: deleting ? 'wait' : 'pointer',
-            transition: 'background 0.12s, border-color 0.12s',
-            flexShrink: 0, opacity: deleting ? 0.6 : 1,
-          }}
-          onMouseEnter={e => { e.currentTarget.style.background = '#fee2e2'; e.currentTarget.style.borderColor = '#fca5a5'; }}
-          onMouseLeave={e => { e.currentTarget.style.background = '#fff5f5'; e.currentTarget.style.borderColor = '#fecaca'; }}
-        >
-          <Trash2 size={13} />
-        </button>
+
+        {/* Action buttons — far left */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            title="מחק משימה"
+            className="tp-ghost-btn danger"
+            style={{ opacity: deleting ? 0.5 : 1, cursor: deleting ? 'wait' : 'pointer' }}
+          >
+            <Trash2 size={15} />
+          </button>
+          <button
+            onClick={() => navigate(-1)}
+            title="חזרה"
+            className="tp-ghost-btn"
+          >
+            <ArrowRight size={15} />
+          </button>
+        </div>
       </div>
 
-      {/* ── Title ────────────────────────────────────────────────────────────── */}
-      <div style={{ marginBottom: '12px' }}>
-        <EditableArea
-          value={task.title}
-          onChange={v => patchLocal('title', v)}
-          onBlur={saveLatest}
-          placeholder="כותרת המשימה..."
-          style={{ fontSize: 'clamp(22px, 4vw, 32px)', fontWeight: '800', color: '#0f172a', lineHeight: '1.3' }}
-        />
-      </div>
-
-      {/* ── Metadata pill row ─────────────────────────────────────────────────── */}
+      {/* ── Metadata bar ─────────────────────────────────────────────────────── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap',
-        padding: '10px 16px', marginBottom: '16px',
-        background: 'white', borderRadius: '12px', border: '1px solid #e2e8f0',
-        boxShadow: '0 1px 2px rgba(0,0,0,0.04)', direction: 'rtl',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px',
+        flexWrap: 'wrap',
+        padding: '8px 14px',
+        marginBottom: '16px',
+        background: 'white',
+        borderRadius: '14px',
+        border: '1px solid #e2e8f0',
+        boxShadow: '0 1px 4px rgba(15,23,42,0.04)',
+        direction: 'rtl',
       }}>
 
         {/* Status */}
@@ -384,7 +521,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           style={{
             background: statusCfg.bg, color: statusCfg.color,
             border: 'none', outline: 'none', borderRadius: '20px',
-            padding: '4px 12px', fontSize: '12px', fontWeight: '700',
+            padding: '3px 11px', fontSize: '12px', fontWeight: '700',
             cursor: 'pointer', fontFamily: 'inherit',
           }}
         >
@@ -393,7 +530,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           ))}
         </select>
 
-        <span style={{ color: '#e2e8f0' }}>|</span>
+        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
 
         {/* Priority */}
         <select
@@ -402,7 +539,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           style={{
             background: priorityCfg.bg, color: priorityCfg.color,
             border: 'none', outline: 'none', borderRadius: '20px',
-            padding: '4px 12px', fontSize: '12px', fontWeight: '700',
+            padding: '3px 11px', fontSize: '12px', fontWeight: '700',
             cursor: 'pointer', fontFamily: 'inherit',
           }}
         >
@@ -411,7 +548,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           ))}
         </select>
 
-        <span style={{ color: '#e2e8f0' }}>|</span>
+        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
 
         {/* Lead */}
         <select
@@ -420,7 +557,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           style={{
             background: 'transparent', border: 'none', outline: 'none',
             fontSize: '12px', color: task.assignedTo ? '#334155' : '#94a3b8',
-            cursor: 'pointer', fontFamily: 'inherit', maxWidth: '140px',
+            cursor: 'pointer', fontFamily: 'inherit',
           }}
         >
           <option value="">אחראי: —</option>
@@ -429,7 +566,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           ))}
         </select>
 
-        <span style={{ color: '#e2e8f0' }}>|</span>
+        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
 
         {/* Department */}
         <input
@@ -445,7 +582,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           }}
         />
 
-        <span style={{ color: '#e2e8f0' }}>|</span>
+        <span style={{ color: '#e2e8f0', fontSize: '12px' }}>|</span>
 
         {/* Due date */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -462,9 +599,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           />
         </div>
 
-        {/* Progress chip */}
+        {/* Progress chip — pushed to far left */}
         <span style={{
-          marginRight: 'auto',
+          marginInlineStart: 'auto',
           fontSize: '12px', fontWeight: '700',
           color: task.progress === 100 ? '#10b981' : task.progress >= 50 ? '#6366f1' : '#f59e0b',
           background: task.progress === 100 ? '#d1fae5' : task.progress >= 50 ? '#ede9fe' : '#fef3c7',
@@ -475,39 +612,15 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       </div>
 
       {/* ── Tab bar ──────────────────────────────────────────────────────────── */}
-      <nav style={{
-        display: 'flex', alignItems: 'center', gap: '2px',
-        padding: '6px 8px',
-        background: 'white',
-        borderRadius: '14px',
-        border: '1px solid #e2e8f0',
-        marginBottom: '20px',
-        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-        direction: 'rtl',
-        flexWrap: 'wrap',
-      }}>
+      <nav className="tp-tabbar">
         {NAV_ITEMS.map(({ id, Icon, label }) => {
           const active = activeSection === id;
           return (
             <button
               key={id}
               onClick={() => switchTab(id)}
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '5px',
-                padding: '7px 13px', borderRadius: '9px',
-                border: 'none', cursor: 'pointer', fontFamily: 'inherit',
-                fontSize: '12px', fontWeight: active ? '700' : '500',
-                color: active ? '#6366f1' : '#64748b',
-                background: active ? '#ede9fe' : 'transparent',
-                transition: 'background 0.15s, color 0.15s',
-                whiteSpace: 'nowrap',
-              }}
-              onMouseEnter={e => {
-                if (!active) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#334155'; }
-              }}
-              onMouseLeave={e => {
-                if (!active) { e.currentTarget.style.background = active ? '#ede9fe' : 'transparent'; e.currentTarget.style.color = active ? '#6366f1' : '#64748b'; }
-              }}
+              className="tp-tab-button"
+              data-active={active}
             >
               <Icon size={12} />
               {label}
@@ -521,31 +634,79 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         {/* FOUNDATIONS — יסודות */}
         {activeSection === 'foundations' && <Section icon={BookOpen} title="יסודות">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-            <Field label="תיאור">
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 18px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.7' }}>
+            בסיס הפרויקט: מהי הבעיה, למי הפתרון מיועד, ומה מצפים להשיג? הגדרת יסודות ברורים מבטיחה התאמה בין כל השותפים.
+          </p>
+          <div className="tp-grid tp-grid-3">
+            <Field label="תיאור כללי" className="tp-span-full">
               <EditableArea
                 value={task.description}
                 onChange={v => patchLocal('description', v)}
                 onBlur={saveLatest}
-                placeholder="תאר את ההתערבות הקלינית / התפעולית — מה מתבצע, בידי מי, ובאיזה אגף?"
+                placeholder="תאר בקצרה את הפרויקט — מה מתבצע, בידי מי, ובאיזה הקשר?"
                 minRows={2}
               />
             </Field>
-            <Field label="בעיה / הזדמנות">
+            <Field label="בעיה / הזדמנות" className="tp-span-full">
               <EditableArea
                 value={task.problemStatement}
                 onChange={v => patchLocal('problemStatement', v)}
                 onBlur={saveLatest}
-                placeholder="מהו הכשל התפעולי? איפה הבזבוז, העיכוב, או הסיכון הקליני שמניע את הפרויקט?"
+                placeholder="מהו הכשל, הבזבוז, העיכוב או הסיכון שמניע את הפרויקט?"
                 minRows={2}
               />
             </Field>
-            <Field label="מטרה">
+            <Field label="מטרה" className="tp-span-full">
               <EditableArea
                 value={task.goal}
                 onChange={v => patchLocal('goal', v)}
                 onBlur={saveLatest}
-                placeholder="מה ישתנה בסיום הפרויקט? הגדר תוצאה מדידה — למשל: צמצום זמן המתנה ב-30%, הפחתת שגיאות תרופות ב-20%."
+                placeholder="מה ישתנה בסיום? הגדר תוצאה מדידה — למשל: צמצום זמן המתנה ב-30%, הפחתת שגיאות ב-20%."
+                minRows={2}
+              />
+            </Field>
+            <Field label="קהל יעד">
+              <EditableArea
+                value={task.targetAudience}
+                onChange={v => patchLocal('targetAudience', v)}
+                onBlur={saveLatest}
+                placeholder="למי הפרויקט מיועד? אילו מחלקות, תפקידים, או מטופלים יושפעו ישירות?"
+                minRows={1}
+              />
+            </Field>
+            <Field label="השפעה רצויה" className="tp-span-full">
+              <EditableArea
+                value={task.desiredImpact}
+                onChange={v => patchLocal('desiredImpact', v)}
+                onBlur={saveLatest}
+                placeholder="מה היתרון המיידי או ארוך הטווח? — יעילות, איכות, חוויית מטופל, חיסכון, בטיחות..."
+                minRows={2}
+              />
+            </Field>
+            <Field label="היקף (Scope)">
+              <EditableArea
+                value={task.scope}
+                onChange={v => patchLocal('scope', v)}
+                onBlur={saveLatest}
+                placeholder="מה נכלל בפרויקט?"
+                minRows={2}
+              />
+            </Field>
+            <Field label="מחוץ להיקף (Out of Scope)">
+              <EditableArea
+                value={task.outOfScope}
+                onChange={v => patchLocal('outOfScope', v)}
+                onBlur={saveLatest}
+                placeholder="מה לא נכלל? רשום הנחות או מגבלות."
+                minRows={2}
+              />
+            </Field>
+            <Field label="הגדרת הצלחה" className="tp-span-full">
+              <EditableArea
+                value={task.successDefinition}
+                onChange={v => patchLocal('successDefinition', v)}
+                onBlur={saveLatest}
+                placeholder="כיצד נדע שהפרויקט הצליח? קריטריונים ברורים להשגת המטרה."
                 minRows={2}
               />
             </Field>
@@ -555,26 +716,113 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         {/* CURRENT STATE */}
         {activeSection === 'current-state' && <Section icon={Activity} title="מצב נוכחי — נקודת האפס">
           <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
-            תעד נתוני בסיס, פערים תפעוליים וצילום מצב לפני תחילת הפרויקט. מידע זה ישמש להשוואה בסיום.
+            תיעוד שיטתי של המצב לפני ההתערבות. נתונים אלו ישמשו למדידת שיפור ולהוכחת הצלחה.
           </p>
-          <EditableArea
-            value={task.currentState}
-            onChange={v => patchLocal('currentState', v)}
-            onBlur={saveLatest}
-            placeholder={'מהו קו הבסיס התפעולי לפני ההתערבות?\n• זמן המתנה ממוצע נוכחי: ___ דקות\n• תפוסת מיטות / משאבים: ___\n• שגיאות / חריגות מדווחות: ___ לחודש\n• מערכות ותהליכים קיימים: ...'}
-            minRows={4}
-            style={{ fontSize: '14px' }}
-          />
+          <div className="tp-grid tp-grid-3">
+            <Field label="קו בסיס" className="tp-span-full">
+              <EditableArea
+                value={task.currentState}
+                onChange={v => patchLocal('currentState', v)}
+                onBlur={saveLatest}
+                placeholder={'מהו קו הבסיס התפעולי לפני ההתערבות?\n• זמן המתנה ממוצע: ___ דקות\n• תפוסה: ___\n• שגיאות לחודש: ___\n• מערכות קיימות: ...'}
+                minRows={3}
+              />
+            </Field>
+            <Field label="נקודות כאב" className="tp-span-full">
+              <EditableArea
+                value={task.painPoints}
+                onChange={v => patchLocal('painPoints', v)}
+                onBlur={saveLatest}
+                placeholder="מה לא עובד היום? תאר תסכולים, עיכובים, שגיאות, או בזבוז שמתרחשים באופן קבוע."
+                minRows={2}
+              />
+            </Field>
+            <Field label="אילוצים">
+              <EditableArea
+                value={task.constraints}
+                onChange={v => patchLocal('constraints', v)}
+                onBlur={saveLatest}
+                placeholder="מגבלות קיימות — תקציב, כוח אדם, טכנולוגיה, רגולציה, תרבות ארגונית..."
+                minRows={2}
+              />
+            </Field>
+            <Field label="תהליכים / מערכות קיימות" className="tp-span-full">
+              <EditableArea
+                value={task.existingProcess}
+                onChange={v => patchLocal('existingProcess', v)}
+                onBlur={saveLatest}
+                placeholder="כיצד נעשה היום? תאר תהליכים, כלים, או נהלים פעילים שצריך להתחשב בהם."
+                minRows={2}
+              />
+            </Field>
+            <Field label="ראיות / נתונים" className="tp-span-full">
+              <EditableArea
+                value={task.evidence}
+                onChange={v => patchLocal('evidence', v)}
+                onBlur={saveLatest}
+                placeholder="קישורים לדוחות, דשבורדים, סקרים, או צילומי מסך שמתעדים את המצב הנוכחי."
+                minRows={1}
+              />
+            </Field>
+          </div>
         </Section>}
 
         {/* SPEC */}
         {activeSection === 'spec' && <Section icon={FileText} title="אפיון">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
+            איך בדיוק יראה הפתרון? מה יסופק, מה מוסכם מראש, ואילו החלטות נדרשות.
+          </p>
+          <div className="tp-grid tp-grid-3">
             <Field label="שם התהליך">
               <EditableArea value={task.processName} onChange={v => patchLocal('processName', v)} onBlur={saveLatest} placeholder="שם התהליך..." />
             </Field>
             <Field label="מחלקה">
               <EditableArea value={task.department} onChange={v => patchLocal('department', v)} onBlur={saveLatest} placeholder="שם המחלקה..." />
+            </Field>
+            <Field label="החלטות נדרשות">
+              <EditableArea
+                value={task.requiredDecisions}
+                onChange={v => patchLocal('requiredDecisions', v)}
+                onBlur={saveLatest}
+                placeholder="מה צריך להיות מאושר לפני שממשיכים? ידי מי?"
+                minRows={1}
+              />
+            </Field>
+            <Field label="פתרון מוצע" className="tp-span-full">
+              <EditableArea
+                value={task.proposedSolution}
+                onChange={v => patchLocal('proposedSolution', v)}
+                onBlur={saveLatest}
+                placeholder="מה יבוצע? תאר בפירוט את הפתרון — טכנולוגיה, תהליך חדש, שינוי נוהל..."
+                minRows={3}
+              />
+            </Field>
+            <Field label="תוצרים (Deliverables)" className="tp-span-full">
+              <EditableArea
+                value={task.deliverables}
+                onChange={v => patchLocal('deliverables', v)}
+                onBlur={saveLatest}
+                placeholder="מה יימסר? — מערכת, דוח, הדרכה, נוהל, אב-טיפוס..."
+                minRows={2}
+              />
+            </Field>
+            <Field label="הנחות" className="tp-span-full">
+              <EditableArea
+                value={task.assumptions}
+                onChange={v => patchLocal('assumptions', v)}
+                onBlur={saveLatest}
+                placeholder="על מה מסתמכים? — תקציב, שיתוף פעולה, זמינות משאבים..."
+                minRows={2}
+              />
+            </Field>
+            <Field label="קריטריוני קבלה" className="tp-span-full">
+              <EditableArea
+                value={task.acceptanceCriteria}
+                onChange={v => patchLocal('acceptanceCriteria', v)}
+                onBlur={saveLatest}
+                placeholder="מה צריך להתקיים כדי לאשר את התוצר? — תבדקי איכות, ביצועים, שביעות רצון..."
+                minRows={2}
+              />
             </Field>
           </div>
         </Section>}
@@ -631,12 +879,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         {/* KPI */}
         {activeSection === 'kpi' && <Section icon={BarChart2} title="מדדי הצלחה — KPI">
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
+            הגדר מדדים מדידים שיוכיחו הצלחה. הם צריכים להיות ספציפיים, בני השגה, ומבוססי נתונים.
+          </p>
+          <div className="tp-grid tp-grid-3">
             {([
-              { key: 'kpiName',            label: 'שם המדד',            placeholder: 'לדוגמה: זמן המתנה לחדר מיון / שיעור זיהומים / עמידה ב-SLA' },
-              { key: 'measurementCadence', label: 'תדירות מדידה',        placeholder: 'לדוגמה: שבועי / חודשי / רבעוני' },
-              { key: 'baseline',           label: 'בסיס — נקודת פתיחה', placeholder: 'ערך נוכחי לפני ההתערבות...' },
-              { key: 'target',             label: 'יעד (Target)',         placeholder: 'ערך יעד בתום הפרויקט...' },
+              { key: 'kpiName',            label: 'שם המדד',              placeholder: 'לדוגמה: זמן המתנה לחדר מיון / שיעור זיהומים / עמידה ב-SLA' },
+              { key: 'sourceOfTruth',      label: 'מקור נתונים',          placeholder: 'מהיכן מתקבלים הנתונים? — מערכת, דוח, סקר...' },
+              { key: 'measurementCadence', label: 'תדירות מדידה',          placeholder: 'לדוגמה: שבועי / חודשי / רבעוני' },
+              { key: 'metricOwner',        label: 'אחראי על המדד',        placeholder: 'מי מוודא שהמדד נאסף ונותח?' },
+              { key: 'baseline',           label: 'בסיס — נקודת פתיחה',   placeholder: 'ערך נוכחי לפני ההתערבות...' },
+              { key: 'target',             label: 'יעד (Target)',           placeholder: 'ערך יעד בתום הפרויקט...' },
             ] as const).map(({ key, label, placeholder }) => (
               <div key={key} style={{ background: '#f8fafc', borderRadius: '10px', border: '1px solid #e2e8f0', padding: '14px', direction: 'rtl', textAlign: 'right' }}>
                 <div style={fieldLabelStyle}>{label}</div>
@@ -645,7 +898,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   onChange={v => patchLocal(key, v)}
                   onBlur={saveLatest}
                   placeholder={placeholder}
-                  style={{ fontSize: '15px', fontWeight: '600', color: '#1e293b' }}
+                  style={{ fontSize: '14px', fontWeight: '500', color: '#1e293b' }}
                 />
               </div>
             ))}
@@ -654,24 +907,22 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         {/* PARTICIPANTS */}
         {activeSection === 'participants' && <Section icon={Users} title="משתתפים">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <div className="tp-grid tp-grid-3">
 
             {/* Lead selector */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', direction: 'rtl' }}>
-              <span style={{ fontSize: '11px', fontWeight: '700', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.8px', flexShrink: 0 }}>אחראי</span>
+            <Field label="אחראי">
               <select
                 value={task.assignedTo || ''}
                 onChange={e => patch('assignedTo', e.target.value || null)}
-                style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '5px 14px', fontSize: '13px', color: '#334155', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}
+                style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 14px', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}
               >
                 <option value="">לא שויך</option>
                 {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
               </select>
-            </div>
+            </Field>
 
             {/* Current participants as pills with X */}
-            <div>
-              <div style={fieldLabelStyle}>משתתפים</div>
+            <Field label="משתתפים" className="tp-span-full">
               {(task.participants || []).length === 0 ? (
                 <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>אין משתתפים עדיין</p>
               ) : (
@@ -706,11 +957,11 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   })}
                 </div>
               )}
-            </div>
+            </Field>
 
             {/* Add participant — searchable */}
-            <div style={{ position: 'relative', direction: 'rtl' }}>
-              <div style={fieldLabelStyle}>הוסף משתתף</div>
+            <Field label="הוסף משתתף" className="tp-span-full">
+              <div style={{ position: 'relative', direction: 'rtl' }}>
               <input
                 type="text"
                 value={participantSearch}
@@ -718,9 +969,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 placeholder="חיפוש לפי שם או אימייל..."
                 style={{
                   width: '100%', boxSizing: 'border-box',
-                  padding: '8px 14px', borderRadius: '20px',
+                  padding: '10px 14px', borderRadius: '14px',
                   border: '1px solid #e2e8f0', outline: 'none',
-                  fontSize: '13px', color: '#334155',
+                  fontSize: '13px', color: '#1e293b',
                   fontFamily: 'inherit', background: '#f8fafc',
                   direction: 'rtl',
                 }}
@@ -767,21 +1018,31 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   </div>
                 );
               })()}
-            </div>
+              </div>
+            </Field>
 
           </div>
         </Section>}
 
         {/* RISKS */}
         {activeSection === 'risks' && <Section icon={AlertTriangle} title="סיכונים ותלויות">
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '22px' }}>
-            <Field label="סיכונים / חסמים">
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
+            מה עלול לעכב או למנוע את הצלחת הפרויקט? תיעוד מוקדם של סיכונים מאפשר הכנה ומיתוג.
+          </p>
+          <div className="tp-grid tp-grid-3">
+            <Field label="סיכונים / חסמים" className="tp-span-full">
               <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="מה עלול לעכב? — התנגדות צוות, מגבלות רגולטוריות, תקציב, מחסור כוח אדם..." minRows={2} />
             </Field>
-            <Field label="תלויות">
+            <Field label="תלויות" className="tp-span-full">
               <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="אילו אגפים, מערכות IT, ספקים או אישורים נדרשים לפני שניתן להתקדם?" minRows={2} />
             </Field>
-            <Field label="קישורים">
+            <Field label="תוכנית מיתוג" className="tp-span-full">
+              <EditableArea value={task.mitigationPlan} onChange={v => patchLocal('mitigationPlan', v)} onBlur={saveLatest} placeholder="כיצד נטפל בכל סיכון? מה הצעדים הקונקרטיים להפחתת הסיכון או המחסום?" minRows={2} />
+            </Field>
+            <Field label="נתיב הסלמה">
+              <EditableArea value={task.escalationPath} onChange={v => patchLocal('escalationPath', v)} onBlur={saveLatest} placeholder="אם הסיכון מתממש — למי פונים? מה תהליך ההסלמה?" minRows={1} />
+            </Field>
+            <Field label="קישורים" className="tp-span-full">
               <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
             </Field>
             {task.stakeholders.length > 0 && (
@@ -793,6 +1054,220 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 </div>
               </Field>
             )}
+          </div>
+        </Section>}
+
+        {/* DISCUSSION — דיון */}
+        {activeSection === 'discussion' && <Section
+          icon={MessageSquare}
+          title="דיון"
+          badge={comments.length > 0 ? (
+            <span style={{
+              marginRight: '6px', fontSize: '11px', fontWeight: '600',
+              color: '#6366f1', background: '#ede9fe',
+              padding: '2px 8px', borderRadius: '10px',
+            }}>
+              {comments.length}
+            </span>
+          ) : null}
+        >
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 18px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
+            שיח פתוח בין המשתתפים. השתמש בדיון לעדכונים, שאלות, והחלטות בזמן אמת.
+          </p>
+
+          {/* Comments list */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+            {commentsLoading && (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}>
+                <div style={{ width: '20px', height: '20px', border: '2px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite' }} />
+              </div>
+            )}
+            {!commentsLoading && comments.length === 0 && (
+              <div style={{
+                padding: '32px 20px', textAlign: 'center',
+                background: '#f8fafc', borderRadius: '12px',
+                border: '1px dashed #cbd5e1',
+              }}>
+                <MessageSquare size={32} style={{ color: '#cbd5e1', margin: '0 auto 12px' }} />
+                <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>
+                  אין הודעות עדיין. התחל דיון...
+                </p>
+              </div>
+            )}
+            {comments.map(comment => {
+              const isOwn = user?.id === comment.author_id;
+              const authorName = comment.author?.full_name || comment.author?.email || 'משתמש לא ידוע';
+              const date = new Date(comment.created_at);
+              const timeStr = date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+              const dateStr = date.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+
+              return (
+                <div
+                  key={comment.id}
+                  style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px',
+                    padding: '14px 16px',
+                    background: isOwn ? '#ede9fe' : '#f8fafc',
+                    borderRadius: '12px',
+                    border: `1px solid ${isOwn ? '#c7d2fe' : '#e2e8f0'}`,
+                    direction: 'rtl',
+                    textAlign: 'right',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '13px', fontWeight: '700', color: isOwn ? '#6d28d9' : '#334155' }}>
+                      {authorName}
+                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                        {dateStr} • {timeStr}
+                      </span>
+                      {isOwn && (
+                        <button
+                          onClick={() => handleDeleteComment(comment.id)}
+                          title="מחק"
+                          style={{
+                            background: 'none', border: 'none',
+                            cursor: 'pointer', padding: '2px 6px',
+                            fontSize: '11px', color: '#94a3b8',
+                            fontFamily: 'inherit', fontWeight: '600',
+                            borderRadius: '4px', transition: 'background 0.12s, color 0.12s',
+                          }}
+                          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.color = '#ef4444'; }}
+                          onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#94a3b8'; }}
+                        >
+                          מחק
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <p style={{
+                    margin: 0, fontSize: '14px', lineHeight: '1.65',
+                    color: '#334155', whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                  }}>
+                    {comment.content}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Composer */}
+          {user ? (
+            <div style={{
+              background: '#f8fafc', borderRadius: '18px',
+              border: '1px solid #e2e8f0', padding: '18px',
+              direction: 'rtl',
+            }}>
+              <textarea
+                value={commentText}
+                onChange={e => setCommentText(e.target.value)}
+                placeholder="כתוב הודעה..."
+                rows={3}
+                style={{
+                  width: '100%', boxSizing: 'border-box',
+                  border: 'none', outline: 'none', resize: 'none',
+                  background: 'white', borderRadius: '8px',
+                  padding: '10px 12px', fontSize: '14px',
+                  fontFamily: 'inherit', color: '#334155',
+                  direction: 'rtl', textAlign: 'right',
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    handleSendComment();
+                  }
+                }}
+              />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                <button
+                  onClick={handleSendComment}
+                  disabled={!commentText.trim() || sendingComment}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    padding: '8px 18px', borderRadius: '8px',
+                    border: 'none', cursor: commentText.trim() ? 'pointer' : 'not-allowed',
+                    background: commentText.trim() ? '#6366f1' : '#e2e8f0',
+                    color: 'white', fontSize: '13px', fontWeight: '600',
+                    fontFamily: 'inherit', transition: 'background 0.15s',
+                    opacity: sendingComment ? 0.6 : 1,
+                  }}
+                  onMouseEnter={e => { if (commentText.trim()) e.currentTarget.style.background = '#4f46e5'; }}
+                  onMouseLeave={e => { if (commentText.trim()) e.currentTarget.style.background = '#6366f1'; }}
+                >
+                  <Send size={14} />
+                  {sendingComment ? 'שולח...' : 'שלח'}
+                </button>
+                <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                  Ctrl+Enter לשליחה
+                </span>
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              padding: '20px', textAlign: 'center',
+              background: '#fef3c7', borderRadius: '10px',
+              border: '1px solid #fcd34d',
+            }}>
+              <p style={{ fontSize: '13px', color: '#92400e', margin: 0 }}>
+                יש להתחבר כדי להשתתף בדיון
+              </p>
+            </div>
+          )}
+        </Section>}
+
+        {/* OUTCOME — תוצר סופי */}
+        {activeSection === 'outcome' && <Section
+          icon={CheckCircle2}
+          title="תוצר סופי"
+          style={{
+            borderColor: '#c7d2fe',
+            boxShadow: '0 8px 24px rgba(79,70,229,0.06)',
+            background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
+          }}
+        >
+          <p style={{ fontSize: '12px', color: '#94a3b8', margin: '0 0 14px 0', direction: 'rtl', textAlign: 'right', lineHeight: '1.6' }}>
+            תיעוד של מה שנמסר בפועל, איך הפרויקט יצא לדרך, והתוצאות בפועל מול היעדים.
+          </p>
+          <div className="tp-grid tp-grid-3">
+            <Field label="תוצר מסירה" className="tp-span-full">
+              <EditableArea
+                value={task.finalDeliverable}
+                onChange={v => patchLocal('finalDeliverable', v)}
+                onBlur={saveLatest}
+                placeholder="מה הושלם ונמסר בפועל? — מערכת עובדת, נוהל חדש, הדרכה, אב-טיפוס..."
+                minRows={2}
+              />
+            </Field>
+            <Field label="הערות יציאה לפרודקשן / rollout" className="tp-span-full">
+              <EditableArea
+                value={task.rolloutNotes}
+                onChange={v => patchLocal('rolloutNotes', v)}
+                onBlur={saveLatest}
+                placeholder="איך התבצע השילוב בשטח? מה התייחסותו של הצוות? האם היו תקלות?"
+                minRows={2}
+              />
+            </Field>
+            <Field label="תוצאות מדודות" className="tp-span-full">
+              <EditableArea
+                value={task.measuredResult}
+                onChange={v => patchLocal('measuredResult', v)}
+                onBlur={saveLatest}
+                placeholder="מה ה-KPI בפועל אחרי היישום? האם השגנו את היעד? השווה לנקודת הבסיס."
+                minRows={2}
+              />
+            </Field>
+            <Field label="לקחים" className="tp-span-full">
+              <EditableArea
+                value={task.lessonsLearned}
+                onChange={v => patchLocal('lessonsLearned', v)}
+                onBlur={saveLatest}
+                placeholder="מה למדנו? מה היינו עושים אחרת בפעם הבאה?"
+                minRows={2}
+              />
+            </Field>
           </div>
         </Section>}
 
