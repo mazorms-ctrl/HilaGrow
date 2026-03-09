@@ -267,8 +267,7 @@ export function LandingPage() {
           0%, 100% { transform: translateY(0px); }
           50%       { transform: translateY(-5px); }
         }
-        .lp-h1       { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.08s both; }
-        .lp-sub      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.18s both; }
+        .lp-sub      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.08s both; }
         .lp-cluster  { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.30s both; }
         .lp-cta      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.44s both; }
         .lp-cf0 { animation: lp-chipFloat 4.0s ease-in-out infinite 0.0s; }
@@ -318,40 +317,18 @@ export function LandingPage() {
           {/* Content — above watermark */}
           <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
 
-            {/* H1 */}
-            <h1
-              className="lp-h1"
-              style={{
-                margin: '0 0 18px',
-                fontSize: 'clamp(34px, 5.5vw, 64px)',
-                fontWeight: '900',
-                lineHeight: '1.1',
-                letterSpacing: '-1.5px',
-                color: '#0F172A',
-                direction: 'rtl',
-              }}
-            >
-              GROW
-              <span style={{
-                background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-                backgroundClip: 'text',
-              }}>+</span>
-              {' '}|{' '}מובילים שינוי. יחד.
-            </h1>
-
-            {/* Subtitle */}
+            {/* Mission statement — the sole main text */}
             <p
               className="lp-sub"
               style={{
                 margin: '0 auto 52px',
-                maxWidth: '580px',
-                fontSize: 'clamp(15px, 1.8vw, 18px)',
-                fontWeight: '400',
-                lineHeight: '1.75',
-                color: '#475569',
+                maxWidth: '620px',
+                fontSize: 'clamp(18px, 2.2vw, 26px)',
+                fontWeight: '500',
+                lineHeight: '1.65',
+                color: '#1E3A5F',
                 direction: 'rtl',
+                letterSpacing: '-0.2px',
               }}
             >
               המרחב הדיגיטלי לניהול יוזמות רוחביות, טיפוח מצוינות וחיזוק המחוברות הארגונית בבית החולים
