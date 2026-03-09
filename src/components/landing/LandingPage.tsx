@@ -89,7 +89,7 @@ function NeuralWatermark() {
 
 // ── Landing header — matches App header appearance exactly ────────────────────
 
-function LandingHeader({ onLogin }: { onLogin: () => void }) {
+function LandingHeader() {
   return (
     <header style={{
       borderBottom: '1px solid #e2e8f0',
@@ -152,40 +152,6 @@ function LandingHeader({ onLogin }: { onLogin: () => void }) {
           </div>
         </div>
 
-        {/* Login button — left side (RTL = visual left) */}
-        <div style={{ marginInlineStart: 'auto' }}>
-          <button
-            onClick={onLogin}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 20px',
-              borderRadius: '8px',
-              border: '1.5px solid #3B82F6',
-              background: 'transparent',
-              color: '#3B82F6',
-              fontSize: '14px',
-              fontWeight: '600',
-              fontFamily: 'Rubik, sans-serif',
-              cursor: 'pointer',
-              transition: 'all 0.15s ease',
-              direction: 'rtl',
-            }}
-            onMouseEnter={(e) => {
-              const el = e.currentTarget as HTMLButtonElement;
-              el.style.background = '#3B82F6';
-              el.style.color = '#ffffff';
-            }}
-            onMouseLeave={(e) => {
-              const el = e.currentTarget as HTMLButtonElement;
-              el.style.background = 'transparent';
-              el.style.color = '#3B82F6';
-            }}
-          >
-            כניסה
-          </button>
-        </div>
       </div>
     </header>
   );
@@ -301,7 +267,6 @@ export function LandingPage() {
           0%, 100% { transform: translateY(0px); }
           50%       { transform: translateY(-5px); }
         }
-        .lp-badge    { animation: lp-fadeIn  0.4s ease both; }
         .lp-h1       { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.08s both; }
         .lp-sub      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.18s both; }
         .lp-cluster  { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.30s both; }
@@ -324,7 +289,7 @@ export function LandingPage() {
       }}>
 
         {/* ── Header ─────────────────────────────────────────── */}
-        <LandingHeader onLogin={() => setShowLogin(true)} />
+        <LandingHeader />
 
         {/* ── Hero ───────────────────────────────────────────── */}
         <main
@@ -352,22 +317,6 @@ export function LandingPage() {
 
           {/* Content — above watermark */}
           <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-
-            {/* Badge */}
-            <div
-              className="lp-badge"
-              style={{
-                display: 'inline-flex', alignItems: 'center', gap: '7px',
-                padding: '6px 16px', borderRadius: '100px', marginBottom: '28px',
-                background: '#EFF6FF',
-                border: '1px solid #BFDBFE',
-              }}
-            >
-              <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#3B82F6', display: 'inline-block', flexShrink: 0 }} />
-              <span style={{ fontSize: '13px', fontWeight: '500', color: '#1D4ED8' }}>
-                פלטפורמה לניהול יוזמות רוחביות
-              </span>
-            </div>
 
             {/* H1 */}
             <h1
