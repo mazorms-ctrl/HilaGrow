@@ -1317,19 +1317,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <EditableArea value={task.goal} onChange={v => patchLocal('goal', v)} onBlur={saveLatest} placeholder="מה ישתנה בסיום? הגדר תוצאה מדידה — למשל: צמצום זמן המתנה ב-30%." minRows={2} />
             </Field>
             <Field label="קהל יעד">
-              <EditableArea value={task.targetAudience} onChange={v => patchLocal('targetAudience', v)} onBlur={saveLatest} placeholder="מחלקות, תפקידים, מטופלים..." minRows={2} />
+              <EditableArea value={task.targetAudience ?? ''} onChange={v => patchLocal('targetAudience', v)} onBlur={saveLatest} placeholder="מחלקות, תפקידים, מטופלים..." minRows={2} />
             </Field>
             <Field label="היקף (Scope)">
-              <EditableArea value={task.scope} onChange={v => patchLocal('scope', v)} onBlur={saveLatest} placeholder="מה נכלל בפרויקט?" minRows={2} />
+              <EditableArea value={task.scope ?? ''} onChange={v => patchLocal('scope', v)} onBlur={saveLatest} placeholder="מה נכלל בפרויקט?" minRows={2} />
             </Field>
             <Field label="מחוץ להיקף">
-              <EditableArea value={task.outOfScope} onChange={v => patchLocal('outOfScope', v)} onBlur={saveLatest} placeholder="מה לא נכלל?" minRows={2} />
+              <EditableArea value={task.outOfScope ?? ''} onChange={v => patchLocal('outOfScope', v)} onBlur={saveLatest} placeholder="מה לא נכלל?" minRows={2} />
             </Field>
             <Field label="השפעה רצויה">
-              <EditableArea value={task.desiredImpact} onChange={v => patchLocal('desiredImpact', v)} onBlur={saveLatest} placeholder="יעילות, איכות, חוויית מטופל, חיסכון..." minRows={2} />
+              <EditableArea value={task.desiredImpact ?? ''} onChange={v => patchLocal('desiredImpact', v)} onBlur={saveLatest} placeholder="יעילות, איכות, חוויית מטופל, חיסכון..." minRows={2} />
             </Field>
             <Field label="הגדרת הצלחה" className="tp-span-full">
-              <EditableArea value={task.successDefinition} onChange={v => patchLocal('successDefinition', v)} onBlur={saveLatest} placeholder="כיצד נדע שהפרויקט הצליח? קריטריונים ברורים." minRows={2} />
+              <EditableArea value={task.successDefinition ?? ''} onChange={v => patchLocal('successDefinition', v)} onBlur={saveLatest} placeholder="כיצד נדע שהפרויקט הצליח? קריטריונים ברורים." minRows={2} />
             </Field>
           </div>
         </Section>}
@@ -1342,16 +1342,16 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <EditableArea value={task.currentState} onChange={v => patchLocal('currentState', v)} onBlur={saveLatest} placeholder={'מהו קו הבסיס התפעולי?\n• זמן המתנה ממוצע: ___ דקות\n• תפוסה: ___\n• שגיאות לחודש: ___'} minRows={3} />
             </Field>
             <Field label="נקודות כאב" className="tp-span-2">
-              <EditableArea value={task.painPoints} onChange={v => patchLocal('painPoints', v)} onBlur={saveLatest} placeholder="מה לא עובד היום? תסכולים, עיכובים, שגיאות..." minRows={2} />
+              <EditableArea value={task.painPoints ?? ''} onChange={v => patchLocal('painPoints', v)} onBlur={saveLatest} placeholder="מה לא עובד היום? תסכולים, עיכובים, שגיאות..." minRows={2} />
             </Field>
             <Field label="אילוצים">
-              <EditableArea value={task.constraints} onChange={v => patchLocal('constraints', v)} onBlur={saveLatest} placeholder="תקציב, כוח אדם, רגולציה, תרבות..." minRows={2} />
+              <EditableArea value={task.constraints ?? ''} onChange={v => patchLocal('constraints', v)} onBlur={saveLatest} placeholder="תקציב, כוח אדם, רגולציה, תרבות..." minRows={2} />
             </Field>
             <Field label="תהליכים / מערכות קיימות" className="tp-span-2">
-              <EditableArea value={task.existingProcess} onChange={v => patchLocal('existingProcess', v)} onBlur={saveLatest} placeholder="כיצד נעשה היום? כלים ונהלים פעילים." minRows={2} />
+              <EditableArea value={task.existingProcess ?? ''} onChange={v => patchLocal('existingProcess', v)} onBlur={saveLatest} placeholder="כיצד נעשה היום? כלים ונהלים פעילים." minRows={2} />
             </Field>
             <Field label="ראיות / נתונים">
-              <EditableArea value={task.evidence} onChange={v => patchLocal('evidence', v)} onBlur={saveLatest} placeholder="דוחות, דשבורדים, סקרים..." minRows={2} />
+              <EditableArea value={task.evidence ?? ''} onChange={v => patchLocal('evidence', v)} onBlur={saveLatest} placeholder="דוחות, דשבורדים, סקרים..." minRows={2} />
             </Field>
           </div>
         </Section>}
@@ -1367,19 +1367,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <EditableArea value={task.department} onChange={v => patchLocal('department', v)} onBlur={saveLatest} placeholder="שם המחלקה..." />
             </Field>
             <Field label="החלטות נדרשות">
-              <EditableArea value={task.requiredDecisions} onChange={v => patchLocal('requiredDecisions', v)} onBlur={saveLatest} placeholder="מה צריך אישור לפני ההמשך? ידי מי?" minRows={1} />
+              <EditableArea value={task.requiredDecisions ?? ''} onChange={v => patchLocal('requiredDecisions', v)} onBlur={saveLatest} placeholder="מה צריך אישור לפני ההמשך? ידי מי?" minRows={1} />
             </Field>
             <Field label="פתרון מוצע" className="tp-span-full">
-              <EditableArea value={task.proposedSolution} onChange={v => patchLocal('proposedSolution', v)} onBlur={saveLatest} placeholder="מה יבוצע? טכנולוגיה, תהליך חדש, שינוי נוהל..." minRows={3} />
+              <EditableArea value={task.proposedSolution ?? ''} onChange={v => patchLocal('proposedSolution', v)} onBlur={saveLatest} placeholder="מה יבוצע? טכנולוגיה, תהליך חדש, שינוי נוהל..." minRows={3} />
             </Field>
             <Field label="תוצרים (Deliverables)" className="tp-span-2">
-              <EditableArea value={task.deliverables} onChange={v => patchLocal('deliverables', v)} onBlur={saveLatest} placeholder="מה יימסר? — מערכת, דוח, הדרכה, נוהל..." minRows={2} />
+              <EditableArea value={task.deliverables ?? ''} onChange={v => patchLocal('deliverables', v)} onBlur={saveLatest} placeholder="מה יימסר? — מערכת, דוח, הדרכה, נוהל..." minRows={2} />
             </Field>
             <Field label="הנחות">
-              <EditableArea value={task.assumptions} onChange={v => patchLocal('assumptions', v)} onBlur={saveLatest} placeholder="תקציב, שיתוף פעולה, זמינות..." minRows={2} />
+              <EditableArea value={task.assumptions ?? ''} onChange={v => patchLocal('assumptions', v)} onBlur={saveLatest} placeholder="תקציב, שיתוף פעולה, זמינות..." minRows={2} />
             </Field>
             <Field label="קריטריוני קבלה" className="tp-span-full">
-              <EditableArea value={task.acceptanceCriteria} onChange={v => patchLocal('acceptanceCriteria', v)} onBlur={saveLatest} placeholder="מה צריך להתקיים? — איכות, ביצועים, שביעות רצון..." minRows={2} />
+              <EditableArea value={task.acceptanceCriteria ?? ''} onChange={v => patchLocal('acceptanceCriteria', v)} onBlur={saveLatest} placeholder="מה צריך להתקיים? — איכות, ביצועים, שביעות רצון..." minRows={2} />
             </Field>
           </div>
         </Section>}
@@ -1760,7 +1760,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <EditableArea value={task.risksBlockers} onChange={v => patchLocal('risksBlockers', v)} onBlur={saveLatest} placeholder="התנגדות צוות, מגבלות רגולטוריות, תקציב, מחסור כוח אדם..." minRows={2} />
             </Field>
             <Field label="נתיב הסלמה">
-              <EditableArea value={task.escalationPath} onChange={v => patchLocal('escalationPath', v)} onBlur={saveLatest} placeholder="למי פונים אם הסיכון מתממש?" minRows={2} />
+              <EditableArea value={task.escalationPath ?? ''} onChange={v => patchLocal('escalationPath', v)} onBlur={saveLatest} placeholder="למי פונים אם הסיכון מתממש?" minRows={2} />
             </Field>
             <Field label="תלויות" className="tp-span-2">
               <EditableArea value={task.dependencies} onChange={v => patchLocal('dependencies', v)} onBlur={saveLatest} placeholder="אגפים, מערכות IT, ספקים, אישורים..." minRows={2} />
@@ -1769,7 +1769,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
             </Field>
             <Field label="תוכנית מיתוג" className="tp-span-full">
-              <EditableArea value={task.mitigationPlan} onChange={v => patchLocal('mitigationPlan', v)} onBlur={saveLatest} placeholder="צעדים קונקרטיים להפחתת כל סיכון או מחסום..." minRows={2} />
+              <EditableArea value={task.mitigationPlan ?? ''} onChange={v => patchLocal('mitigationPlan', v)} onBlur={saveLatest} placeholder="צעדים קונקרטיים להפחתת כל סיכון או מחסום..." minRows={2} />
             </Field>
             {task.stakeholders.length > 0 && (
               <Field label="בעלי עניין">
@@ -1957,16 +1957,16 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           <p className="tp-section-desc">תיעוד מה שנמסר בפועל, כיצד הפרויקט יצא לדרך, והתוצאות מול היעדים.</p>
           <div className="tp-grid-3">
             <Field label="תוצר מסירה" className="tp-span-2">
-              <EditableArea value={task.finalDeliverable} onChange={v => patchLocal('finalDeliverable', v)} onBlur={saveLatest} placeholder="מה הושלם ונמסר? — מערכת, נוהל, הדרכה, אב-טיפוס..." minRows={2} />
+              <EditableArea value={task.finalDeliverable ?? ''} onChange={v => patchLocal('finalDeliverable', v)} onBlur={saveLatest} placeholder="מה הושלם ונמסר? — מערכת, נוהל, הדרכה, אב-טיפוס..." minRows={2} />
             </Field>
             <Field label="הערות Rollout">
-              <EditableArea value={task.rolloutNotes} onChange={v => patchLocal('rolloutNotes', v)} onBlur={saveLatest} placeholder="כיצד התבצע השילוב? תקלות? תגובות?" minRows={2} />
+              <EditableArea value={task.rolloutNotes ?? ''} onChange={v => patchLocal('rolloutNotes', v)} onBlur={saveLatest} placeholder="כיצד התבצע השילוב? תקלות? תגובות?" minRows={2} />
             </Field>
             <Field label="תוצאות מדודות" className="tp-span-2">
-              <EditableArea value={task.measuredResult} onChange={v => patchLocal('measuredResult', v)} onBlur={saveLatest} placeholder="KPI בפועל אחרי היישום — השווה לנקודת הבסיס." minRows={2} />
+              <EditableArea value={task.measuredResult ?? ''} onChange={v => patchLocal('measuredResult', v)} onBlur={saveLatest} placeholder="KPI בפועל אחרי היישום — השווה לנקודת הבסיס." minRows={2} />
             </Field>
             <Field label="לקחים">
-              <EditableArea value={task.lessonsLearned} onChange={v => patchLocal('lessonsLearned', v)} onBlur={saveLatest} placeholder="מה למדנו? מה אחרת בפעם הבאה?" minRows={2} />
+              <EditableArea value={task.lessonsLearned ?? ''} onChange={v => patchLocal('lessonsLearned', v)} onBlur={saveLatest} placeholder="מה למדנו? מה אחרת בפעם הבאה?" minRows={2} />
             </Field>
           </div>
         </Section>}

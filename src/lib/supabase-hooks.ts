@@ -21,27 +21,27 @@ export interface MedicalTask {
   // ── Foundations (יסודות) ────────────────────────────────────
   problemStatement: string;
   goal: string;
-  targetAudience: string;
-  desiredImpact: string;
-  scope: string;
-  outOfScope: string;
-  successDefinition: string;
+  targetAudience?: string;
+  desiredImpact?: string;
+  scope?: string;
+  outOfScope?: string;
+  successDefinition?: string;
   
   // ── Current State (מצב נוכחי) ────────────────────────────────
   currentState: string;
-  painPoints: string;
-  constraints: string;
-  existingProcess: string;
-  evidence: string;
+  painPoints?: string;
+  constraints?: string;
+  existingProcess?: string;
+  evidence?: string;
   
   // ── Specification (אפיון) ────────────────────────────────────
   department: string;
   processName: string;
-  proposedSolution: string;
-  deliverables: string;
-  assumptions: string;
-  requiredDecisions: string;
-  acceptanceCriteria: string;
+  proposedSolution?: string;
+  deliverables?: string;
+  assumptions?: string;
+  requiredDecisions?: string;
+  acceptanceCriteria?: string;
   
   // ── Timeline (ציר זמן) ────────────────────────────────────────
   startDate: string;
@@ -62,26 +62,26 @@ export interface MedicalTask {
   kpiName: string;
   baseline: string;
   target: string;
-  sourceOfTruth: string;
+  sourceOfTruth?: string;
   measurementCadence: string;
-  metricOwner: string;
+  metricOwner?: string;
   
   // ── Participants (משתתפים) ───────────────────────────────────
   stakeholders: string[];   // Array of profile names/emails
-  approvers: string[];      // Array of profile names/emails who must approve
+  approvers?: string[];     // Array of profile names/emails who must approve
   
   // ── Risks (סיכונים ותלויות) ──────────────────────────────────
   risksBlockers: string;
   dependencies: string;
   links: string;
-  mitigationPlan: string;
-  escalationPath: string;
+  mitigationPlan?: string;
+  escalationPath?: string;
   
   // ── Outcome (תוצר סופי) ───────────────────────────────────────
-  finalDeliverable: string;
-  rolloutNotes: string;
-  measuredResult: string;
-  lessonsLearned: string;
+  finalDeliverable?: string;
+  rolloutNotes?: string;
+  measuredResult?: string;
+  lessonsLearned?: string;
 }
 
 // ── Profile types ──────────────────────────────────────────────────────────────
@@ -912,7 +912,7 @@ export function useTaskComments(taskId: string | null) {
 
       // Fetch author profiles
       const authorIds = [...new Set((data || []).map(c => c.author_id))];
-      if (authorIds.length === 0) return data || [];
+      if (authorIds.length === 0) return (data || []).map(c => ({ ...c, author: undefined })) as TaskComment[];
 
       const { data: profiles } = await supabase
         .from('profiles')
