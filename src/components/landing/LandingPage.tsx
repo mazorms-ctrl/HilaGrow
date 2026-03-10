@@ -107,15 +107,19 @@ function LandingHeader() {
         height: 'clamp(56px, 8vw, 80px)',
         padding: '0 clamp(16px, 4vw, 40px)',
       }}>
-        <img
-          src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
-          alt="הלל יפה"
-          style={{
-            height: 'clamp(36px, 5vw, 60px)',
-            width: 'auto',
-            objectFit: 'contain',
-          }}
-        />
+        <div style={{ background: 'white', lineHeight: 0 }}>
+          <img
+            src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
+            alt="הלל יפה"
+            className="lp-header-logo"
+            style={{
+              height: 'clamp(36px, 5vw, 60px)',
+              width: 'auto',
+              objectFit: 'contain',
+              mixBlendMode: 'multiply',
+            }}
+          />
+        </div>
       </div>
     </header>
   );
@@ -256,6 +260,13 @@ export function LandingPage() {
         .lp-root {
           overflow-x: hidden;
           max-width: 100vw;
+        }
+
+        /* ── Mobile: larger header logo ── */
+        @media (max-width: 767px) {
+          .lp-header-logo {
+            height: 72px !important;
+          }
         }
       `}</style>
 

@@ -323,6 +323,7 @@ function App() {
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [hoveredTaskInTree, setHoveredTaskInTree] = useState<typeof tasks[0] | null>(null);
   const [treeZoom, setTreeZoom] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 0.5 : 1.0);
+  const [treeFullscreen, setTreeFullscreen] = useState(false);
   const [showTreeZoomHint, setShowTreeZoomHint] = useState(() => {
     // Show hint only if user hasn't seen it before
     const hasSeenHint = localStorage.getItem('grow.treeZoomHintSeen');
@@ -338,12 +339,15 @@ function App() {
   const [activeStep, setActiveStep] = useState<number>(0);
   const [categoryModalFilter, setCategoryModalFilter] = useState<null | 'p1' | 'overdue' | 'blockers' | 'unassigned' | 'kpi'>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const treePanRef = useRef<HTMLDivElement>(null);
+  const treeDrag = useRef({ active: false, startX: 0, startY: 0, scrollLeft: 0, scrollTop: 0 });
   
 
   // Project name state with localStorage persistence
   const [projectName, setProjectName] = useState(() => {
     const saved = localStorage.getItem('grow.projectName');
-    return saved || 'GROW - מחזור ב מובילים שינוי';
+    if (!saved || saved === 'GROW - מחזור ב מובילים שינוי') return 'GROW - מובילים שינוי';
+    return saved;
   });
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
   const [tempProjectName, setTempProjectName] = useState(projectName);
@@ -659,6 +663,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           setEditingTask(null);
         } else if (showKeyboardShortcuts) {
           setShowKeyboardShortcuts(false);
+        } else if (treeFullscreen) {
+          setTreeFullscreen(false);
+          setViewMode('command');
         }
         e.preventDefault();
       }
@@ -694,7 +701,13 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
     window.addEventListener('keydown', handleKeyPress);
     return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isCategoryModalOpen, showNewTaskModal, editingTask, showKeyboardShortcuts]);
+  }, [isCategoryModalOpen, showNewTaskModal, editingTask, showKeyboardShortcuts, treeFullscreen]);
+
+  // Auto-fullscreen when switching to tree view
+  useEffect(() => {
+    if (viewMode === 'tree') setTreeFullscreen(true);
+    else setTreeFullscreen(false);
+  }, [viewMode]);
 
   const filteredTasks = tasks.filter(task => {
     // Search filter
@@ -987,29 +1000,57 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   // Tree Diagram Component (used in both Dashboard and Tree views)
-  const renderTreeDiagram = (variant: 'dashboard' | 'full') => {
+  const renderTreeDiagram = (variant: 'dashboard' | 'full' | 'fullscreen') => {
     const isDashboard = variant === 'dashboard';
+    const isFullscreen = variant === 'fullscreen';
     
     return (
-      <div style={{ 
-        padding: isDashboard ? '0' : window.innerWidth < 768 ? '24px 4px' : '48px 32px',
-        overflow: 'auto',
-        overflowX: 'auto',
-        overflowY: 'auto',
-        position: 'relative',
+      <div
+        ref={treePanRef}
+        onMouseDown={(e) => {
+          if ((e.target as HTMLElement).closest('button,input,a,[role="button"]')) return;
+          const el = treePanRef.current;
+          if (!el) return;
+          treeDrag.current = { active: true, startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
+          el.style.cursor = 'grabbing';
+          e.preventDefault();
+        }}
+        onMouseMove={(e) => {
+          const d = treeDrag.current;
+          if (!d.active) return;
+          const el = treePanRef.current;
+          if (!el) return;
+          el.scrollLeft = d.scrollLeft - (e.clientX - d.startX);
+          el.scrollTop  = d.scrollTop  - (e.clientY - d.startY);
+        }}
+        onMouseUp={() => {
+          treeDrag.current.active = false;
+          if (treePanRef.current) treePanRef.current.style.cursor = 'grab';
+        }}
+        onMouseLeave={() => {
+          treeDrag.current.active = false;
+          if (treePanRef.current) treePanRef.current.style.cursor = 'grab';
+        }}
+        style={{ 
+          padding: isDashboard ? '0' : window.innerWidth < 768 ? '24px 4px' : '48px 32px',
+          overflow: 'auto',
+          overflowX: 'auto',
+          overflowY: 'auto',
+          position: 'relative',
+          cursor: 'grab',
         // Use concrete viewport height for full tree view (mobile fix)
-        height: isDashboard ? '100%' : 'calc(100dvh - 110px)',
-        minHeight: isDashboard ? undefined : 'calc(100vh - 110px)',
-        width: '100%',
-        WebkitOverflowScrolling: 'touch',
-        touchAction: 'pan-x pan-y',
-        MozUserSelect: 'none',
-        WebkitUserSelect: 'none',
-        msUserSelect: 'none',
-        userSelect: 'none',
-        display: 'flex',
-        justifyContent: 'center'
-      }}>
+        height: isDashboard ? '100%' : isFullscreen ? '100%' : 'calc(100dvh - 110px)',
+        minHeight: isDashboard || isFullscreen ? undefined : 'calc(100vh - 110px)',
+          width: '100%',
+          WebkitOverflowScrolling: 'touch',
+          touchAction: 'pan-x pan-y',
+          MozUserSelect: 'none',
+          WebkitUserSelect: 'none',
+          msUserSelect: 'none',
+          userSelect: 'none',
+          display: 'flex',
+          justifyContent: 'center'
+        }}>
         <div style={{
           transform: `scale(${treeZoom})`,
           transformOrigin: 'top center',
@@ -1020,20 +1061,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           display: 'inline-block',
           paddingBottom: '100px'
         }}>
-        {!isDashboard && (
-          <h2 style={{
-            fontSize: '40px',
-            fontWeight: 300,
-            color: colors.text.primary,
-            fontFamily: typography.fontFamily,
-            marginBottom: spacing.xxxxl,
-            textAlign: 'center',
-            letterSpacing: '-1.5px',
-            lineHeight: '1.15'
-          }}>
-            GROW — מחזור ב מובילים שינוי
-          </h2>
-        )}
         
         {/* Project Root */}
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
@@ -1151,7 +1178,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           {/* Categories */}
           <div style={{
             display: 'flex',
-            gap: '64px',
+            gap: '40px',
             flexWrap: window.innerWidth < 768 ? 'nowrap' : 'wrap',
             justifyContent: 'center',
             minWidth: 'fit-content'
@@ -1162,33 +1189,33 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               const avgProgress = Math.round(categoryTasks.reduce((sum, t) => sum + t.progress, 0) / categoryTasks.length);
 
               return (
-                <div key={category} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.xl }}>
+                <div key={category} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.md }}>
 
                   {/* Category Node */}
                   <div style={{
-                    padding: `${spacing.lg} ${spacing.xxl}`,
-                    background: '#ffffff',
-                    border: '1px solid #e2e8f0',
+                    padding: `${spacing.md} ${spacing.lg}`,
+                    background: color + '18',
+                    border: `1px solid ${color}45`,
                     borderTop: `4px solid ${color}`,
-                    borderRadius: radius.lg,
-                    minWidth: '220px',
+                    borderRadius: radius.md,
+                    width: '185px',
                     textAlign: 'center',
                     boxShadow: shadows.sm,
                     transition: 'all 0.3s ease'
                   }}>
-                    <div style={{ fontSize: '16px', fontWeight: 300, color: '#171717', marginBottom: '6px' }}>
+                    <div style={{ fontSize: '14px', fontWeight: 500, color: '#171717', marginBottom: '4px' }}>
                       {category}
                     </div>
-                    <div style={{ fontSize: '13px', fontWeight: 300, color: '#94a3b8' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 300, color: color }}>
                       {categoryTasks.length} משימות · {avgProgress}%
                     </div>
                   </div>
 
                   {/* Connector: category → tasks */}
-                  <div style={{ width: '1px', height: '24px', background: '#e2e8f0' }} />
+                  <div style={{ width: '1px', height: '14px', background: '#e2e8f0' }} />
 
                   {/* Tasks */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center', position: 'relative' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', position: 'relative' }}>
                     {categoryTasks.map((task, idx) => {
                       const taskStatus = task.status || 'open';
                       const isDone      = taskStatus === 'done';
@@ -1203,7 +1230,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
                       return (
                       <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                        {idx > 0 && <div style={{ width: '1px', height: '10px', background: '#e2e8f0' }} />}
+                        {idx > 0 && <div style={{ width: '1px', height: '6px', background: '#e2e8f0' }} />}
 
                         {/* Inject keyframes once per render — harmless duplicate <style> tags are deduplicated by the browser */}
                         <style>{`
@@ -1222,66 +1249,72 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                           onMouseEnter={() => setHoveredTaskInTree(task)}
                           onMouseLeave={() => setHoveredTaskInTree(null)}
                           style={{
-                            padding: '14px 16px 0 16px',   // bottom-0 so the progress strip sits flush
-                            background: isDone ? '#fafafa' : '#ffffff',
-                            border: '1px solid #e2e8f0',
-                            borderTop: `4px solid ${accentColor}`,
-                            // Pulse the border on active tasks via box-shadow (CSS only)
+                            padding: '10px 13px 0 13px',   // bottom-0 so the progress strip sits flush
+                            background: isDone ? '#fafafa' : color + '12',
+                            border: `1px solid ${isDone ? '#e2e8f0' : color + '40'}`,
+                            borderTop: `3px solid ${accentColor}`,
                             ...(isActive ? { animation: 'treePulse 3s ease-in-out infinite' } : {}),
-                            borderRadius: '12px',
-                            minWidth: '210px',
+                            borderRadius: '10px',
+                            width: '185px',
+                            height: '90px',
                             cursor: 'pointer',
                             transition: 'box-shadow 0.2s, transform 0.2s',
                             boxShadow: hoveredTaskInTree?.id === task.id ? shadows.md : shadows.sm,
                             transform: hoveredTaskInTree?.id === task.id ? 'translateY(-2px)' : 'translateY(0)',
                             overflow: 'hidden',
                             position: 'relative',
-                            zIndex: hoveredTaskInTree?.id === task.id ? 20 : 1
+                            zIndex: hoveredTaskInTree?.id === task.id ? 20 : 1,
+                            textAlign: 'center',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'space-between',
                           }}
                         >
-                          {/* Completed checkmark badge */}
-                          {isDone && (
-                            <div style={{
-                              position: 'absolute',
-                              top: '10px',
-                              left: '12px',
-                              width: '18px',
-                              height: '18px',
-                              borderRadius: '9999px',
-                              background: '#dcfce7',
-                              border: '1px solid #bbf7d0',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              flexShrink: 0,
-                            }}>
-                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                <path d="M2 5.2L4.1 7.5L8 3" stroke="#16a34a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-                              </svg>
-                            </div>
-                          )}
+                          {/* Status dot — top-left corner */}
+                          {(() => {
+                            const isOverdueTask = task.dueDate ? new Date(task.dueDate) < new Date() && !isDone : false;
+                            const dotCfg = isDone
+                              ? { bg: '#16a34a', border: '#15803d', title: 'הושלם',
+                                  content: <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 5.2L4.1 7.5L8 3" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg> }
+                              : isOverdueTask
+                              ? { bg: '#ef4444', border: '#dc2626', title: 'באיחור',
+                                  content: <span style={{ fontSize: '10px', color: '#ffffff', fontWeight: 800, lineHeight: 1 }}>!</span> }
+                              : isActive
+                              ? { bg: '#22c55e', border: '#16a34a', title: 'בביצוע',
+                                  content: <div style={{ width: 6, height: 6, borderRadius: '9999px', background: '#ffffff', animation: 'treePulse 2s ease-in-out infinite' }} /> }
+                              : { bg: '#e2e8f0', border: '#cbd5e1', title: 'ממתין',
+                                  content: <div style={{ width: 5, height: 5, borderRadius: '9999px', background: '#94a3b8' }} /> };
+
+                            return (
+                              <div title={dotCfg.title} style={{
+                                position: 'absolute', top: '8px', left: '8px',
+                                width: '18px', height: '18px', borderRadius: '9999px',
+                                background: dotCfg.bg, border: `1.5px solid ${dotCfg.border}`,
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                flexShrink: 0, zIndex: 2,
+                                boxShadow: `0 1px 4px ${dotCfg.bg}88`,
+                              }}>
+                                {dotCfg.content}
+                              </div>
+                            );
+                          })()}
 
                           {/* Title — dimmed when done */}
                           <div style={{
-                            fontSize: '14px',
-                            fontWeight: 300,
+                            fontSize: '12px',
+                            fontWeight: 400,
                             color: isDone ? '#94a3b8' : '#0f172a',
-                            marginBottom: '8px',
-                            lineHeight: '1.4',
+                            marginBottom: '6px',
+                            lineHeight: '1.35',
+                            textAlign: 'center',
                           }}>
                             {task.title}
                           </div>
 
-                          {/* Priority badge — hidden when done to keep it clean */}
-                          {!isDone && (
-                            <div style={{ marginBottom: '10px' }}>
-                              {getPriorityBadge(task.priority || 'P2', 'small')}
-                            </div>
-                          )}
 
-                          {/* Mid progress bar — shown for all non-pending states */}
-                          {!isPending && (
-                            <div style={{ background: '#f1f5f9', height: '3px', borderRadius: '2px', overflow: 'hidden', marginBottom: '8px' }}>
+                          {/* Progress bar with % label */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
+                            <div style={{ flex: 1, background: isDone ? '#f1f5f9' : color + '25', height: '3px', borderRadius: '2px', overflow: 'hidden' }}>
                               <div style={{
                                 background: isDone ? '#22c55e' : color,
                                 height: '100%',
@@ -1289,32 +1322,34 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                                 transition: 'width 0.4s ease'
                               }} />
                             </div>
-                          )}
+                            <span style={{ fontSize: '9px', fontWeight: 500, color: isDone ? '#94a3b8' : color, flexShrink: 0 }}>
+                              {task.progress}%
+                            </span>
+                          </div>
 
-                          {/* Bottom row: stats + avatar */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px' }}>
-                            <div style={{ fontSize: '11px', fontWeight: 300, color: '#94a3b8' }}>
-                              {task.progress}% · {task.milestones.filter(m => m.done).length}/{task.milestones.length}
+                          {/* Bottom row: milestones + owner */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', paddingBottom: '8px' }}>
+                            <div style={{ fontSize: '10px', fontWeight: 300, color: isDone ? '#94a3b8' : color }}>
+                              {task.milestones.filter(m => m.done).length}/{task.milestones.length}
                             </div>
                             {task.owner && (
                               <div
                                 title={task.owner}
                                 style={{
-                                  width: '26px',
-                                  height: '26px',
-                                  borderRadius: '9999px',
-                                  background: isDone ? '#dcfce733' : color + '22',
-                                  border: `1.5px solid ${isDone ? '#bbf7d0' : color + '55'}`,
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '10px',
-                                  fontWeight: 400,
-                                  color: isDone ? '#86efac' : color,
+                                  fontSize: '10px', fontWeight: 400,
+                                  color: isDone ? '#94a3b8' : color,
+                                  background: isDone ? '#f1f5f9' : color + '15',
+                                  border: `1px solid ${isDone ? '#e2e8f0' : color + '40'}`,
+                                  borderRadius: '4px',
+                                  padding: '1px 5px',
+                                  maxWidth: '60px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
                                   flexShrink: 0,
                                 }}
                               >
-                                {task.owner.charAt(0)}
+                                {task.owner}
                               </div>
                             )}
                           </div>
@@ -1473,6 +1508,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         @media (max-width: 767px) {
           .desktop-only { display: none !important; }
           .mobile-menu { display: flex !important; }
+          .header-logo-img {
+            height: 60px !important;
+          }
         }
         @media (min-width: 768px) {
           .mobile-only { display: none !important; }
@@ -1528,6 +1566,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
           {/* Logo — absolutely centered in the header, independent of other items */}
           <div
+            className="header-logo-wrapper"
             style={{
               position: 'absolute',
               left: '50%',
@@ -1540,16 +1579,18 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               direction: 'rtl',
             }}
           >
-            <img
-              src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
-              alt="הלל יפה"
-              style={{
-                filter: 'brightness(1) contrast(1.05)',
-                mixBlendMode: 'multiply',
-                pointerEvents: 'auto',
-              }}
-              className="h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
-            />
+            <div style={{ background: 'white', lineHeight: 0, borderRadius: '6px', pointerEvents: 'auto' }}>
+              <img
+                src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
+                alt="הלל יפה"
+                style={{
+                  filter: 'brightness(1) contrast(1.05)',
+                  mixBlendMode: 'multiply',
+                  display: 'block',
+                }}
+                className="header-logo-img h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
+              />
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'right', pointerEvents: 'auto' }}>
               <h1
                 style={{
@@ -2856,7 +2897,104 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 }}>
                   {Math.round(treeZoom * 100)}%
                 </div>
+
+                {/* Fullscreen button */}
+                <button
+                  onClick={() => setTreeFullscreen(true)}
+                  title="מסך מלא"
+                  style={{
+                    minWidth: '48px', minHeight: '48px', width: '48px', height: '48px',
+                    fontSize: '18px', borderRadius: '12px', border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                    color: 'white', cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(99,102,241,0.4)',
+                    transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(99,102,241,0.5)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)';    e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)'; }}
+                  aria-label="מסך מלא"
+                >
+                  ⛶
+                </button>
               </div>
+
+              {/* Fullscreen overlay */}
+              {treeFullscreen && (
+                <div style={{
+                  position: 'fixed', inset: 0, zIndex: 9000,
+                  background: '#ffffff',
+                  display: 'flex', flexDirection: 'column',
+                }}>
+                  {/* Header bar */}
+                  <div style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '12px 20px', borderBottom: '1px solid #e2e8f0',
+                    background: '#ffffff', flexShrink: 0,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ width: 4, height: 20, background: '#4f46e5', borderRadius: 2 }} />
+                      <span style={{ fontSize: '15px', fontWeight: 500, color: '#0f172a', fontFamily: 'Rubik' }}>
+                        {projectName}
+                      </span>
+                    </div>
+
+                    {/* Zoom controls */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {[
+                        { label: '+', title: 'הגדל', fn: zoomIn,    color: '#22c55e', shadow: 'rgba(34,197,94,0.3)' },
+                        { label: '−', title: 'הקטן', fn: zoomOut,   color: '#ef4444', shadow: 'rgba(239,68,68,0.3)'  },
+                        { label: '⊡', title: 'אפס',  fn: resetZoom, color: '#0ea5e9', shadow: 'rgba(14,165,233,0.3)' },
+                      ].map(({ label, title, fn, color: c, shadow }) => (
+                        <button
+                          key={title}
+                          onClick={fn}
+                          title={title}
+                          style={{
+                            width: 32, height: 32, borderRadius: 8, border: 'none',
+                            background: c, color: '#fff',
+                            fontSize: label === '⊡' ? '14px' : '18px', fontWeight: 700,
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            boxShadow: `0 2px 8px ${shadow}`, transition: 'all 0.15s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                      <div style={{
+                        height: 28, padding: '0 8px', borderRadius: 6,
+                        background: '#f1f5f9', border: '1px solid #e2e8f0',
+                        display: 'flex', alignItems: 'center',
+                        fontSize: '12px', fontWeight: 600, color: '#475569',
+                        minWidth: 44, justifyContent: 'center',
+                      }}>
+                        {Math.round(treeZoom * 100)}%
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => { setTreeFullscreen(false); setViewMode('command'); }}
+                      title="סגור מסך מלא (Esc)"
+                      style={{
+                        width: 36, height: 36, borderRadius: 8,
+                        border: '1px solid #e2e8f0', background: 'none',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', fontSize: '18px', color: '#64748b',
+                        transition: 'background 0.15s, color 0.15s',
+                      }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'none';    e.currentTarget.style.color = '#64748b'; }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {/* Tree canvas */}
+                  <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+                    {renderTreeDiagram('fullscreen')}
+                  </div>
+                </div>
+              )}
               
               {/* Zoom Hint - shows on first view */}
               {showTreeZoomHint && (
