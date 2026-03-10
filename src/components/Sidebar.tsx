@@ -293,7 +293,6 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
   const { milestones: myMilestones, loading: milestonesLoading } = useMyAssignedMilestones();
   const navigate = useNavigate();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
-
   const initials = (profile?.full_name || user.email || '?')
     .split(' ')
     .map(w => w[0])

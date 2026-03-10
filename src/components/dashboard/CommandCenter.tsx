@@ -100,7 +100,7 @@ function DashboardContent() {
         width: '100%',
       }}
     >
-      {/* Section header */}
+      {/* ── Section header ── */}
       <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h2
           style={{
