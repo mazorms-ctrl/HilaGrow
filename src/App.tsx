@@ -5,7 +5,7 @@ import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer, type ToastMessage } from './components/Toast';
-import { Button, Card } from './components/ui';
+import { Button } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { TaskPageContent } from './components/tasks/TaskPage';
@@ -309,7 +309,7 @@ function App() {
     ? supabaseTasks
     : (initialTasks as MedicalTask[]);
   
-  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard' | 'command'>('command');
+  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
@@ -662,9 +662,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         e.preventDefault();
       }
 
-      // 1-4 - Switch views
+      // 1-3 - Switch views
       if (e.key === '1') {
-        setViewMode('dashboard');
+        setViewMode('command');
         e.preventDefault();
       }
       if (e.key === '2') {
@@ -673,10 +673,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       }
       if (e.key === '3') {
         setViewMode('tree');
-        e.preventDefault();
-      }
-      if (e.key === '4') {
-        setViewMode('command');
         e.preventDefault();
       }
 
@@ -723,12 +719,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const openCategoryModal = (category: string) => {
-    setSelectedCategory(category);
-    setCategoryModalQuery('');
-    setCategoryModalFilter(null);
-    setIsCategoryModalOpen(true);
-  };
 
   const closeCategoryModal = () => {
     setIsCategoryModalOpen(false);
@@ -1395,7 +1385,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             className="desktop-only"
             style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
           >
-            {(['dashboard', 'rows', 'tree', 'command'] as const).map(mode => (
+            {(['command', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
                 onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
@@ -1407,7 +1397,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {mode === 'tree' && <TreePine size={14} aria-hidden="true" />}
-                  {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : mode === 'tree' ? 'התמונה הגדולה' : 'מרכז פיקוד'}
+                  {mode === 'command' ? 'מרכז פיקוד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
                 </span>
               </button>
             ))}
@@ -1525,7 +1515,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-              {(['dashboard', 'rows', 'tree', 'command'] as const).map(mode => (
+              {(['command', 'rows', 'tree'] as const).map(mode => (
                 <button
                   key={mode}
                   onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
@@ -1535,7 +1525,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 >
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                     {mode === 'tree' && <TreePine size={18} aria-hidden="true" />}
-                    {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : mode === 'tree' ? 'התמונה הגדולה' : 'מרכז פיקוד'}
+                    {mode === 'command' ? 'מרכז פיקוד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
                   </span>
                 </button>
               ))}
@@ -1650,325 +1640,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           {!taskMatch && (!user || effectiveProjectId) && (
           <>
 
-          {/* Dashboard View - Hybrid Dashboard */}
-          {viewMode === 'dashboard' && (
-            <div style={{ padding: spacing.xxl, maxWidth: '1600px', margin: '0 auto' }}>
-              {/* Dashboard Header */}
-              <div style={{ 
-                marginBottom: spacing.xxxl, 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                flexWrap: 'wrap', 
-                gap: spacing.lg 
-              }}>
-                <div>
-                  <h2 style={{ 
-                    fontSize: typography.fontSize.display, 
-                    fontWeight: typography.fontWeight.black, 
-                    marginBottom: spacing.sm, 
-                    color: colors.text.primary,
-                    fontFamily: typography.fontFamily,
-                    letterSpacing: '-1.5px'
-                  }}>
-                    דשבורד ניהול שיפור תהליכים
-                  </h2>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => setViewMode('tree')}
-                >
-                  מפת העץ
-                </Button>
-              </div>
-
-              {/* Management Strip */}
-              {/* Management Strip removed */}
-
-              {/* Two Column Layout: Action (Right) + Overview (Left) */}
-              <style>{`
-                @media (min-width: 1024px) {
-                  .dashboard-grid {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 32px;
-                  }
-                }
-                @media (max-width: 1024px) {
-                  .dashboard-grid {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 32px;
-                  }
-                }
-              `}</style>
-
-              {/* Categories Health - Horizontal Grid */}
-              <div>
-                  <h3 style={{ 
-                    fontSize: typography.fontSize.h2, 
-                    fontWeight: typography.fontWeight.bold, 
-                    marginBottom: spacing.xxl, 
-                    color: colors.text.primary, 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: spacing.md,
-                    fontFamily: typography.fontFamily,
-                    letterSpacing: '-0.5px'
-                  }}>
-                    <span>התקדמות על פי קטגוריות</span>
-                  </h3>
-              
-              <div 
-                className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                style={{
-                  paddingTop: '10px',
-                  paddingBottom: '10px',
-                }}
-              >
-              {categories
-                .map(category => {
-                  const categoryTasks = tasks.filter(t => t.category === category);
-                  const p1Count = categoryTasks.filter(t => t.priority === 'P1').length;
-                  const overdueCount = categoryTasks.filter(isOverdue).length;
-                  const tasksWithRisks = categoryTasks.filter(t => t.risksBlockers && t.risksBlockers.trim()).length;
-                  const noOwnerCount = categoryTasks.filter(isUnassigned).length;
-                  const riskScore = p1Count * 3 + overdueCount * 2 + tasksWithRisks * 2 + noOwnerCount;
-                  return { category, categoryTasks, riskScore };
-                })
-                .sort((a, b) => b.riskScore - a.riskScore)
-                .map(({ category, categoryTasks }) => {
-                const avgProgress = Math.round(categoryTasks.reduce((sum, t) => sum + t.progress, 0) / categoryTasks.length);
-                const color = categoryTasks[0].color;
-                const tasksWithKPI = categoryTasks.filter(t => t.kpiName && t.kpiName.trim()).length;
-                const tasksWithRisks = categoryTasks.filter(t => t.risksBlockers && t.risksBlockers.trim()).length;
-                const p1Count = categoryTasks.filter(t => t.priority === 'P1').length;
-                const overdueCount = categoryTasks.filter(isOverdue).length;
-                const noOwnerCount = categoryTasks.filter(isUnassigned).length;
-
-                return (
-                  <Card
-                    key={category}
-                    variant="glass"
-                    padding="lg"
-                    hoverable
-                    onClick={() => openCategoryModal(category)}
-                    style={{
-                      borderTop: `3px solid ${color}`,
-                      boxShadow: `0 4px 20px ${color}20`,
-                    }}
-                  >
-                    {/* Header */}
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
-                      marginBottom: spacing.lg,
-                      paddingBottom: spacing.md,
-                      borderBottom: `1px solid ${colors.border.light}`
-                    }}>
-                      <span style={{ 
-                        fontSize: typography.fontSize.xl, 
-                        fontWeight: typography.fontWeight.bold, 
-                        color: colors.text.primary,
-                        fontFamily: typography.fontFamily,
-                        letterSpacing: '-0.5px'
-                      }}>
-                        {category}
-                      </span>
-                      <div
-                        title={`${avgProgress}% התקדמות`}
-                        aria-label={`${avgProgress}% התקדמות`}
-                        style={{
-                          position: 'relative',
-                          width: '56px',
-                          height: '56px',
-                          flex: '0 0 56px',
-                        }}
-                      >
-                        <div
-                          aria-hidden="true"
-                          style={{
-                            width: '56px',
-                            height: '56px',
-                            borderRadius: '999px',
-                            background: `conic-gradient(${color} 0% ${avgProgress}%, rgba(148, 163, 184, 0.22) ${avgProgress}% 100%)`,
-                            WebkitMaskImage: 'radial-gradient(farthest-side, transparent 62%, #000 63%)',
-                            maskImage: 'radial-gradient(farthest-side, transparent 62%, #000 63%)',
-                            boxShadow: `0 0 0 6px ${color}10`,
-                          }}
-                        />
-                        <div
-                          style={{
-                            position: 'absolute',
-                            inset: '9px',
-                            borderRadius: '999px',
-                            background: 'rgba(255, 255, 255, 0.78)',
-                            backdropFilter: 'blur(14px)',
-                            WebkitBackdropFilter: 'blur(14px)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontFamily: typography.fontFamily,
-                            fontWeight: typography.fontWeight.black,
-                            color,
-                            fontSize: '14px',
-                            letterSpacing: '-0.6px',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {avgProgress}%
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Progress Ring replaces old bar */}
-
-                    {/* Health Metrics */}
-                    <div style={{ display: 'flex', gap: spacing.sm, fontSize: typography.fontSize.xs, flexWrap: 'wrap' }}>
-                      <span style={{ 
-                        fontWeight: typography.fontWeight.semibold, 
-                        color: colors.text.secondary,
-                        fontFamily: typography.fontFamily,
-                        background: 'rgba(148, 163, 184, 0.1)',
-                        padding: `${spacing.xs} ${spacing.md}`,
-                        borderRadius: radius.sm
-                      }}>
-                        {categoryTasks.length}
-                      </span>
-                      {p1Count > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.danger, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(254, 226, 226, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(239, 68, 68, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          P1 {p1Count}
-                        </span>
-                      )}
-                      {overdueCount > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.warning, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(254, 243, 199, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(245, 158, 11, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          איחור {overdueCount}
-                        </span>
-                      )}
-                      {tasksWithRisks > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.warning, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(254, 243, 199, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(245, 158, 11, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          חסמים {tasksWithRisks}
-                        </span>
-                      )}
-                      {noOwnerCount > 0 && (
-                        <span style={{ 
-                          color: colors.brand.primary, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(219, 234, 254, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(59, 130, 246, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          ללא אחראי {noOwnerCount}
-                        </span>
-                      )}
-                      {tasksWithKPI > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.success, 
-                          fontWeight: typography.fontWeight.semibold,
-                          fontFamily: typography.fontFamily,
-                          background: 'rgba(220, 252, 231, 0.3)',
-                          padding: `${spacing.xs} ${spacing.md}`,
-                          borderRadius: radius.sm,
-                          border: `1px solid rgba(34, 197, 94, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          KPI {tasksWithKPI}
-                        </span>
-                      )}
-                    </div>
-                  </Card>
-                );
-                })}
-                </div>
-              </div>
-
-              {/* Action Queue - Horizontal Cards */}
-              <div style={{ marginBottom: spacing.xxxl }}>
-                <div style={{ marginBottom: spacing.lg, display: 'flex', flexDirection: 'column' }}>
-                  <h3 style={{ 
-                    fontSize: typography.fontSize.h2, 
-                    fontWeight: typography.fontWeight.bold, 
-                    marginBottom: spacing.xxl, 
-                    color: colors.text.primary, 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: spacing.md,
-                    fontFamily: typography.fontFamily,
-                    letterSpacing: '-0.5px'
-                  }}>
-                    <span style={{ paddingTop: '13px', display: 'inline-block' }}>תור עבודה - לפי דחיפות</span>
-                  </h3>
-                <div style={{ 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: spacing.lg,
-                  marginBottom: spacing.xxxl
-                }}>
-                  {/* Action Queue - sorted by urgency */}
-                  {tasks.filter(t => t.progress < 100).sort(sortByUrgency).slice(0, 6).map(task => {
-                    const getCategoryVariant = (color: string): 'purple' | 'blue' | 'green' => {
-                      if (color.includes('fc')) return 'purple';
-                      if (color.includes('7dd')) return 'blue';
-                      return 'green';
-                    };
-
-                    const completedMilestones = task.milestones.filter(m => m.done).length;
-                    const totalMilestones = task.milestones.length;
-
-                    return (
-                      <WorkItemRow
-                        key={task.id}
-                        title={task.title}
-                        priority={(task.priority || 'P2') as 'P1' | 'P2' | 'P3'}
-                        category={{ label: task.category, variant: getCategoryVariant(task.color) }}
-                        owner={task.owner}
-                        progress={{ current: completedMilestones, total: totalMilestones }}
-                        nextStep={task.goal || undefined}
-                        milestones={task.milestones}
-                        onClick={() => navigate(`/task/${task.id}`)}
-                        onQuickView={() => setQuickViewTask(task)}
-                        className="cursor-pointer"
-                      />
-                    );
-                  })}
-                </div>
-                </div>
-              </div>
-
-            </div>
-          )}
 
           {/* Rows View - New Tasks Dashboard */}
           {viewMode === 'rows' && (
@@ -5068,7 +4739,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {[
-                    { keys: ['1'], desc: 'דשבורד' },
+                    { keys: ['1'], desc: 'מרכז פיקוד' },
                     { keys: ['2'], desc: 'משימות' },
                     { keys: ['3'], desc: 'התמונה הגדולה' }
                   ].map((item, idx) => (
