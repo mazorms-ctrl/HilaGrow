@@ -5,13 +5,15 @@ import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer, type ToastMessage } from './components/Toast';
-import { Button, Card } from './components/ui';
+import { Button } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { TaskPageContent } from './components/tasks/TaskPage';
 import { QuickViewModal } from './components/tasks/QuickViewModal';
 import { WorkItemRow } from './components/ui/WorkItemRow';
 import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
+import { CommandCenter } from './components/dashboard/CommandCenter';
+import { BigPictureModal } from './components/dashboard/BigPicturePanel';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -308,7 +310,7 @@ function App() {
     ? supabaseTasks
     : (initialTasks as MedicalTask[]);
   
-  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'dashboard'>('dashboard');
+  const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
@@ -663,7 +665,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       // 1-3 - Switch views
       if (e.key === '1') {
-        setViewMode('dashboard');
+        setViewMode('command');
         e.preventDefault();
       }
       if (e.key === '2') {
@@ -718,12 +720,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     setToasts(prev => prev.filter(t => t.id !== id));
   };
 
-  const openCategoryModal = (category: string) => {
-    setSelectedCategory(category);
-    setCategoryModalQuery('');
-    setCategoryModalFilter(null);
-    setIsCategoryModalOpen(true);
-  };
 
   const closeCategoryModal = () => {
     setIsCategoryModalOpen(false);
@@ -996,7 +992,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     
     return (
       <div style={{ 
-        padding: isDashboard ? '0' : window.innerWidth < 768 ? '24px 4px' : spacing.xxl,
+        padding: isDashboard ? '0' : window.innerWidth < 768 ? '24px 4px' : '48px 32px',
         overflow: 'auto',
         overflowX: 'auto',
         overflowY: 'auto',
@@ -1025,21 +1021,22 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           paddingBottom: '100px'
         }}>
         {!isDashboard && (
-          <h2 style={{ 
-            fontSize: typography.fontSize.h1, 
-            fontWeight: typography.fontWeight.black, 
-            color: colors.text.primary, 
+          <h2 style={{
+            fontSize: '40px',
+            fontWeight: 300,
+            color: colors.text.primary,
             fontFamily: typography.fontFamily,
-            marginBottom: spacing.xxxxl, 
+            marginBottom: spacing.xxxxl,
             textAlign: 'center',
-            letterSpacing: '-1px'
+            letterSpacing: '-1.5px',
+            lineHeight: '1.15'
           }}>
-            מפת העץ - מבנה פרויקט GROW
+            GROW — מחזור ב מובילים שינוי
           </h2>
         )}
         
         {/* Project Root */}
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.xxxxl }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
           {isEditingProjectName ? (
             <input
               type="text"
@@ -1083,55 +1080,79 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               }}
             />
           ) : (
-            <div 
+            <div
               onClick={() => {
                 setTempProjectName(projectName);
                 setIsEditingProjectName(true);
               }}
               style={{
                 padding: `${spacing.xl} ${spacing.xxxxl}`,
-                background: colors.brand.gradient,
-                backdropFilter: 'blur(20px)',
-                WebkitBackdropFilter: 'blur(20px)',
-                color: colors.text.inverse,
-                borderRadius: radius.xl,
+                background: '#ffffff',
+                color: colors.text.primary,
+                borderRadius: radius.lg,
                 fontSize: typography.fontSize.h2,
-                fontWeight: typography.fontWeight.black,
+                fontWeight: 300,
                 fontFamily: typography.fontFamily,
-                boxShadow: shadows.brand,
-                border: `1px solid rgba(255, 255, 255, 0.2)`,
+                boxShadow: shadows.md,
+                border: `1px solid #e2e8f0`,
+                borderTop: `4px solid #4f46e5`,
                 letterSpacing: '-0.5px',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
-                position: 'relative'
+                position: 'relative',
+                minWidth: '260px',
+                textAlign: 'center'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.transform = 'scale(1.02)';
-                e.currentTarget.style.boxShadow = shadows.brandHover;
+                e.currentTarget.style.boxShadow = shadows.lg;
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.transform = 'scale(1)';
-                e.currentTarget.style.boxShadow = shadows.brand;
+                e.currentTarget.style.boxShadow = shadows.md;
               }}
               title="לחץ לעריכת שם הפרויקט"
             >
               {projectName}
-              <span style={{
-                position: 'absolute',
-                top: '4px',
-                left: '8px',
-                fontSize: '12px',
-                opacity: 0.7,
-                fontWeight: 'normal'
-              }}>✏️</span>
             </div>
           )}
 
+          {/* SVG Bezier Connectors: root → categories */}
+          {(() => {
+            const N = categories.length;
+            if (N === 0) return null;
+            const svgH = 64;
+            return (
+              <svg
+                width="100%"
+                height={svgH}
+                viewBox={`0 0 100 ${svgH}`}
+                preserveAspectRatio="none"
+                style={{ display: 'block', overflow: 'visible' }}
+              >
+                {categories.map((_cat, i) => {
+                  const catX = ((i + 0.5) / N) * 100;
+                  const cp1x = 50;
+                  const cp1y = svgH * 0.55;
+                  const cp2x = catX;
+                  const cp2y = svgH * 0.45;
+                  return (
+                    <path
+                      key={i}
+                      d={`M 50 0 C ${cp1x} ${cp1y}, ${cp2x} ${cp2y}, ${catX} ${svgH}`}
+                      stroke="#cbd5e1"
+                      strokeWidth="0.4"
+                      fill="none"
+                    />
+                  );
+                })}
+              </svg>
+            );
+          })()}
+
           {/* Categories */}
-          <div style={{ 
-            display: 'flex', 
-            gap: spacing.xxxxl, 
-            flexWrap: window.innerWidth < 768 ? 'nowrap' : 'wrap', 
+          <div style={{
+            display: 'flex',
+            gap: '64px',
+            flexWrap: window.innerWidth < 768 ? 'nowrap' : 'wrap',
             justifyContent: 'center',
             minWidth: 'fit-content'
           }}>
@@ -1142,84 +1163,183 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
               return (
                 <div key={category} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.xl }}>
-                  {/* Line to parent */}
-                  <div style={{ 
-                    width: '3px', 
-                    height: spacing.xxxxl, 
-                    background: `linear-gradient(180deg, ${color}00, ${color})`,
-                    borderRadius: radius.sm
-                  }} />
-                  
+
                   {/* Category Node */}
                   <div style={{
                     padding: `${spacing.lg} ${spacing.xxl}`,
-                    background: colors.surface.glass,
-                    backdropFilter: 'blur(16px)',
-                    WebkitBackdropFilter: 'blur(16px)',
-                    border: `2px solid ${color}`,
+                    background: '#ffffff',
+                    border: '1px solid #e2e8f0',
+                    borderTop: `4px solid ${color}`,
                     borderRadius: radius.lg,
                     minWidth: '220px',
                     textAlign: 'center',
-                    boxShadow: `0 8px 24px ${color}25`,
+                    boxShadow: shadows.sm,
                     transition: 'all 0.3s ease'
                   }}>
-                    <div style={{ 
-                      height: '4px', 
-                      background: color, 
-                      borderRadius: '2px',
-                      marginBottom: '8px'
-                    }} />
-                    <div style={{ fontSize: '16px', fontWeight: 'bold', color: '#171717', marginBottom: '8px' }}>
+                    <div style={{ fontSize: '16px', fontWeight: 300, color: '#171717', marginBottom: '6px' }}>
                       {category}
                     </div>
-                    <div style={{ fontSize: '13px', color: '#737373' }}>
-                      {categoryTasks.length} משימות | {avgProgress}%
+                    <div style={{ fontSize: '13px', fontWeight: 300, color: '#94a3b8' }}>
+                      {categoryTasks.length} משימות · {avgProgress}%
                     </div>
                   </div>
 
+                  {/* Connector: category → tasks */}
+                  <div style={{ width: '1px', height: '24px', background: '#e2e8f0' }} />
+
                   {/* Tasks */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center', position: 'relative' }}>
-                    {categoryTasks.map((task, idx) => (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', alignItems: 'center', position: 'relative' }}>
+                    {categoryTasks.map((task, idx) => {
+                      const taskStatus = task.status || 'open';
+                      const isDone      = taskStatus === 'done';
+                      const isActive    = taskStatus === 'in_progress';
+                      const isPending   = taskStatus === 'open';
+
+                      // Top-border color driven by status
+                      const accentColor = isDone    ? '#22c55e'   // success green
+                                        : isPending ? '#e2e8f0'   // light gray
+                                        : isActive  ? color       // category color
+                                        : '#f59e0b';              // amber for blocked
+
+                      return (
                       <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                        {idx === 0 && <div style={{ width: '2px', height: '20px', background: color }} />}
+                        {idx > 0 && <div style={{ width: '1px', height: '10px', background: '#e2e8f0' }} />}
+
+                        {/* Inject keyframes once per render — harmless duplicate <style> tags are deduplicated by the browser */}
+                        <style>{`
+                          @keyframes fadeInTree {
+                            from { opacity: 0; transform: translateX(50%) translateY(-4px); }
+                            to   { opacity: 1; transform: translateX(50%) translateY(0);    }
+                          }
+                          @keyframes treePulse {
+                            0%, 100% { opacity: 1; }
+                            50%       { opacity: 0.55; }
+                          }
+                        `}</style>
+
                         <div
                           onClick={() => navigate(`/task/${task.id}`)}
                           onMouseEnter={() => setHoveredTaskInTree(task)}
                           onMouseLeave={() => setHoveredTaskInTree(null)}
                           style={{
-                            padding: '12px 16px',
-                            background: 'white',
-                            border: `2px solid ${color}40`,
-                            borderRadius: '8px',
-                            minWidth: '200px',
+                            padding: '14px 16px 0 16px',   // bottom-0 so the progress strip sits flush
+                            background: isDone ? '#fafafa' : '#ffffff',
+                            border: '1px solid #e2e8f0',
+                            borderTop: `4px solid ${accentColor}`,
+                            // Pulse the border on active tasks via box-shadow (CSS only)
+                            ...(isActive ? { animation: 'treePulse 3s ease-in-out infinite' } : {}),
+                            borderRadius: '12px',
+                            minWidth: '210px',
                             cursor: 'pointer',
-                            transition: 'all 0.2s',
-                            boxShadow: hoveredTaskInTree?.id === task.id ? `0 8px 24px ${color}40` : '0 2px 8px rgba(0,0,0,0.06)',
-                            transform: hoveredTaskInTree?.id === task.id ? 'scale(1.08)' : 'scale(1)',
+                            transition: 'box-shadow 0.2s, transform 0.2s',
+                            boxShadow: hoveredTaskInTree?.id === task.id ? shadows.md : shadows.sm,
+                            transform: hoveredTaskInTree?.id === task.id ? 'translateY(-2px)' : 'translateY(0)',
+                            overflow: 'hidden',
                             position: 'relative',
                             zIndex: hoveredTaskInTree?.id === task.id ? 20 : 1
                           }}
                         >
-                          <div style={{ fontSize: '14px', fontWeight: '600', color: '#171717', marginBottom: '6px' }}>
+                          {/* Completed checkmark badge */}
+                          {isDone && (
+                            <div style={{
+                              position: 'absolute',
+                              top: '10px',
+                              left: '12px',
+                              width: '18px',
+                              height: '18px',
+                              borderRadius: '9999px',
+                              background: '#dcfce7',
+                              border: '1px solid #bbf7d0',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                            }}>
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                <path d="M2 5.2L4.1 7.5L8 3" stroke="#16a34a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            </div>
+                          )}
+
+                          {/* Title — dimmed when done */}
+                          <div style={{
+                            fontSize: '14px',
+                            fontWeight: 300,
+                            color: isDone ? '#94a3b8' : '#0f172a',
+                            marginBottom: '8px',
+                            lineHeight: '1.4',
+                          }}>
                             {task.title}
                           </div>
-                          <div style={{ fontSize: '12px', color: '#737373', marginBottom: '6px' }}>
-                            {task.owner}
+
+                          {/* Priority badge — hidden when done to keep it clean */}
+                          {!isDone && (
+                            <div style={{ marginBottom: '10px' }}>
+                              {getPriorityBadge(task.priority || 'P2', 'small')}
+                            </div>
+                          )}
+
+                          {/* Mid progress bar — shown for all non-pending states */}
+                          {!isPending && (
+                            <div style={{ background: '#f1f5f9', height: '3px', borderRadius: '2px', overflow: 'hidden', marginBottom: '8px' }}>
+                              <div style={{
+                                background: isDone ? '#22c55e' : color,
+                                height: '100%',
+                                width: `${task.progress}%`,
+                                transition: 'width 0.4s ease'
+                              }} />
+                            </div>
+                          )}
+
+                          {/* Bottom row: stats + avatar */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '12px' }}>
+                            <div style={{ fontSize: '11px', fontWeight: 300, color: '#94a3b8' }}>
+                              {task.progress}% · {task.milestones.filter(m => m.done).length}/{task.milestones.length}
+                            </div>
+                            {task.owner && (
+                              <div
+                                title={task.owner}
+                                style={{
+                                  width: '26px',
+                                  height: '26px',
+                                  borderRadius: '9999px',
+                                  background: isDone ? '#dcfce733' : color + '22',
+                                  border: `1.5px solid ${isDone ? '#bbf7d0' : color + '55'}`,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: '10px',
+                                  fontWeight: 400,
+                                  color: isDone ? '#86efac' : color,
+                                  flexShrink: 0,
+                                }}
+                              >
+                                {task.owner.charAt(0)}
+                              </div>
+                            )}
                           </div>
-                          <div style={{ marginBottom: '8px', display: 'flex', justifyContent: 'center' }}>
-                            {getPriorityBadge(task.priority || 'P2', 'small')}
-                          </div>
-                          <div style={{ background: '#e5e5e5', height: '4px', borderRadius: '2px', overflow: 'hidden' }}>
+
+                          {/* In-progress bottom strip — 2px flush to card bottom */}
+                          {isActive && (
                             <div style={{
-                              background: color,
-                              height: '100%',
-                              width: `${task.progress}%`
-                            }} />
-                          </div>
-                          <div style={{ fontSize: '11px', color: '#a3a3a3', marginTop: '4px', textAlign: 'center' }}>
-                            {task.progress}% | {task.milestones.filter(m => m.done).length}/{task.milestones.length}
-                          </div>
-                          
+                              position: 'absolute',
+                              bottom: 0,
+                              left: 0,
+                              height: '2px',
+                              width: '100%',
+                              background: '#f1f5f9',
+                              overflow: 'hidden',
+                            }}>
+                              <div style={{
+                                height: '100%',
+                                width: `${task.progress}%`,
+                                background: color,
+                                borderRadius: '0 2px 2px 0',
+                                transition: 'width 0.4s ease',
+                              }} />
+                            </div>
+                          )}
+
                           {/* Rich Tooltip */}
                           {hoveredTaskInTree?.id === task.id && (
                             <div style={{
@@ -1228,67 +1348,62 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                               right: '50%',
                               transform: 'translateX(50%)',
                               marginTop: '12px',
-                              minWidth: '320px',
-                              maxWidth: '400px',
+                              minWidth: '300px',
+                              maxWidth: '380px',
                               background: 'white',
-                              border: `2px solid ${color}`,
+                              border: '1px solid #e2e8f0',
+                              borderTop: `3px solid ${accentColor}`,
                               borderRadius: '12px',
                               padding: '16px',
-                              boxShadow: `0 8px 32px ${color}40`,
+                              boxShadow: shadows.lg,
                               zIndex: 100,
-                              animation: 'fadeIn 0.2s',
+                              animation: 'fadeInTree 0.15s ease',
                               fontSize: '13px',
                               textAlign: 'right'
                             }}>
-                              <style>{`
-                                @keyframes fadeIn {
-                                  from { opacity: 0; transform: translateX(50%) translateY(-5px); }
-                                  to { opacity: 1; transform: translateX(50%) translateY(0); }
-                                }
-                              `}</style>
-                              
-                              <div style={{ fontSize: '15px', fontWeight: '700', color: '#171717', marginBottom: '10px' }}>
+
+                              <div style={{ fontSize: '14px', fontWeight: 400, color: '#0f172a', marginBottom: '8px' }}>
                                 {task.title}
                               </div>
-                              
+
                               {task.description && (
-                                <div style={{ marginBottom: '10px', color: '#525252', lineHeight: '1.5' }}>
+                                <div style={{ marginBottom: '10px', color: '#64748b', lineHeight: '1.5', fontWeight: 300 }}>
                                   {task.description}
                                 </div>
                               )}
-                              
-                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px', paddingTop: '10px', borderTop: '1px solid #e5e5e5' }}>
+
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px', paddingTop: '10px', borderTop: '1px solid #f1f5f9' }}>
                                 {task.department && (
                                   <div>
-                                    <span style={{ color: '#737373' }}>מחלקה: </span>
-                                    <span style={{ fontWeight: '600', color: '#171717' }}>{task.department}</span>
+                                    <span style={{ color: '#94a3b8', fontWeight: 300 }}>מחלקה: </span>
+                                    <span style={{ fontWeight: 400, color: '#334155' }}>{task.department}</span>
                                   </div>
                                 )}
                                 {task.dueDate && (
                                   <div>
-                                    <span style={{ color: '#737373' }}>יעד: </span>
-                                    <span style={{ fontWeight: '600', color: '#f59e0b' }}>{task.dueDate}</span>
+                                    <span style={{ color: '#94a3b8', fontWeight: 300 }}>יעד: </span>
+                                    <span style={{ fontWeight: 400, color: '#f59e0b' }}>{task.dueDate}</span>
                                   </div>
                                 )}
                                 {task.kpiName && (
                                   <div style={{ gridColumn: '1 / -1' }}>
-                                    <span style={{ color: '#737373' }}>KPI: </span>
-                                    <span style={{ fontWeight: '600', color: '#0ea5e9' }}>{task.kpiName}</span>
+                                    <span style={{ color: '#94a3b8', fontWeight: 300 }}>KPI: </span>
+                                    <span style={{ fontWeight: 400, color: '#0ea5e9' }}>{task.kpiName}</span>
                                   </div>
                                 )}
                               </div>
-                              
+
                               {task.stakeholders && task.stakeholders.length > 0 && (
-                                <div style={{ fontSize: '12px', color: '#737373', paddingTop: '8px', borderTop: '1px solid #e5e5e5' }}>
-                                  {task.stakeholders.join(', ')}
+                                <div style={{ fontSize: '12px', fontWeight: 300, color: '#94a3b8', paddingTop: '8px', borderTop: '1px solid #f1f5f9' }}>
+                                  {task.stakeholders.join(' · ')}
                                 </div>
                               )}
                             </div>
                           )}
                         </div>
-                        {idx < categoryTasks.length - 1 && <div style={{ width: '2px', height: '12px', background: color + '40' }} />}
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -1367,8 +1482,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       
       {/* Header */}
       <header style={{
-        borderBottom: '1px solid #e2e8f0',
-        background: '#ffffff',
+        borderBottom: '1px solid rgba(226,232,240,0.70)',
+        background: 'rgba(255,255,255,0.82)',
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
         position: 'sticky',
         top: 0,
         zIndex: 30
@@ -1381,7 +1498,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             alignItems: 'center',
             direction: 'rtl',
             position: 'relative',
-            backgroundColor: '#ffffff',
+            backgroundColor: 'transparent',
           }}
           className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px]"
         >
@@ -1390,23 +1507,24 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             className="desktop-only"
             style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}
           >
-            {(['dashboard', 'rows', 'tree'] as const).map(mode => (
+            {(['command', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
                 onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
                 aria-pressed={!taskMatch && viewMode === mode}
                 style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
-                title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
+                title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
                 onMouseEnter={(e) => { elevateHeaderButton(e, ''); }}
                 onMouseLeave={(e) => { resetHeaderButton(e, ''); }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {mode === 'tree' && <TreePine size={14} aria-hidden="true" />}
-                  {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
+                  {mode === 'command' ? 'עמוד הבית' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
                 </span>
               </button>
             ))}
           </div>
+
 
           {/* Logo — absolutely centered in the header, independent of other items */}
           <div
@@ -1425,7 +1543,11 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             <img
               src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
               alt="הלל יפה"
-              style={{ filter: 'brightness(1) contrast(1.1)', pointerEvents: 'auto' }}
+              style={{
+                filter: 'brightness(1) contrast(1.05)',
+                mixBlendMode: 'multiply',
+                pointerEvents: 'auto',
+              }}
               className="h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
             />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'right', pointerEvents: 'auto' }}>
@@ -1520,17 +1642,17 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 
-              {(['dashboard', 'rows', 'tree'] as const).map(mode => (
+              {(['command', 'rows', 'tree'] as const).map(mode => (
                 <button
                   key={mode}
                   onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
                   aria-pressed={!taskMatch && viewMode === mode}
                   style={{...getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'mobile'), minHeight: '44px'}}
-                  title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : undefined}
+                  title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                     {mode === 'tree' && <TreePine size={18} aria-hidden="true" />}
-                    {mode === 'dashboard' ? 'דשבורד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
+                    {mode === 'command' ? 'עמוד הבית' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
                   </span>
                 </button>
               ))}
@@ -1584,7 +1706,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           margin: '0 auto',
           padding: taskMatch ? '0' : '16px',
           backgroundColor: taskMatch ? '#f8fafc' : 'rgba(255, 255, 255, 1)',
-          boxShadow: taskMatch ? 'none' : 'inset 0px 4px 12px 0px rgba(0, 0, 0, 0.15)',
+          boxShadow: taskMatch ? 'none' : '0 8px 32px rgba(59, 130, 246, 0.12)',
           flex: 1,
           overflow: 'auto',
           direction: 'rtl',
@@ -1638,329 +1760,13 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             />
           )}
 
+          {/* Command Center — shown for any authenticated user or guest, no project required */}
+          {!taskMatch && viewMode === 'command' && <CommandCenter />}
+
           {/* Main views — shown when guest OR when a project is selected (and not on task page) */}
           {!taskMatch && (!user || effectiveProjectId) && (
           <>
 
-          {/* Dashboard View - Hybrid Dashboard */}
-          {viewMode === 'dashboard' && (
-            <div style={{ padding: spacing.xxl, maxWidth: '1600px', margin: '0 auto' }}>
-              {/* Dashboard Header */}
-              <div style={{ 
-                marginBottom: spacing.xxxl, 
-                display: 'flex', 
-                justifyContent: 'space-between', 
-                alignItems: 'center', 
-                flexWrap: 'wrap', 
-                gap: spacing.lg 
-              }}>
-                <div>
-                  <h2 style={{ 
-                    fontSize: typography.fontSize.display, 
-                    fontWeight: typography.fontWeight.black, 
-                    marginBottom: spacing.sm, 
-                    color: colors.text.primary,
-                    fontFamily: typography.fontFamily,
-                    letterSpacing: '-1.5px'
-                  }}>
-                    דשבורד ניהול שיפור תהליכים
-                  </h2>
-                </div>
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  onClick={() => setViewMode('tree')}
-                >
-                  מפת העץ
-                </Button>
-              </div>
-
-              {/* Management Strip */}
-              {/* Management Strip removed */}
-
-              {/* Two Column Layout: Action (Right) + Overview (Left) */}
-              <style>{`
-                @media (min-width: 1024px) {
-                  .dashboard-grid {
-                    display: grid;
-                    grid-template-columns: 1fr 1fr;
-                    gap: 32px;
-                  }
-                }
-                @media (max-width: 1024px) {
-                  .dashboard-grid {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 32px;
-                  }
-                }
-              `}</style>
-
-              {/* Categories Health - Horizontal Grid */}
-              <div>
-                  <h3 style={{ 
-                    fontSize: typography.fontSize.h2, 
-                    fontWeight: typography.fontWeight.bold, 
-                    marginBottom: spacing.xxl, 
-                    color: colors.text.primary, 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: spacing.md,
-                    fontFamily: typography.fontFamily,
-                    letterSpacing: '-0.5px'
-                  }}>
-                    <span>התקדמות על פי קטגוריות</span>
-                  </h3>
-              
-              <div 
-                className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                style={{
-                  paddingTop: '10px',
-                  paddingBottom: '10px',
-                }}
-              >
-              {categories
-                .map(category => {
-                  const categoryTasks = tasks.filter(t => t.category === category);
-                  const p1Count = categoryTasks.filter(t => t.priority === 'P1').length;
-                  const overdueCount = categoryTasks.filter(isOverdue).length;
-                  const tasksWithRisks = categoryTasks.filter(t => t.risksBlockers && t.risksBlockers.trim()).length;
-                  const noOwnerCount = categoryTasks.filter(isUnassigned).length;
-                  const riskScore = p1Count * 3 + overdueCount * 2 + tasksWithRisks * 2 + noOwnerCount;
-                  return { category, categoryTasks, riskScore };
-                })
-                .sort((a, b) => b.riskScore - a.riskScore)
-                .map(({ category, categoryTasks }) => {
-                const avgProgress = Math.round(categoryTasks.reduce((sum, t) => sum + t.progress, 0) / categoryTasks.length);
-                const color = categoryTasks[0].color;
-                const tasksWithKPI = categoryTasks.filter(t => t.kpiName && t.kpiName.trim()).length;
-                const tasksWithRisks = categoryTasks.filter(t => t.risksBlockers && t.risksBlockers.trim()).length;
-                const p1Count = categoryTasks.filter(t => t.priority === 'P1').length;
-                const overdueCount = categoryTasks.filter(isOverdue).length;
-                const noOwnerCount = categoryTasks.filter(isUnassigned).length;
-
-                return (
-                  <Card
-                    key={category}
-                    variant="glass"
-                    padding="lg"
-                    hoverable
-                    onClick={() => openCategoryModal(category)}
-                    style={{
-                      borderTop: `3px solid ${color}`,
-                      boxShadow: `0 4px 20px ${color}20`,
-                    }}
-                  >
-                    {/* Header */}
-                    <div style={{ 
-                      display: 'flex', 
-                      justifyContent: 'space-between', 
-                      alignItems: 'center', 
-                      marginBottom: spacing.lg,
-                      paddingBottom: spacing.md,
-                      borderBottom: `1px solid ${colors.border.light}`
-                    }}>
-                      <span style={{ 
-                        fontSize: typography.fontSize.xl, 
-                        fontWeight: typography.fontWeight.bold, 
-                        color: colors.text.primary,
-                        fontFamily: typography.fontFamily,
-                        letterSpacing: '-0.5px'
-                      }}>
-                        {category}
-                      </span>
-                      <div
-                        title={`${avgProgress}% התקדמות`}
-                        aria-label={`${avgProgress}% התקדמות`}
-                        style={{
-                          position: 'relative',
-                          width: '56px',
-                          height: '56px',
-                          flex: '0 0 56px',
-                        }}
-                      >
-                        <div
-                          aria-hidden="true"
-                          style={{
-                            width: '56px',
-                            height: '56px',
-                            borderRadius: '999px',
-                            background: `conic-gradient(${color} 0% ${avgProgress}%, rgba(148, 163, 184, 0.22) ${avgProgress}% 100%)`,
-                            WebkitMaskImage: 'radial-gradient(farthest-side, transparent 62%, #000 63%)',
-                            maskImage: 'radial-gradient(farthest-side, transparent 62%, #000 63%)',
-                            boxShadow: `0 0 0 6px ${color}10`,
-                          }}
-                        />
-                        <div
-                          style={{
-                            position: 'absolute',
-                            inset: '9px',
-                            borderRadius: '999px',
-                            background: 'rgba(255, 255, 255, 0.78)',
-                            backdropFilter: 'blur(14px)',
-                            WebkitBackdropFilter: 'blur(14px)',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontFamily: typography.fontFamily,
-                            fontWeight: typography.fontWeight.black,
-                            color,
-                            fontSize: '14px',
-                            letterSpacing: '-0.6px',
-                            textAlign: 'center',
-                          }}
-                        >
-                          {avgProgress}%
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Progress Ring replaces old bar */}
-
-                    {/* Health Metrics */}
-                    <div style={{ display: 'flex', gap: spacing.sm, fontSize: typography.fontSize.xs, flexWrap: 'wrap' }}>
-                      <span style={{ 
-                        fontWeight: typography.fontWeight.semibold, 
-                        color: colors.text.secondary,
-                        fontFamily: typography.fontFamily,
-                        background: 'rgba(148, 163, 184, 0.1)',
-                        padding: `${spacing.xs} ${spacing.md}`,
-                        borderRadius: radius.sm
-                      }}>
-                        {categoryTasks.length}
-                      </span>
-                      {p1Count > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.danger, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(254, 226, 226, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(239, 68, 68, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          P1 {p1Count}
-                        </span>
-                      )}
-                      {overdueCount > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.warning, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(254, 243, 199, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(245, 158, 11, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          איחור {overdueCount}
-                        </span>
-                      )}
-                      {tasksWithRisks > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.warning, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(254, 243, 199, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(245, 158, 11, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          חסמים {tasksWithRisks}
-                        </span>
-                      )}
-                      {noOwnerCount > 0 && (
-                        <span style={{ 
-                          color: colors.brand.primary, 
-                          fontWeight: typography.fontWeight.bold, 
-                          background: 'rgba(219, 234, 254, 0.4)', 
-                          padding: `${spacing.xs} ${spacing.md}`, 
-                          borderRadius: radius.sm,
-                          fontFamily: typography.fontFamily,
-                          border: `1px solid rgba(59, 130, 246, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          ללא אחראי {noOwnerCount}
-                        </span>
-                      )}
-                      {tasksWithKPI > 0 && (
-                        <span style={{ 
-                          color: colors.semantic.success, 
-                          fontWeight: typography.fontWeight.semibold,
-                          fontFamily: typography.fontFamily,
-                          background: 'rgba(220, 252, 231, 0.3)',
-                          padding: `${spacing.xs} ${spacing.md}`,
-                          borderRadius: radius.sm,
-                          border: `1px solid rgba(34, 197, 94, 0.2)`,
-                          backdropFilter: 'blur(8px)'
-                        }}>
-                          KPI {tasksWithKPI}
-                        </span>
-                      )}
-                    </div>
-                  </Card>
-                );
-                })}
-                </div>
-              </div>
-
-              {/* Action Queue - Horizontal Cards */}
-              <div style={{ marginBottom: spacing.xxxl }}>
-                <div style={{ marginBottom: spacing.lg, display: 'flex', flexDirection: 'column' }}>
-                  <h3 style={{ 
-                    fontSize: typography.fontSize.h2, 
-                    fontWeight: typography.fontWeight.bold, 
-                    marginBottom: spacing.xxl, 
-                    color: colors.text.primary, 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    gap: spacing.md,
-                    fontFamily: typography.fontFamily,
-                    letterSpacing: '-0.5px'
-                  }}>
-                    <span style={{ paddingTop: '13px', display: 'inline-block' }}>תור עבודה - לפי דחיפות</span>
-                  </h3>
-                <div style={{ 
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: spacing.lg,
-                  marginBottom: spacing.xxxl
-                }}>
-                  {/* Action Queue - sorted by urgency */}
-                  {tasks.filter(t => t.progress < 100).sort(sortByUrgency).slice(0, 6).map(task => {
-                    const getCategoryVariant = (color: string): 'purple' | 'blue' | 'green' => {
-                      if (color.includes('fc')) return 'purple';
-                      if (color.includes('7dd')) return 'blue';
-                      return 'green';
-                    };
-
-                    const completedMilestones = task.milestones.filter(m => m.done).length;
-                    const totalMilestones = task.milestones.length;
-
-                    return (
-                      <WorkItemRow
-                        key={task.id}
-                        title={task.title}
-                        priority={(task.priority || 'P2') as 'P1' | 'P2' | 'P3'}
-                        category={{ label: task.category, variant: getCategoryVariant(task.color) }}
-                        owner={task.owner}
-                        progress={{ current: completedMilestones, total: totalMilestones }}
-                        nextStep={task.goal || undefined}
-                        milestones={task.milestones}
-                        onClick={() => navigate(`/task/${task.id}`)}
-                        onQuickView={() => setQuickViewTask(task)}
-                        className="cursor-pointer"
-                      />
-                    );
-                  })}
-                </div>
-                </div>
-              </div>
-
-            </div>
-          )}
 
           {/* Rows View - New Tasks Dashboard */}
           {viewMode === 'rows' && (
@@ -5060,7 +4866,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {[
-                    { keys: ['1'], desc: 'דשבורד' },
+                    { keys: ['1'], desc: 'עמוד הבית' },
                     { keys: ['2'], desc: 'משימות' },
                     { keys: ['3'], desc: 'התמונה הגדולה' }
                   ].map((item, idx) => (
@@ -5301,6 +5107,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       {quickViewTask && (
         <QuickViewModal task={quickViewTask} onClose={() => setQuickViewTask(null)} />
       )}
+
+      {/* Big Picture Modal — portal, rendered once at app root */}
+      <BigPictureModal />
     </div>
   );
 }

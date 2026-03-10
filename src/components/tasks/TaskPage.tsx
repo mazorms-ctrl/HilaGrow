@@ -12,12 +12,6 @@ import { useAuth } from '@/contexts/AuthContext';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
-const STATUS_CONFIG = {
-  open:        { label: 'שלב הרעיון', color: '#0284c7', bg: '#e0f2fe' },
-  in_progress: { label: 'בעבודה',     color: '#6366f1', bg: '#ede9fe' },
-  blocked:     { label: 'תקועה',      color: '#dc2626', bg: '#fee2e2' },
-  done:        { label: 'הושלמה',     color: '#059669', bg: '#d1fae5' },
-} as const;
 
 const NAV_ITEMS = [
   { id: 'foundations',  Icon: BookOpen,      label: 'יסודות'            },
@@ -216,6 +210,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [sendingComment, setSendingComment] = useState(false);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<number>>(new Set());
   const [expandedOverviewCard, setExpandedOverviewCard] = useState<number | null>(null);
+  const [newMilestoneText, setNewMilestoneText] = useState('');
 
   // Always-current ref so onBlur handlers don't use stale closure values
   const taskRef = useRef<MedicalTask | null>(null);
@@ -320,6 +315,20 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         s.forEach(i => { if (i < mIdx) n.add(i); else if (i > mIdx) n.add(i - 1); });
         return n;
       });
+      return updated;
+    });
+  }, [save]);
+
+  // ── Add new milestone ─────────────────────────────────────────────────────
+  const addNewMilestone = useCallback((text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    setNewMilestoneText('');
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const milestones = [...prev.milestones, { text: trimmed, done: false }];
+      const updated = { ...prev, milestones };
+      save(updated);
       return updated;
     });
   }, [save]);
@@ -459,8 +468,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     );
   }
 
-  const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.open;
   const overdue = task.dueDate ? new Date(task.dueDate) < new Date() : false;
+
+  // Auto stage badge — replaces the manual status dropdown.
+  // Priority order: Done > Overdue > Active > Idea
+  const stageBadge = (() => {
+    if (task.progress === 100)              return { label: 'הושלם',  bg: '#d1fae5', color: '#059669' };
+    if (overdue)                            return { label: 'באיחור', bg: '#fee2e2', color: '#dc2626' };
+    if (task.progress > 0 || task.dueDate) return { label: 'בביצוע', bg: '#dbeafe', color: '#2563eb' };
+    return                                        { label: 'רעיון',   bg: '#f1f5f9', color: '#64748b' };
+  })();
+
   const assignedProfile = task.assignedTo ? profiles.find(p => p.id === task.assignedTo) : null;
   const assignedName = assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '') : null;
   const milestonesDone = task.milestones.filter(m => m.done).length;
@@ -1108,35 +1126,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         direction: 'rtl',
       }}>
 
-        {/* ── Status ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', position: 'relative' }}>
+        {/* ── Status (auto badge) ── */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
             סטטוס:
           </span>
-          <div style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}>
-            <span style={{
-              display: 'inline-flex', alignItems: 'center', gap: '5px',
-              background: statusCfg.bg, color: statusCfg.color,
-              borderRadius: '20px', padding: '4px 12px',
-              fontSize: '12px', fontWeight: '700', pointerEvents: 'none',
-              whiteSpace: 'nowrap',
-            }}>
-              {statusCfg.label}
-            </span>
-            <select
-              value={task.status}
-              onChange={e => patch('status', e.target.value as MedicalTask['status'])}
-              style={{
-                position: 'absolute', inset: 0, width: '100%', height: '100%',
-                opacity: 0, cursor: 'pointer', border: 'none',
-                fontFamily: 'inherit', direction: 'rtl',
-              }}
-            >
-              {(Object.entries(STATUS_CONFIG) as [MedicalTask['status'], typeof STATUS_CONFIG.open][]).map(([v, c]) => (
-                <option key={v} value={v}>{c.label}</option>
-              ))}
-            </select>
-          </div>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center',
+            background: stageBadge.bg, color: stageBadge.color,
+            borderRadius: '20px', padding: '4px 12px',
+            fontSize: '12px', fontWeight: '700', whiteSpace: 'nowrap',
+          }}>
+            {stageBadge.label}
+          </span>
         </div>
 
         <span style={{ width: '1px', height: '18px', background: '#e2e8f0', flexShrink: 0 }} />
@@ -1211,6 +1213,37 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
             />
           </label>
         </div>
+
+        {/* ── Manual progress (shown only when no milestones) ── */}
+        {task.milestones.length === 0 && (
+          <>
+            <span style={{ width: '1px', height: '18px', background: '#e2e8f0', flexShrink: 0 }} />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ fontSize: '11px', fontWeight: '600', color: '#94a3b8', letterSpacing: '0.3px', whiteSpace: 'nowrap' }}>
+                התקדמות:
+              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <input
+                  type="number"
+                  min={0} max={100}
+                  value={task.progress}
+                  onChange={e => {
+                    const v = Math.max(0, Math.min(100, Number(e.target.value) || 0));
+                    patch('progress', v);
+                  }}
+                  style={{
+                    width: '52px', padding: '3px 8px',
+                    border: '1px solid #e2e8f0', borderRadius: '20px',
+                    fontSize: '12.5px', fontWeight: '600', color: '#1e293b',
+                    textAlign: 'center', background: '#f8fafc',
+                    fontFamily: 'inherit', outline: 'none',
+                  }}
+                />
+                <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>%</span>
+              </div>
+            </div>
+          </>
+        )}
 
       </div>
 
@@ -1399,7 +1432,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   actions.map((a, aIdx) => {
                     const participantProfiles = task.participants.length > 0
                       ? profiles.filter(p => task.participants.includes(p.id))
-                      : profiles;
+                      : [];
                     const ap = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                     const apName = ap ? (ap.full_name || ap.email || '').split(' ')[0] : null;
                     return (
@@ -1705,17 +1738,15 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
             </span>
           ) : null}
         >
-          {task.milestones.length === 0 ? (
-            <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, direction: 'rtl', textAlign: 'right' }}>
-              אין אבני דרך — ניתן להוסיף מתוך עריכת המשימה.
-            </p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {task.milestones.map((m, mIdx) => {
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            {task.milestones.map((m, mIdx) => {
                 const expanded = expandedMilestones.has(mIdx);
                 const actions = m.actionItems || [];
                 const actionsDone = actions.filter(a => a.done).length;
                 const assignedProfile = m.assignedTo ? profiles.find(p => p.id === m.assignedTo) : null;
+                const milestoneParticipantProfiles = task.participants.length > 0
+                  ? profiles.filter(p => task.participants.includes(p.id))
+                  : [];
 
                 return (
                   <div key={mIdx} className={`tp-milestone-row${m.done ? ' done' : ''}`}>
@@ -1799,7 +1830,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                             onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
                           >
                             <option value="">ללא אחראי</option>
-                            {profiles.map(p => (
+                            {milestoneParticipantProfiles.map(p => (
                               <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
                             ))}
                           </select>
@@ -1837,7 +1868,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         {actions.map((a, aIdx) => {
                           const participantProfiles = task.participants.length > 0
                             ? profiles.filter(p => task.participants.includes(p.id))
-                            : profiles;
+                            : [];
                           const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                           return (
                             <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>
@@ -1947,8 +1978,76 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   </div>
                 );
               })}
+
+            {/* ── Add new milestone input ── */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginTop: task.milestones.length > 0 ? '4px' : '0',
+              }}
+            >
+              <button
+                onClick={() => addNewMilestone(newMilestoneText)}
+                title="הוסף אבן דרך"
+                style={{
+                  flexShrink: 0,
+                  width: '24px', height: '24px',
+                  borderRadius: '50%',
+                  border: '1.5px dashed #94a3b8',
+                  background: newMilestoneText.trim() ? '#6366f1' : 'transparent',
+                  color: newMilestoneText.trim() ? '#fff' : '#94a3b8',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s',
+                  padding: 0,
+                }}
+                onMouseEnter={e => {
+                  if (!newMilestoneText.trim()) {
+                    e.currentTarget.style.borderColor = '#6366f1';
+                    e.currentTarget.style.color = '#6366f1';
+                  }
+                }}
+                onMouseLeave={e => {
+                  if (!newMilestoneText.trim()) {
+                    e.currentTarget.style.borderColor = '#94a3b8';
+                    e.currentTarget.style.color = '#94a3b8';
+                  }
+                }}
+              >
+                <Plus size={13} />
+              </button>
+              <input
+                type="text"
+                dir="rtl"
+                value={newMilestoneText}
+                onChange={e => setNewMilestoneText(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') { e.preventDefault(); addNewMilestone(newMilestoneText); }
+                  if (e.key === 'Escape') setNewMilestoneText('');
+                }}
+                placeholder="הוסף אבן דרך חדשה..."
+                style={{
+                  flex: 1,
+                  border: 'none',
+                  borderBottom: '1.5px dashed #e2e8f0',
+                  borderRadius: 0,
+                  padding: '4px 0',
+                  fontSize: '13px',
+                  color: '#334155',
+                  background: 'transparent',
+                  outline: 'none',
+                  fontFamily: 'inherit',
+                  textAlign: 'right',
+                  transition: 'border-color 0.15s',
+                }}
+                onFocus={e => { e.currentTarget.style.borderBottomColor = '#6366f1'; }}
+                onBlur={e => { e.currentTarget.style.borderBottomColor = '#e2e8f0'; }}
+              />
             </div>
-          )}
+
+          </div>
         </Section>}
 
         {/* KPI */}

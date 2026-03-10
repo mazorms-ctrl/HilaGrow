@@ -1,10 +1,13 @@
 import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import App from './App';
+import { LandingPage } from './components/landing/LandingPage';
 
 export function AppRouter() {
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
 
+  // Spinner while session resolves — background matches the landing page
+  // so there is no jarring colour flash before auth finishes.
   if (loading) {
     return (
       <div style={{
@@ -12,13 +15,13 @@ export function AppRouter() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#f8fafc',
+        background: '#0B1628',
       }}>
         <div style={{
           width: '32px',
           height: '32px',
-          border: '3px solid #e2e8f0',
-          borderTopColor: '#6366f1',
+          border: '3px solid rgba(56,189,248,0.2)',
+          borderTopColor: '#38BDF8',
           borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
         }} />
@@ -27,9 +30,12 @@ export function AppRouter() {
     );
   }
 
-  // All routes go through App — it owns the layout (header + sidebar).
-  // App uses useMatch internally to detect /project/:id/task/:id
-  // and renders TaskPageContent inside the existing main area.
+  // Unauthenticated → landing page (owns its own LoginModal)
+  if (!user) {
+    return <LandingPage />;
+  }
+
+  // Authenticated → full app (owns layout: header + sidebar + routes)
   return (
     <Routes>
       <Route path="/*" element={<App />} />

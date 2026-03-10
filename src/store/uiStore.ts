@@ -17,6 +17,11 @@ interface UIStore {
   setSearchQuery: (query: string) => void;
   selectedGroupIds: string[];
   setSelectedGroupIds: (groupIds: string[]) => void;
+
+  // Big Picture modal
+  bigPictureOpen: boolean;
+  openBigPicture: () => void;
+  closeBigPicture: () => void;
 }
 
 export const useUIStore = create<UIStore>((set) => ({
@@ -35,4 +40,9 @@ export const useUIStore = create<UIStore>((set) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   selectedGroupIds: [],
   setSelectedGroupIds: (groupIds) => set({ selectedGroupIds: groupIds }),
+
+  // Big Picture modal
+  bigPictureOpen: false,
+  openBigPicture: () => set({ bigPictureOpen: true }),
+  closeBigPicture: () => set({ bigPictureOpen: false }),
 }));

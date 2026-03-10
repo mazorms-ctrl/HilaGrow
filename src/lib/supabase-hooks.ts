@@ -717,6 +717,11 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
       assigned_to: task.assignedTo || null,
       priority: task.priority,
       metadata,
+      // Dashboard-critical columns — written explicitly so the Command Center
+      // stays in sync without relying solely on the DB trigger.
+      due_date: task.dueDate || null,
+      progress_manual: task.milestones.length === 0 ? task.progress : null,
+      progress_mode:   task.milestones.length  >  0 ? 'auto' : 'manual',
     })
     .eq('id', task.id)
     .select('id')
@@ -739,7 +744,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
   // Only re-sync milestones if they changed
   const { data: currentMilestones } = await supabase
     .from('milestones')
-    .select('title, done, order')
+    .select('title, done, order, assigned_to')
     .eq('task_id', confirmedUuid)
     .order('order', { ascending: true });
 
@@ -747,7 +752,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     .map((m, i) => `${i}|${m.text}|${m.done}|${m.assignedTo ?? ''}`)
     .join('||');
   const existingKey = (currentMilestones || [])
-    .map(m => `${m.order}|${m.title}|${m.done}`)
+    .map(m => `${m.order}|${m.title}|${m.done}|${m.assigned_to ?? ''}`)
     .join('||');
 
   if (incomingKey === existingKey) return;
@@ -766,6 +771,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
         title: m.text,
         done: m.done,
         order: idx,
+        assigned_to: m.assignedTo ?? null,
       }))
     );
     if (milestonesError) throw milestonesError;
@@ -1010,7 +1016,8 @@ export function useTaskComments(taskId: string | null) {
 export async function createComment(
   taskId: string,
   content: string,
-  authorId: string
+  authorId: string,
+  activityId?: string | null
 ): Promise<TaskComment> {
   const { data, error } = await supabase
     .from('task_comments')
@@ -1018,6 +1025,7 @@ export async function createComment(
       task_id: taskId,
       author_id: authorId,
       content,
+      ...(activityId ? { activity_id: activityId } : {}),
     })
     .select()
     .single();
@@ -1037,5 +1045,719 @@ export async function deleteComment(commentId: string): Promise<void> {
     .eq('id', commentId);
 
   if (error) throw error;
+}
+
+// ── Dashboard realtime sync ───────────────────────────────────────────────────
+// Single subscription on the tasks table that invalidates all dashboard query
+// keys whenever any task is created, updated, or deleted.
+// Call once from CommandCenter so there is exactly one channel per page load.
+
+export function useDashboardRealtime() {
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel('dashboard_tasks_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['dashboard_kpis'] });
+          queryClient.invalidateQueries({ queryKey: ['active_leaf_tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['idea_leaf_tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['group_progress_stats'] });
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [queryClient]);
+}
+
+// ── Dashboard KPIs (from dashboard_kpis view) ─────────────────────────────────
+
+export interface DashboardKpis {
+  active_tasks: number;
+  overdue_tasks: number;
+  days_remaining: number | null;
+}
+
+export function useDashboardKpis() {
+  return useQuery({
+    queryKey: ['dashboard_kpis'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('dashboard_kpis')
+        .select('active_tasks, overdue_tasks, days_remaining')
+        .single();
+      if (error) throw error;
+      return data as DashboardKpis;
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Activity Feed ─────────────────────────────────────────────────────────────
+
+export interface ActivityFeedEntry {
+  id: string;
+  task_id: string;
+  user_id: string;
+  action_type: string;
+  content: string | null;
+  created_at: string;
+  task_title: string | null;
+  profile: {
+    full_name: string | null;
+    avatar_url: string | null;
+    email: string;
+  };
+}
+
+export function useActivityFeed(limit = 10) {
+  const queryClient = useQueryClient();
+
+  // Realtime subscription — invalidate on any change to activity_feed OR tasks.
+  // Global scope: no group_id / assigned_to filter — radar for the entire system.
+  // Uses the stable key ['activity_feed'] so both channels hit the same cache entry.
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['activity_feed'] });
+    const channel = supabase
+      .channel('activity_feed_global_realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_feed' }, invalidate)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'activity_feed' }, invalidate)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'tasks' }, invalidate)
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'tasks' }, invalidate)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
+  return useQuery({
+    // Stable key — does not include `limit` so invalidation always hits this entry
+    queryKey: ['activity_feed'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('activity_feed')
+        .select(`
+          id,
+          task_id,
+          user_id,
+          action_type,
+          content,
+          created_at,
+          tasks ( title ),
+          profiles ( full_name, avatar_url, email )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+
+      if (error) throw error;
+
+      return ((data ?? []) as any[]).map((row): ActivityFeedEntry => ({
+        id: row.id,
+        task_id: row.task_id,
+        user_id: row.user_id,
+        action_type: row.action_type,
+        content: row.content ?? null,
+        created_at: row.created_at,
+        task_title: row.tasks?.title ?? null,
+        profile: {
+          full_name: row.profiles?.full_name ?? null,
+          avatar_url: row.profiles?.avatar_url ?? null,
+          email: row.profiles?.email ?? '',
+        },
+      }));
+    },
+    staleTime: 0, // always refetch on invalidation — feed is real-time critical
+  });
+}
+
+// ── Active Leaf Tasks (from active_leaf_tasks view) ───────────────────────────
+
+export interface ActiveLeafTask {
+  id: string;
+  group_id: string;
+  parent_id: string | null;
+  title: string;
+  owner_name: string | null;
+  assigned_to: string | null;
+  priority: 'P1' | 'P2' | 'P3' | null;
+  due_date: string | null;
+  status_percent: number;
+  group_name: string;
+  group_color: string | null;
+  project_id: string;
+  project_name: string;
+  parent_title: string | null; // resolved client-side
+}
+
+export function useActiveLeafTasks(limit = 100) {
+  return useQuery({
+    queryKey: ['active_leaf_tasks', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('active_leaf_tasks')
+        .select(
+          'id, group_id, parent_id, title, owner_name, assigned_to, priority, due_date, status_percent, group_name, group_color, project_id, project_name'
+        )
+        .limit(limit);
+
+      if (error) throw error;
+      const rows = (data ?? []) as Omit<ActiveLeafTask, 'parent_title'>[];
+
+      // Resolve parent titles in a single extra query
+      const parentIds = [...new Set(rows.filter((r) => r.parent_id).map((r) => r.parent_id as string))];
+      let parentMap = new Map<string, string>();
+      if (parentIds.length > 0) {
+        const { data: parents } = await supabase
+          .from('tasks')
+          .select('id, title')
+          .in('id', parentIds);
+        (parents ?? []).forEach((p: { id: string; title: string }) => parentMap.set(p.id, p.title));
+      }
+
+      return rows.map((r): ActiveLeafTask => ({
+        ...r,
+        parent_title: r.parent_id ? (parentMap.get(r.parent_id) ?? null) : null,
+      }));
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Idea Leaf Tasks (from idea_leaf_tasks view) ───────────────────────────────
+// Tasks with 0% progress, no due_date, and no activity — pure backlog ideas.
+
+export interface IdeaLeafTask {
+  id: string;
+  group_id: string;
+  parent_id: string | null;
+  title: string;
+  owner_name: string | null;
+  priority: 'P1' | 'P2' | 'P3' | null;
+  group_name: string;
+  group_color: string | null;
+  project_id: string;
+  project_name: string;
+  created_at: string;
+}
+
+export function useIdeaLeafTasks(limit = 100) {
+  return useQuery({
+    queryKey: ['idea_leaf_tasks', limit],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('idea_leaf_tasks')
+        .select('id, group_id, parent_id, title, owner_name, priority, group_name, group_color, project_id, project_name, created_at')
+        .limit(limit);
+      if (error) throw error;
+      return (data ?? []) as IdeaLeafTask[];
+    },
+    staleTime: 30_000,
+  });
+}
+
+// ── Batch task participants (for dashboard table) ─────────────────────────────
+
+export function useTasksParticipants(taskIds: string[]) {
+  const key = taskIds.slice().sort().join(',');
+  return useQuery({
+    queryKey: ['tasks_participants', key],
+    enabled: taskIds.length > 0,
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('task_participants')
+        .select('task_id, profile_id')
+        .in('task_id', taskIds);
+      if (error) throw error;
+      const map = new Map<string, string[]>();
+      for (const row of data ?? []) {
+        const arr = map.get(row.task_id) ?? [];
+        arr.push(row.profile_id);
+        map.set(row.task_id, arr);
+      }
+      return map;
+    },
+  });
+}
+
+// ── useMyOwnedProjects ────────────────────────────────────────────────────────
+
+export interface OwnedProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  progress: number;       // 0-100 average
+  totalTasks: number;
+  completedTasks: number;
+  overdueTasks: number;
+  lastActivity: string | null; // ISO date string from updated_at
+}
+
+/**
+ * Fetches projects where the current user is the owner.
+ * Ownership is resolved in priority order:
+ *   1. projects.user_id = me  (explicit owner column)
+ *   2. fallback: any project where the user has at least one task assigned to them
+ *      (covers projects created before the user_id column existed)
+ * Results are joined with group_progress_stats for progress data.
+ */
+export function useMyOwnedProjects() {
+  const queryClient = useQueryClient();
+
+  const { data: projects = [], isLoading: loading } = useQuery({
+    queryKey: ['myOwnedProjects'],
+    staleTime: 30_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [] as OwnedProjectSummary[];
+
+      // 1. Fetch all projects + stats in parallel
+      const [{ data: allProjects }, { data: statsRows }, { data: assignedTasks }] = await Promise.all([
+        supabase
+          .from('projects')
+          .select('id, name, description, updated_at, user_id')
+          .order('updated_at', { ascending: false }),
+        supabase
+          .from('group_progress_stats')
+          .select('project_id, leaf_task_count, completed_count, overdue_count, avg_progress'),
+        // Tasks assigned to me — used as fallback ownership signal
+        supabase
+          .from('active_leaf_tasks')
+          .select('project_id')
+          .eq('assigned_to', user.id),
+      ]);
+
+      if (!allProjects || allProjects.length === 0) return [] as OwnedProjectSummary[];
+
+      // 2. Build the set of project IDs the user owns or has assignments in
+      const explicitlyOwned = new Set(
+        allProjects.filter(p => p.user_id === user.id).map(p => p.id)
+      );
+      const hasAssignments = new Set(
+        (assignedTasks ?? []).map(t => t.project_id).filter(Boolean)
+      );
+
+      // Prefer explicit ownership; fall back to assignment-based if none explicit
+      const ownedIds = explicitlyOwned.size > 0
+        ? explicitlyOwned
+        : hasAssignments;
+
+      const ownedRows = allProjects.filter(p => ownedIds.has(p.id));
+      if (ownedRows.length === 0) return [] as OwnedProjectSummary[];
+
+      // 3. Aggregate stats per project
+      const statsByProject = new Map<string, { total: number; completed: number; overdue: number; avgProgress: number; count: number }>();
+      for (const s of statsRows ?? []) {
+        const cur = statsByProject.get(s.project_id) ?? { total: 0, completed: 0, overdue: 0, avgProgress: 0, count: 0 };
+        statsByProject.set(s.project_id, {
+          total: cur.total + (s.leaf_task_count ?? 0),
+          completed: cur.completed + (s.completed_count ?? 0),
+          overdue: cur.overdue + (s.overdue_count ?? 0),
+          avgProgress: cur.avgProgress + (s.avg_progress ?? 0),
+          count: cur.count + 1,
+        });
+      }
+
+      return ownedRows.map(p => {
+        const s = statsByProject.get(p.id);
+        return {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          progress: s && s.count > 0 ? Math.round(s.avgProgress / s.count) : 0,
+          totalTasks: s?.total ?? 0,
+          completedTasks: s?.completed ?? 0,
+          overdueTasks: s?.overdue ?? 0,
+          lastActivity: (p as any).updated_at ?? null,
+        } as OwnedProjectSummary;
+      });
+    },
+  });
+
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['myOwnedProjects'] });
+    const ch = supabase
+      .channel('my-owned-projects-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'projects' }, invalidate)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [queryClient]);
+
+  return { projects, loading };
+}
+
+// ── useMyAssignedLeafTasks ────────────────────────────────────────────────────
+
+export interface AssignedLeafTask {
+  id: string;
+  title: string;
+  priority: 'P1' | 'P2' | 'P3' | null;
+  dueDate: string | null;
+  progress: number;
+  category: string;
+  projectId: string;
+  projectName: string;
+  parentTitle: string | null;
+}
+
+/**
+ * Fetches leaf tasks directly assigned to the current user (assigned_to = user.id).
+ * "Leaf" means the task has no child tasks in the tasks table — it is an
+ * actionable execution item, not a parent initiative.
+ * Participants are intentionally excluded: only direct assignees appear here.
+ * The Sidebar further deduplicates against useMyLeadInitiatives via initiativeIds.
+ */
+export function useMyAssignedLeafTasks() {
+  const queryClient = useQueryClient();
+
+  const { data: tasks = [], isLoading: loading } = useQuery({
+    queryKey: ['myAssignedLeafTasks'],
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [] as AssignedLeafTask[];
+
+      // 1. Sub-tasks directly assigned to this user (parent_id IS NOT NULL only).
+      // Root-level tasks (parent_id IS NULL) are strictly handled by useMyLeadInitiatives.
+      const { data: assignedRows, error: assignedErr } = await supabase
+        .from('tasks')
+        .select('id, title, priority, metadata, progress_mode, progress_manual, group_id, parent_id')
+        .eq('assigned_to', user.id)
+        .not('parent_id', 'is', null);
+
+      if (assignedErr) console.error('[useMyAssignedLeafTasks] query error:', assignedErr);
+      console.log('[useMyAssignedLeafTasks] user.id:', user.id, 'sub-tasks assigned:', assignedRows?.map(t => t.title));
+
+      const candidates = assignedRows ?? [];
+      if (candidates.length === 0) return [] as AssignedLeafTask[];
+
+      // 2. Filter to leaf nodes — exclude tasks that have further child tasks
+      const candidateIds = candidates.map(t => t.id);
+      const { data: childRows } = await supabase
+        .from('tasks')
+        .select('parent_id')
+        .in('parent_id', candidateIds);
+
+      const tasksWithChildren = new Set((childRows ?? []).map(r => r.parent_id));
+      const allRows = candidates.filter(t => !tasksWithChildren.has(t.id));
+
+      console.log('[useMyAssignedLeafTasks] leaf sub-tasks:', allRows.map(t => t.title));
+
+      if (allRows.length === 0) return [] as AssignedLeafTask[];
+
+      // 2. Resolve groups → projects
+      const groupIds = [...new Set(allRows.map(t => t.group_id).filter(Boolean))];
+      const { data: groups } = await supabase.from('groups').select('id, name, project_id').in('id', groupIds);
+      const projectIds = [...new Set((groups ?? []).map(g => g.project_id))];
+      const { data: projectRows } = await supabase
+        .from('projects')
+        .select('id, name')
+        .in('id', projectIds);
+
+      const groupMap  = new Map((groups      ?? []).map(g => [g.id, g]));
+      const projectMap = new Map((projectRows ?? []).map(p => [p.id, p]));
+      console.log('[useMyAssignedLeafTasks] groups resolved:', groups?.length ?? 0, 'projects:', projectRows?.length ?? 0);
+
+      // 3. Compute progress from milestones for auto-mode tasks
+      const autoIds = allRows.filter(t => t.progress_mode === 'auto').map(t => t.id);
+      const msCountMap = new Map<string, { total: number; done: number }>();
+      if (autoIds.length > 0) {
+        const { data: mRows } = await supabase
+          .from('milestones')
+          .select('task_id, done')
+          .in('task_id', autoIds);
+        for (const m of mRows ?? []) {
+          const cur = msCountMap.get(m.task_id) ?? { total: 0, done: 0 };
+          msCountMap.set(m.task_id, { total: cur.total + 1, done: cur.done + (m.done ? 1 : 0) });
+        }
+      }
+
+      // 4. Resolve parent titles for breadcrumb display
+      const parentIds = [...new Set(allRows.filter(t => t.parent_id).map(t => t.parent_id as string))];
+      const parentTitleMap = new Map<string, string>();
+      if (parentIds.length > 0) {
+        const { data: parents } = await supabase
+          .from('tasks')
+          .select('id, title')
+          .in('id', parentIds);
+        (parents ?? []).forEach((p: { id: string; title: string }) => parentTitleMap.set(p.id, p.title));
+      }
+
+      const result: AssignedLeafTask[] = [];
+      for (const t of allRows) {
+        const group   = groupMap.get(t.group_id);
+        const project = group ? projectMap.get(group.project_id) : null;
+
+        let progress = 0;
+        if (t.progress_mode === 'auto') {
+          const ms = msCountMap.get(t.id);
+          progress = ms && ms.total > 0 ? Math.round((ms.done / ms.total) * 100) : 0;
+        } else {
+          progress = t.progress_manual ?? 0;
+        }
+
+        result.push({
+          id: t.id,
+          title: t.title,
+          priority: t.priority ?? 'P2',
+          dueDate: t.metadata?.dueDate ?? null,
+          progress,
+          category: group?.name ?? '',
+          projectId: project?.id ?? '',
+          projectName: project?.name ?? '',
+          parentTitle: t.parent_id ? (parentTitleMap.get(t.parent_id) ?? null) : null,
+        });
+      }
+      console.log('[useMyAssignedLeafTasks] final result:', result.map(t => ({ id: t.id, title: t.title })));
+      return result;
+    },
+  });
+
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['myAssignedLeafTasks'] });
+
+    const tasksCh = supabase
+      .channel('my-assigned-tasks-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidate)
+      .subscribe();
+
+    const participantsCh = supabase
+      .channel('my-assigned-participants-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_participants' }, invalidate)
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(tasksCh);
+      supabase.removeChannel(participantsCh);
+    };
+  }, [queryClient]);
+
+  return { tasks, loading };
+}
+
+// ── useMyAssignedMilestones ───────────────────────────────────────────────────
+
+export interface AssignedMilestone {
+  id: string;
+  title: string;
+  done: boolean;
+  dueDate: string | null;
+  taskId: string;
+  taskTitle: string;
+  projectName: string;
+}
+
+/**
+ * Fetches milestones where assigned_to = current user and done = false.
+ * Relies on the `assigned_to` column added to the milestones table.
+ */
+export function useMyAssignedMilestones() {
+  const queryClient = useQueryClient();
+
+  const { data: milestones = [], isLoading: loading } = useQuery({
+    queryKey: ['myAssignedMilestones'],
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [] as AssignedMilestone[];
+
+      const { data: rows, error } = await supabase
+        .from('milestones')
+        .select(`
+          id, title, done, order,
+          task_id,
+          tasks!inner ( id, title, metadata, group_id,
+            groups!inner ( id, name, project_id,
+              projects!inner ( id, name )
+            )
+          )
+        `)
+        .eq('assigned_to', user.id)
+        .eq('done', false);
+
+      if (error) {
+        console.error('[useMyAssignedMilestones] error:', error);
+        return [] as AssignedMilestone[];
+      }
+
+      return (rows ?? []).map((m: any) => {
+        const task     = m.tasks;
+        const group    = task?.groups;
+        const project  = group?.projects;
+        const extras   = (task?.metadata?.milestoneExtras ?? []) as Array<{ dueDate?: string }>;
+        const dueDate  = extras[m.order]?.dueDate ?? null;
+
+        return {
+          id: m.id,
+          title: m.title,
+          done: m.done,
+          dueDate,
+          taskId: m.task_id,
+          taskTitle: task?.title ?? '',
+          projectName: project?.name ?? '',
+        } as AssignedMilestone;
+      });
+    },
+  });
+
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['myAssignedMilestones'] });
+
+    const ch = supabase
+      .channel('my-assigned-milestones-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, invalidate)
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); };
+  }, [queryClient]);
+
+  return { milestones, loading };
+}
+
+// ── useMyLeadInitiatives ──────────────────────────────────────────────────────
+//
+// RULE: A task assigned to the user where parent_id IS NULL is a Level-1
+// initiative — the user LEADS it.  This is topology-based, not children-count-
+// based, which is the reliable criterion:
+//   • "הקמת חדר כושר"  → parent_id IS NULL  → initiative  ✓
+//   • "השגת תקציב"    → parent_id IS NOT NULL → milestone ✓
+//
+// Sub-items of an initiative may live in the `milestones` table (checklist rows)
+// rather than as child tasks, so we can NOT rely on checking whether any tasks
+// reference this ID as parent_id — that check silently returns zero for tasks
+// whose breakdown is stored as milestones, not child tasks.
+
+export interface InitiativeSummary {
+  id: string;
+  title: string;
+  priority: 'P1' | 'P2' | 'P3' | null;
+  dueDate: string | null;
+  progress: number;           // 0-100, from status_percent or milestones
+  category: string;           // group name
+  projectId: string;
+  projectName: string;
+  milestoneCount: number;     // checklist milestones total
+  milestoneDone: number;      // checklist milestones completed
+}
+
+export function useMyLeadInitiatives() {
+  const queryClient = useQueryClient();
+
+  const { data: initiatives = [], isLoading: loading } = useQuery({
+    queryKey: ['myLeadInitiatives'],
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [] as InitiativeSummary[];
+
+      // Root-level tasks directly assigned to this user — initiatives they LEAD.
+      // Uses tasks table directly (not active_leaf_tasks view) so tasks with
+      // children are included — a project with sub-tasks is still an initiative.
+      const { data: rows, error } = await supabase
+        .from('tasks')
+        .select('id, title, priority, metadata, progress_mode, progress_manual, group_id')
+        .eq('assigned_to', user.id)
+        .is('parent_id', null);
+
+      if (error) throw error;
+      if (!rows || rows.length === 0) return [] as InitiativeSummary[];
+
+      // Resolve groups → projects
+      const groupIds = [...new Set(rows.map(r => r.group_id).filter(Boolean))];
+      const { data: groups } = await supabase.from('groups').select('id, name, project_id').in('id', groupIds);
+      const projectIds = [...new Set((groups ?? []).map(g => g.project_id))];
+      const { data: projectRows } = await supabase.from('projects').select('id, name').in('id', projectIds);
+
+      const groupMap   = new Map((groups      ?? []).map(g => [g.id, g]));
+      const projectMap = new Map((projectRows ?? []).map(p => [p.id, p]));
+
+      // Compute progress from milestones (auto mode) or manual value
+      const autoIds = rows.filter(r => r.progress_mode === 'auto').map(r => r.id);
+      const msMap = new Map<string, { total: number; done: number }>();
+      if (autoIds.length > 0) {
+        const { data: mRows } = await supabase.from('milestones').select('task_id, done').in('task_id', autoIds);
+        for (const m of mRows ?? []) {
+          const cur = msMap.get(m.task_id) ?? { total: 0, done: 0 };
+          msMap.set(m.task_id, { total: cur.total + 1, done: cur.done + (m.done ? 1 : 0) });
+        }
+      }
+
+      const result: InitiativeSummary[] = [];
+      for (const r of rows) {
+        const group   = groupMap.get(r.group_id);
+        const project = group ? projectMap.get(group.project_id) : null;
+
+        const ms = msMap.get(r.id);
+        const progress = r.progress_mode === 'auto'
+          ? (ms && ms.total > 0 ? Math.round((ms.done / ms.total) * 100) : 0)
+          : (r.progress_manual ?? 0);
+
+        result.push({
+          id: r.id,
+          title: r.title,
+          priority: r.priority ?? null,
+          dueDate: r.metadata?.dueDate ?? null,
+          progress,
+          category: group?.name ?? '',
+          projectId: project?.id ?? '',
+          projectName: project?.name ?? '',
+          milestoneCount: ms?.total ?? 0,
+          milestoneDone:  ms?.done  ?? 0,
+        });
+      }
+      return result;
+    },
+  });
+
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['myLeadInitiatives'] });
+    const ch = supabase
+      .channel('my-initiatives-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, invalidate)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, invalidate)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [queryClient]);
+
+  return { initiatives, loading };
+}
+
+// ── Group Progress Stats (from group_progress_stats view) ─────────────────────
+
+export interface GroupProgressStat {
+  group_id: string;
+  project_id: string;
+  group_name: string;
+  group_color: string | null;
+  group_order: number;
+  project_name: string;
+  leaf_task_count: number;
+  completed_count: number;
+  overdue_count: number;
+  avg_progress: number;
+  current_work: string | null;
+}
+
+export function useGroupProgressStats() {
+  return useQuery({
+    queryKey: ['group_progress_stats'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('group_progress_stats')
+        .select(
+          'group_id, project_id, group_name, group_color, group_order, project_name, leaf_task_count, completed_count, overdue_count, avg_progress, current_work'
+        )
+        .order('group_order', { ascending: true });
+
+      if (error) throw error;
+      return (data ?? []) as GroupProgressStat[];
+    },
+    staleTime: 30_000,
+  });
 }
 
