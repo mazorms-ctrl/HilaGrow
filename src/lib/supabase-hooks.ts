@@ -744,7 +744,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
   // Only re-sync milestones if they changed
   const { data: currentMilestones } = await supabase
     .from('milestones')
-    .select('title, done, order')
+    .select('title, done, order, assigned_to')
     .eq('task_id', confirmedUuid)
     .order('order', { ascending: true });
 
@@ -752,7 +752,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     .map((m, i) => `${i}|${m.text}|${m.done}|${m.assignedTo ?? ''}`)
     .join('||');
   const existingKey = (currentMilestones || [])
-    .map(m => `${m.order}|${m.title}|${m.done}`)
+    .map(m => `${m.order}|${m.title}|${m.done}|${m.assigned_to ?? ''}`)
     .join('||');
 
   if (incomingKey === existingKey) return;
@@ -771,6 +771,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
         title: m.text,
         done: m.done,
         order: idx,
+        assigned_to: m.assignedTo ?? null,
       }))
     );
     if (milestonesError) throw milestonesError;
@@ -1537,6 +1538,85 @@ export function useMyAssignedLeafTasks() {
   }, [queryClient]);
 
   return { tasks, loading };
+}
+
+// ── useMyAssignedMilestones ───────────────────────────────────────────────────
+
+export interface AssignedMilestone {
+  id: string;
+  title: string;
+  done: boolean;
+  dueDate: string | null;
+  taskId: string;
+  taskTitle: string;
+  projectName: string;
+}
+
+/**
+ * Fetches milestones where assigned_to = current user and done = false.
+ * Relies on the `assigned_to` column added to the milestones table.
+ */
+export function useMyAssignedMilestones() {
+  const queryClient = useQueryClient();
+
+  const { data: milestones = [], isLoading: loading } = useQuery({
+    queryKey: ['myAssignedMilestones'],
+    staleTime: 15_000,
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return [] as AssignedMilestone[];
+
+      const { data: rows, error } = await supabase
+        .from('milestones')
+        .select(`
+          id, title, done, order,
+          task_id,
+          tasks!inner ( id, title, metadata, group_id,
+            groups!inner ( id, name, project_id,
+              projects!inner ( id, name )
+            )
+          )
+        `)
+        .eq('assigned_to', user.id)
+        .eq('done', false);
+
+      if (error) {
+        console.error('[useMyAssignedMilestones] error:', error);
+        return [] as AssignedMilestone[];
+      }
+
+      return (rows ?? []).map((m: any) => {
+        const task     = m.tasks;
+        const group    = task?.groups;
+        const project  = group?.projects;
+        const extras   = (task?.metadata?.milestoneExtras ?? []) as Array<{ dueDate?: string }>;
+        const dueDate  = extras[m.order]?.dueDate ?? null;
+
+        return {
+          id: m.id,
+          title: m.title,
+          done: m.done,
+          dueDate,
+          taskId: m.task_id,
+          taskTitle: task?.title ?? '',
+          projectName: project?.name ?? '',
+        } as AssignedMilestone;
+      });
+    },
+  });
+
+  useEffect(() => {
+    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['myAssignedMilestones'] });
+
+    const ch = supabase
+      .channel('my-assigned-milestones-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'milestones' }, invalidate)
+      .subscribe();
+
+    return () => { supabase.removeChannel(ch); };
+  }, [queryClient]);
+
+  return { milestones, loading };
 }
 
 // ── useMyLeadInitiatives ──────────────────────────────────────────────────────

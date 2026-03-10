@@ -1432,7 +1432,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   actions.map((a, aIdx) => {
                     const participantProfiles = task.participants.length > 0
                       ? profiles.filter(p => task.participants.includes(p.id))
-                      : profiles;
+                      : [];
                     const ap = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                     const apName = ap ? (ap.full_name || ap.email || '').split(' ')[0] : null;
                     return (
@@ -1744,6 +1744,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 const actions = m.actionItems || [];
                 const actionsDone = actions.filter(a => a.done).length;
                 const assignedProfile = m.assignedTo ? profiles.find(p => p.id === m.assignedTo) : null;
+                const milestoneParticipantProfiles = task.participants.length > 0
+                  ? profiles.filter(p => task.participants.includes(p.id))
+                  : [];
 
                 return (
                   <div key={mIdx} className={`tp-milestone-row${m.done ? ' done' : ''}`}>
@@ -1827,7 +1830,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                             onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
                           >
                             <option value="">ללא אחראי</option>
-                            {profiles.map(p => (
+                            {milestoneParticipantProfiles.map(p => (
                               <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
                             ))}
                           </select>
@@ -1865,7 +1868,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         {actions.map((a, aIdx) => {
                           const participantProfiles = task.participants.length > 0
                             ? profiles.filter(p => task.participants.includes(p.id))
-                            : profiles;
+                            : [];
                           const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                           return (
                             <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>

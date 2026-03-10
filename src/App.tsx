@@ -1362,8 +1362,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       
       {/* Header */}
       <header style={{
-        borderBottom: '1px solid #e2e8f0',
-        background: '#ffffff',
+        borderBottom: '1px solid rgba(226,232,240,0.70)',
+        background: 'rgba(255,255,255,0.82)',
+        backdropFilter: 'blur(18px)',
+        WebkitBackdropFilter: 'blur(18px)',
         position: 'sticky',
         top: 0,
         zIndex: 30
@@ -1376,7 +1378,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             alignItems: 'center',
             direction: 'rtl',
             position: 'relative',
-            backgroundColor: '#ffffff',
+            backgroundColor: 'transparent',
           }}
           className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px]"
         >
@@ -1420,7 +1422,11 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             <img
               src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
               alt="הלל יפה"
-              style={{ filter: 'brightness(1) contrast(1.1)', pointerEvents: 'auto' }}
+              style={{
+                filter: 'brightness(1) contrast(1.05)',
+                mixBlendMode: 'multiply',
+                pointerEvents: 'auto',
+              }}
               className="h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
             />
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'right', pointerEvents: 'auto' }}>
