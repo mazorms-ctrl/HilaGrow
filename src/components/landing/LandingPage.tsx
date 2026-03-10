@@ -13,18 +13,14 @@ const CATEGORIES = [
   { label: 'מחקר',                    bg: '#EEF2FF', text: '#3730A3' },
 ] as const;
 
-// Organic cluster — two rows, middle row offset
-const CHIP_POSITIONS: React.CSSProperties[] = [
-  // Row 1 — 3 chips
-  { top: 0,    left: '1%'  },
-  { top: 0,    left: '26%' },
-  { top: 0,    left: '58%' },
-  // Row 2 — 3 chips, offset
-  { top: 56,   left: '13%' },
-  { top: 56,   left: '44%' },
-  { top: 56,   left: '70%' },
-  // Row 3 — 1 chip, centered
-  { top: 112,  left: '35%' },
+const CHIP_CLUSTER_OFFSETS: React.CSSProperties[] = [
+  { marginTop: '8px',  marginInlineEnd: '10px' },
+  { marginTop: '0px',  marginInlineStart: '12px', marginInlineEnd: '6px' },
+  { marginTop: '14px', marginInlineStart: '8px' },
+  { marginTop: '-4px', marginInlineEnd: '14px' },
+  { marginTop: '12px', marginInlineStart: '16px' },
+  { marginTop: '2px',  marginInlineEnd: '8px' },
+  { marginTop: '10px', marginInlineStart: '6px' },
 ];
 
 // ── Faint neural-network watermark ────────────────────────────────────────────
@@ -60,8 +56,10 @@ function NeuralWatermark() {
       preserveAspectRatio="xMidYMid slice"
       aria-hidden="true"
       style={{
-        position: 'absolute', inset: 0,
-        width: '100%', height: '100%',
+        position: 'absolute',
+        inset: '-8%',
+        width: '116%',
+        height: '116%',
         pointerEvents: 'none',
       }}
     >
@@ -70,17 +68,17 @@ function NeuralWatermark() {
           key={i}
           x1={nodes[a][0]} y1={nodes[a][1]}
           x2={nodes[b][0]} y2={nodes[b][1]}
-          stroke="#D1D5DB"
+          stroke="#DBEAFE"
           strokeWidth="0.9"
-          strokeOpacity="0.7"
+          strokeOpacity="0.4"
         />
       ))}
       {nodes.map(([cx, cy], i) => (
         <circle
           key={i}
           cx={cx} cy={cy} r="2.5"
-          fill="#9CA3AF"
-          fillOpacity="0.5"
+          fill="#93C5FD"
+          fillOpacity="0.36"
         />
       ))}
     </svg>
@@ -92,8 +90,8 @@ function NeuralWatermark() {
 function LandingHeader() {
   return (
     <header style={{
-      borderBottom: '1px solid #e2e8f0',
-      background: '#ffffff',
+      borderBottom: 'none',
+      background: 'transparent',
       position: 'sticky',
       top: 0,
       zIndex: 30,
@@ -106,9 +104,9 @@ function LandingHeader() {
           alignItems: 'center',
           direction: 'rtl',
           position: 'relative',
-          backgroundColor: '#ffffff',
-          height: '80px',
-          padding: '0 32px',
+          backgroundColor: 'transparent',
+          height: '98px',
+          padding: '0 40px',
         }}
       >
         {/* Logo — centered, same as App */}
@@ -119,37 +117,13 @@ function LandingHeader() {
           transform: 'translate(-50%, -50%)',
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
           direction: 'rtl',
         }}>
           <img
             src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
             alt="הלל יפה"
-            style={{ height: '52px', width: 'auto', objectFit: 'contain' }}
+            style={{ height: '80px', width: 'auto', objectFit: 'contain' }}
           />
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-            <span style={{
-              fontWeight: '800',
-              color: '#000000',
-              letterSpacing: '-0.5px',
-              fontFamily: 'Rubik, sans-serif',
-              fontSize: '24px',
-              lineHeight: 1,
-              whiteSpace: 'nowrap',
-            }}>
-              GROW
-            </span>
-            <span style={{
-              color: '#1a1a1a',
-              fontSize: '12px',
-              fontWeight: '500',
-              fontFamily: 'Rubik, sans-serif',
-              whiteSpace: 'nowrap',
-              marginTop: '2px',
-            }}>
-              פיתוח וחיזוק מחוברות ארגונית
-            </span>
-          </div>
         </div>
 
       </div>
@@ -157,7 +131,7 @@ function LandingHeader() {
   );
 }
 
-// ── CTA button — solid primary blue ──────────────────────────────────────────
+// ── CTA button ────────────────────────────────────────────────────────────────
 
 function CtaButton({ onClick }: { onClick: () => void }) {
   const [hovered, setHovered] = useState(false);
@@ -169,83 +143,32 @@ function CtaButton({ onClick }: { onClick: () => void }) {
       style={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: '10px',
-        padding: '15px 44px',
-        borderRadius: '12px',
+        justifyContent: 'center',
+        padding: '0 36px',
+        minHeight: '54px',
+        borderRadius: '999px',
         border: 'none',
-        background: hovered ? '#2563EB' : '#3B82F6',
-        color: '#ffffff',
-        fontSize: '17px',
+        background: hovered ? '#1D4ED8' : '#2563EB',
+        color: '#FFFFFF',
+        fontSize: '16px',
         fontWeight: '700',
-        fontFamily: 'Rubik, sans-serif',
-        letterSpacing: '-0.2px',
+        fontFamily: 'Assistant, Heebo, Arial, sans-serif',
+        letterSpacing: '-0.02em',
         cursor: 'pointer',
         boxShadow: hovered
-          ? '0 8px 28px rgba(59,130,246,0.45), 0 2px 8px rgba(59,130,246,0.2)'
-          : '0 4px 16px rgba(59,130,246,0.3), 0 1px 4px rgba(59,130,246,0.15)',
-        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+          ? '0 14px 28px rgba(37,99,235,0.22)'
+          : '0 8px 18px rgba(37,99,235,0.16)',
+        transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
         transition: 'all 0.18s ease',
         direction: 'rtl',
       }}
     >
-      <span>כניסה לעמוד הבית</span>
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M5 12h14M12 5l7 7-7 7" />
-      </svg>
+      <span>כניסה</span>
     </button>
   );
 }
 
 // ── Footer ────────────────────────────────────────────────────────────────────
-
-function LandingFooter() {
-  return (
-    <footer
-      dir="rtl"
-      style={{
-        borderTop: '1px solid #e2e8f0',
-        background: '#ffffff',
-        padding: '20px 40px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        flexShrink: 0,
-      }}
-    >
-      {/* Right: logo mark */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        <div style={{
-          width: 28, height: 28, borderRadius: '7px',
-          background: 'linear-gradient(135deg, #3B82F6 0%, #6366F1 100%)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: '12px', fontWeight: '800', color: 'white',
-        }}>G+</div>
-        <span style={{ color: '#374151', fontWeight: '600', fontSize: '14px', fontFamily: 'Rubik, sans-serif' }}>
-          GROW+
-        </span>
-      </div>
-
-      {/* Center: links */}
-      <div style={{ display: 'flex', gap: '28px' }}>
-        {['תנאי שימוש', 'מדיניות פרטיות', 'צור קשר'].map((link) => (
-          <span
-            key={link}
-            style={{ fontSize: '13px', color: '#9CA3AF', cursor: 'pointer', transition: 'color 0.15s', fontFamily: 'Rubik, sans-serif' }}
-            onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = '#374151'; }}
-            onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = '#9CA3AF'; }}
-          >
-            {link}
-          </span>
-        ))}
-      </div>
-
-      {/* Left: copyright */}
-      <span style={{ fontSize: '13px', color: '#D1D5DB', fontFamily: 'Rubik, sans-serif', direction: 'ltr' }}>
-        © 2024 GROW+
-      </span>
-    </footer>
-  );
-}
 
 // ── Main LandingPage ──────────────────────────────────────────────────────────
 
@@ -263,29 +186,82 @@ export function LandingPage() {
           from { opacity: 0; }
           to   { opacity: 1; }
         }
-        @keyframes lp-chipFloat {
-          0%, 100% { transform: translateY(0px); }
-          50%       { transform: translateY(-5px); }
+        @keyframes lp-glowPulse {
+          0%, 100% { transform: scale(1); opacity: 0.75; }
+          50% { transform: scale(1.05); opacity: 1; }
         }
+        @keyframes lp-chipDrift {
+          0%, 100% { transform: translateY(0px); }
+          50% { transform: translateY(-5px); }
+        }
+        @keyframes lp-chipSheen {
+          0% { transform: translateX(-160%); opacity: 0; }
+          18% { opacity: 0.5; }
+          42% { transform: translateX(160%); opacity: 0; }
+          100% { transform: translateX(160%); opacity: 0; }
+        }
+        .lp-title    { animation: lp-fadeUp 0.6s cubic-bezier(0.16,1,0.3,1) 0.06s both; }
         .lp-sub      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.08s both; }
         .lp-cta      { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.22s both; }
         .lp-cluster  { animation: lp-fadeUp  0.6s cubic-bezier(0.16,1,0.3,1) 0.38s both; }
-        .lp-cf0 { animation: lp-chipFloat 4.0s ease-in-out infinite 0.0s; }
-        .lp-cf1 { animation: lp-chipFloat 4.5s ease-in-out infinite 0.7s; }
-        .lp-cf2 { animation: lp-chipFloat 3.8s ease-in-out infinite 1.3s; }
-        .lp-cf3 { animation: lp-chipFloat 4.3s ease-in-out infinite 0.4s; }
-        .lp-cf4 { animation: lp-chipFloat 4.7s ease-in-out infinite 1.0s; }
-        .lp-cf5 { animation: lp-chipFloat 3.6s ease-in-out infinite 1.6s; }
-        .lp-cf6 { animation: lp-chipFloat 4.9s ease-in-out infinite 0.2s; }
+        .lp-glow     { animation: lp-glowPulse 6s ease-in-out infinite; }
+        .lp-chip-shell {
+          display: flex;
+          justify-content: center;
+          animation: lp-chipDrift 5.6s ease-in-out infinite;
+          will-change: transform;
+        }
+        .lp-chip {
+          position: relative;
+          overflow: hidden;
+          transition: transform 0.22s ease, box-shadow 0.22s ease, filter 0.22s ease;
+        }
+        .lp-chip::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(110deg, transparent 0%, rgba(255,255,255,0.55) 45%, transparent 100%);
+          transform: translateX(-160%);
+          animation: lp-chipSheen 6.8s ease-in-out infinite;
+          pointer-events: none;
+        }
+        .lp-chip:hover {
+          transform: translateY(-2px) scale(1.03);
+          box-shadow: 0 12px 28px rgba(15,23,42,0.08);
+          filter: saturate(1.05);
+        }
       `}</style>
 
       <div style={{
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        background: '#FCFCFD',
+        background: 'linear-gradient(180deg, #F8FBFF 0%, #FCFCFD 48%, #F8FBFF 100%)',
         fontFamily: 'Rubik, sans-serif',
+        position: 'relative',
+        overflow: 'hidden',
       }}>
+        <NeuralWatermark />
+
+        <div aria-hidden="true" style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          background: 'radial-gradient(ellipse 82% 76% at 50% 46%, rgba(219,234,254,0.30) 0%, transparent 74%)',
+        }} />
+
+        <div
+          aria-hidden="true"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            pointerEvents: 'none',
+            background: `
+              radial-gradient(circle at 8% 12%, rgba(191,219,254,0.28) 0%, transparent 24%),
+              radial-gradient(circle at 92% 14%, rgba(199,210,254,0.22) 0%, transparent 26%),
+              radial-gradient(circle at 12% 88%, rgba(224,231,255,0.18) 0%, transparent 24%),
+              radial-gradient(circle at 90% 84%, rgba(186,230,253,0.22) 0%, transparent 25%)
+            `,
+          }}
+        />
 
         {/* ── Header ─────────────────────────────────────────── */}
         <LandingHeader />
@@ -299,43 +275,78 @@ export function LandingPage() {
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            padding: '48px 24px 40px',
+            padding: '30px 28px 54px',
             position: 'relative',
             textAlign: 'center',
-            overflow: 'hidden',
+            overflow: 'visible',
+            zIndex: 1,
           }}
         >
-          {/* Faint neural network watermark */}
-          <NeuralWatermark />
-
-          {/* Subtle blue radial tint */}
-          <div aria-hidden="true" style={{
-            position: 'absolute', inset: 0, pointerEvents: 'none',
-            background: 'radial-gradient(ellipse 70% 60% at 50% 45%, rgba(219,234,254,0.35) 0%, transparent 70%)',
-          }} />
+          <div
+            aria-hidden="true"
+            className="lp-glow"
+            style={{
+              position: 'absolute',
+              top: '20%',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              width: 'min(640px, 72vw)',
+              height: 'min(640px, 72vw)',
+              borderRadius: '50%',
+              background: 'radial-gradient(circle, rgba(191,219,254,0.28) 0%, rgba(255,255,255,0) 72%)',
+              filter: 'blur(10px)',
+              pointerEvents: 'none',
+            }}
+          />
 
           {/* Content stack */}
-          <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              width: '100%',
+              maxWidth: '1040px',
+              gap: 0,
+            }}
+          >
+            <h1
+              className="lp-title"
+              style={{
+                margin: '0 auto 18px',
+                maxWidth: '760px',
+                fontSize: 'clamp(29px, 3.4vw, 40px)',
+                lineHeight: 1.35,
+                fontWeight: '700',
+                color: '#0F172A',
+                letterSpacing: '-0.24px',
+                fontFamily: 'Assistant, Heebo, Arial, sans-serif',
+              }}
+            >
+              GROW | מייצרים שינוי.
+            </h1>
 
-            {/* 1 — Mission statement */}
             <p
               className="lp-sub"
               style={{
-                margin: '0 auto 32px',
-                maxWidth: '600px',
+                margin: '0 auto 46px',
+                maxWidth: '820px',
                 fontSize: 'clamp(17px, 2vw, 22px)',
-                fontWeight: '500',
-                lineHeight: '1.7',
-                color: '#1E3A5F',
+                lineHeight: 1.75,
+                fontWeight: '300',
+                color: '#334155',
                 direction: 'rtl',
-                letterSpacing: '-0.1px',
+                letterSpacing: '-0.12px',
+                fontFamily: 'Assistant, Heebo, Arial, sans-serif',
               }}
             >
-              המרחב הדיגיטלי לניהול יוזמות רוחביות, טיפוח מצוינות וחיזוק המחוברות הארגונית בבית החולים
+              המרחב הדיגיטלי לניהול פרויקטים רוחביים לצורך חיזוק המחוברות הארגונית בבית החולים הלל יפה
             </p>
 
             {/* 2 — CTA button */}
-            <div className="lp-cta" style={{ marginBottom: '48px' }}>
+            <div className="lp-cta" style={{ marginBottom: '64px' }}>
               <CtaButton onClick={() => setShowLogin(true)} />
             </div>
 
@@ -343,29 +354,39 @@ export function LandingPage() {
             <div
               className="lp-cluster"
               style={{
-                position: 'relative',
-                width: '660px',
-                maxWidth: '94vw',
-                height: '148px',
+                display: 'flex',
+                flexWrap: 'wrap',
+                justifyContent: 'center',
+                gap: '10px 18px',
+                width: '100%',
+                maxWidth: '820px',
+                padding: '12px 8px 0',
               }}
             >
               {CATEGORIES.map((cat, i) => (
                 <div
                   key={i}
-                  className={`lp-cf${i}`}
-                  style={{ position: 'absolute', ...CHIP_POSITIONS[i] }}
+                  className="lp-chip-shell"
+                  style={{
+                    ...CHIP_CLUSTER_OFFSETS[i],
+                    animationDelay: `${i * 0.28}s`,
+                    animationDuration: `${5.2 + (i % 3) * 0.65}s`,
+                  }}
                 >
-                  <div style={{
+                  <div className="lp-chip" style={{
                     display: 'inline-flex',
                     alignItems: 'center',
-                    padding: '7px 16px',
+                    justifyContent: 'center',
+                    minHeight: '40px',
+                    padding: '8px 18px',
                     borderRadius: '100px',
-                    fontSize: '12px',
-                    fontWeight: '600',
+                    fontSize: '13px',
+                    fontWeight: '400',
+                    textAlign: 'center',
                     color: cat.text,
-                    background: cat.bg,
-                    border: `1.5px solid ${cat.text}22`,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                    background: `${cat.bg}E6`,
+                    border: `1px solid ${cat.text}2E`,
+                    boxShadow: '0 6px 16px rgba(15,23,42,0.04)',
                     whiteSpace: 'nowrap',
                     cursor: 'default',
                   }}>
@@ -377,9 +398,6 @@ export function LandingPage() {
 
           </div>
         </main>
-
-        {/* ── Footer ─────────────────────────────────────────── */}
-        <LandingFooter />
       </div>
 
       {showLogin && <LoginModal onClose={() => setShowLogin(false)} />}
