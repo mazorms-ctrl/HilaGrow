@@ -281,7 +281,7 @@ const initialTasks = [
 // Type for medical task to match TasksDashboard expectations
 
 function App() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   // Detect task page route — renders TaskPageContent inside the normal layout
   const taskMatch = useMatch('/task/:taskId');
@@ -1690,6 +1690,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           <Sidebar
             user={user}
             profile={profile}
+            isAdmin={isAdmin}
             onSignOut={signOut}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed(v => !v)}

@@ -2,6 +2,8 @@ import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import App from './App';
 import { LandingPage } from './components/landing/LandingPage';
+import { AdminRoute } from './components/auth/AdminRoute';
+import { AdminDashboard } from './components/admin/AdminDashboard';
 
 export function AppRouter() {
   const { loading, user } = useAuth();
@@ -38,6 +40,14 @@ export function AppRouter() {
   // Authenticated → full app (owns layout: header + sidebar + routes)
   return (
     <Routes>
+      <Route
+        path="/admin"
+        element={
+          <AdminRoute>
+            <AdminDashboard />
+          </AdminRoute>
+        }
+      />
       <Route path="/*" element={<App />} />
     </Routes>
   );
