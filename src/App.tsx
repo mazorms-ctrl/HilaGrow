@@ -1579,7 +1579,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           margin: '0 auto',
           padding: taskMatch ? '0' : '16px',
           backgroundColor: taskMatch ? '#f8fafc' : 'rgba(255, 255, 255, 1)',
-          boxShadow: taskMatch ? 'none' : 'inset 0px 4px 12px 0px rgba(0, 0, 0, 0.15)',
+          boxShadow: taskMatch ? 'none' : '0 8px 32px rgba(59, 130, 246, 0.12)',
           flex: 1,
           overflow: 'auto',
           direction: 'rtl',

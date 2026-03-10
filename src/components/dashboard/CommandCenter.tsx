@@ -36,17 +36,20 @@ function DashboardSkeleton() {
         </div>
 
         {/* Activity feed skeleton */}
-        <div style={{ background: colors.surface.elevated, borderRadius: radius.lg, padding: spacing.xl, border: `1px solid ${colors.border.light}` }}>
-          <div style={{ ...pulse, height: 16, width: 100, marginBottom: spacing.lg }} />
-          {[1, 2, 3].map(i => (
-            <div key={i} style={{ display: 'flex', gap: spacing.md, marginBottom: spacing.md }}>
-              <div style={{ ...pulse, width: 32, height: 32, borderRadius: '50%', flexShrink: 0 }} />
-              <div style={{ flex: 1 }}>
-                <div style={{ ...pulse, height: 14, width: '60%', marginBottom: 6 }} />
-                <div style={{ ...pulse, height: 12, width: '40%' }} />
+        <div style={{ background: colors.surface.elevated, borderRadius: radius.lg, border: `1px solid ${colors.border.light}`, overflow: 'hidden' }}>
+          <div style={{ padding: `${spacing.md} ${spacing.xl}`, borderBottom: `1px solid ${colors.border.light}` }}>
+            <div style={{ ...pulse, height: 16, width: 100 }} />
+          </div>
+          <div style={{ padding: `0 ${spacing.xl}` }}>
+            {[1, 2, 3, 4].map(i => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: spacing.md, padding: '9px 0', borderBottom: `1px solid ${colors.border.light}` }}>
+                <div style={{ ...pulse, width: 32, height: 12, flexShrink: 0 }} />
+                <div style={{ ...pulse, width: 1, height: 12, flexShrink: 0 }} />
+                <div style={{ ...pulse, width: 60, height: 12, flexShrink: 0 }} />
+                <div style={{ ...pulse, flex: 1, height: 12 }} />
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
         {/* KPI cards skeleton */}
@@ -98,7 +101,7 @@ function DashboardContent() {
       }}
     >
       {/* Section header */}
-      <div>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h2
           style={{
             fontSize: typography.fontSize.h2,
@@ -111,15 +114,16 @@ function DashboardContent() {
         >
           עמוד הבית
         </h2>
-        <p
+        <span
           style={{
             fontSize: typography.fontSize.sm,
-            color: colors.text.secondary,
-            margin: `${spacing.xs} 0 0`,
+            color: colors.text.tertiary,
+            fontFamily: typography.fontFamily,
+            fontWeight: typography.fontWeight.medium,
           }}
         >
-          תמונת מצב בזמן אמת — ניהול לפי חריגות
-        </p>
+          {new Date().toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+        </span>
       </div>
 
       <ActivityFeed />
