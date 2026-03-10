@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useNavigate, useMatch } from 'react-router-dom';
-import { TreePine, X, LogOut, LogIn, ScanEye } from 'lucide-react';
+import { TreePine, X, LogOut, LogIn } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { Sidebar } from './components/Sidebar';
@@ -312,7 +312,6 @@ function App() {
     : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
-  const openBigPicture = useUIStore(s => s.openBigPicture);
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
@@ -1527,35 +1526,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             ))}
           </div>
 
-          {/* Big Picture toggle — desktop only, next to nav tabs */}
-          <button
-            className="desktop-only"
-            onClick={openBigPicture}
-            title="תמונה גדולה"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '6px',
-              padding: '6px 12px', marginInlineStart: '8px',
-              background: 'none', border: '1px solid rgba(203,213,225,0.5)',
-              borderRadius: '8px', cursor: 'pointer',
-              fontSize: '12px', fontWeight: 300,
-              color: '#64748b', fontFamily: typography.fontFamily,
-              transition: 'background 0.15s, color 0.15s, border-color 0.15s',
-              flexShrink: 0,
-            }}
-            onMouseEnter={e => {
-              e.currentTarget.style.background = 'rgba(79,70,229,0.06)';
-              e.currentTarget.style.color = '#4f46e5';
-              e.currentTarget.style.borderColor = 'rgba(79,70,229,0.3)';
-            }}
-            onMouseLeave={e => {
-              e.currentTarget.style.background = 'none';
-              e.currentTarget.style.color = '#64748b';
-              e.currentTarget.style.borderColor = 'rgba(203,213,225,0.5)';
-            }}
-          >
-            <ScanEye size={14} />
-            <span>תמונה גדולה</span>
-          </button>
 
           {/* Logo — absolutely centered in the header, independent of other items */}
           <div

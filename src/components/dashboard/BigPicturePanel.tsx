@@ -4,7 +4,7 @@
  * Triggered via useUIStore.openBigPicture() — rendered once at app root.
  * Only fetches data when open.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -84,7 +84,6 @@ function TaskCard({ task, color }: { task: MedicalTask; color: string }) {
         ...(isActive ? { animation: 'bpPulse 3s ease-in-out infinite' } : {}),
       }}
     >
-      {/* Done checkmark */}
       {isDone && (
         <div style={{
           position: 'absolute', top: 10, left: 11,
@@ -98,7 +97,6 @@ function TaskCard({ task, color }: { task: MedicalTask; color: string }) {
         </div>
       )}
 
-      {/* Title */}
       <div style={{
         fontSize: '13px', fontWeight: 300, lineHeight: '1.4',
         color: isDone ? '#94a3b8' : '#0f172a', marginBottom: '7px',
@@ -114,7 +112,6 @@ function TaskCard({ task, color }: { task: MedicalTask; color: string }) {
         </div>
       )}
 
-      {/* Bottom row */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '11px' }}>
         <span style={{ fontSize: '11px', fontWeight: 300, color: '#94a3b8' }}>
           {task.progress}% · {doneMilestones}/{task.milestones.length}
@@ -133,7 +130,6 @@ function TaskCard({ task, color }: { task: MedicalTask; color: string }) {
         )}
       </div>
 
-      {/* In-progress bottom strip */}
       {isActive && (
         <div style={{ position: 'absolute', bottom: 0, left: 0, height: '2px', width: '100%', background: '#f1f5f9', overflow: 'hidden' }}>
           <div style={{ height: '100%', width: `${task.progress}%`, background: color, borderRadius: '0 2px 2px 0', transition: 'width 0.4s' }} />
@@ -144,7 +140,13 @@ function TaskCard({ task, color }: { task: MedicalTask; color: string }) {
 }
 
 // ── Tree canvas ───────────────────────────────────────────────────────────────
-function TreeCanvas({ tasks }: { tasks: MedicalTask[] }) {
+function TreeCanvas({
+  tasks,
+  treeRef,
+}: {
+  tasks: MedicalTask[];
+  treeRef: React.MutableRefObject<HTMLDivElement | null>;
+}) {
   const categories = [...new Set(tasks.map(t => t.category))];
   const N = categories.length;
 
@@ -155,8 +157,16 @@ function TreeCanvas({ tasks }: { tasks: MedicalTask[] }) {
   );
 
   return (
-    <div style={{ display: 'inline-block', padding: '40px' }}>
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 'max-content' }}>
+    <div
+      ref={treeRef}
+      style={{
+        display: 'inline-flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        padding: '24px',
+        // No width/height — shrinks to fit the cards
+      }}
+    >
       {/* Project root */}
       <div style={{
         padding: `${spacing.lg} ${spacing.xxxxl}`,
@@ -187,7 +197,6 @@ function TreeCanvas({ tasks }: { tasks: MedicalTask[] }) {
           const avg = catTasks.length ? Math.round(catTasks.reduce((s, t) => s + t.progress, 0) / catTasks.length) : 0;
           return (
             <div key={cat} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.xl }}>
-              {/* Category card */}
               <div style={{
                 padding: `${spacing.md} ${spacing.xl}`, background: '#ffffff',
                 border: '1px solid #e2e8f0', borderTop: `4px solid ${color}`,
@@ -199,7 +208,6 @@ function TreeCanvas({ tasks }: { tasks: MedicalTask[] }) {
 
               <div style={{ width: '1px', height: '20px', background: '#e2e8f0' }} />
 
-              {/* Tasks */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', alignItems: 'center' }}>
                 {catTasks.map((task, idx) => (
                   <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
@@ -213,83 +221,95 @@ function TreeCanvas({ tasks }: { tasks: MedicalTask[] }) {
         })}
       </div>
     </div>
-    </div>
   );
 }
 
-// ── Compute a scale that fits the content inside the viewport (90% fill) ──────
-function fitAndCenter(api: ReactZoomPanPinchRef, animTime = 0) {
+// ── Zoom the tree to fit, then center it ──────────────────────────────────────
+// Uses setTransform so it works correctly regardless of limitToBounds.
+function doFitAndCenter(
+  api: ReactZoomPanPinchRef,
+  treeEl: HTMLDivElement | null,
+  animTime = 0,
+) {
   const wrapper = api.instance.wrapperComponent;
   const content = api.instance.contentComponent;
-  if (wrapper && content) {
-    const sx = wrapper.clientWidth  / content.scrollWidth;
-    const sy = wrapper.clientHeight / content.scrollHeight;
-    const scale = Math.max(Math.min(sx, sy) * 0.9, 0.15);
-    api.centerView(scale, animTime);
-  } else {
-    api.centerView(0.7, animTime);
-  }
+  if (!wrapper || !content) return false;
+
+  const w = treeEl?.offsetWidth  || content.offsetWidth;
+  const h = treeEl?.offsetHeight || content.offsetHeight;
+  if (!w || !h) return false;
+
+  const ww = wrapper.clientWidth;
+  const wh = wrapper.clientHeight;
+  const scale = Math.min(Math.min(ww / w, wh / h) * 0.88, 1);
+  const x = (ww - w * scale) / 2;
+  const y = (wh - h * scale) / 2;
+
+  api.setTransform(x, y, scale, animTime);
+  return true;
 }
 
-interface LoaderProps {
+// ── Canvas — owns TransformWrapper + retry centering ─────────────────────────
+function TreeCanvas_Wrapper({
+  tasks,
+  treeRef,
+  transformRef,
+}: {
+  tasks: MedicalTask[];
+  treeRef: React.MutableRefObject<HTMLDivElement | null>;
   transformRef: React.MutableRefObject<ReactZoomPanPinchRef | null>;
-  onTasksReady: () => void;
-}
+}) {
+  // Retry centering up to 3 times once tasks + API are available
+  const centered = useRef(false);
 
-// ── Data loader — fetches only when mounted ───────────────────────────────────
-function TreeDataLoader({ transformRef, onTasksReady }: LoaderProps) {
-  const { user } = useAuth();
-  const { projects, loading: projectsLoading } = useProjects(user?.id);
-  const projectId = projects[0]?.id ?? null;
-  const { tasks, loading: tasksLoading } = useTasks(projectId);
+  const tryCenter = useCallback(() => {
+    if (centered.current) return;
+    if (!transformRef.current || !treeRef.current) return;
+    const ok = doFitAndCenter(transformRef.current, treeRef.current, 0);
+    if (ok) centered.current = true;
+  }, [transformRef, treeRef]);
 
-  const isLoading = projectsLoading || (!!projectId && tasksLoading);
-
-  // Notify parent once tasks are painted in DOM
   useEffect(() => {
     if (!tasks.length) return;
-    const id = setTimeout(onTasksReady, 100);
-    return () => clearTimeout(id);
-  }, [tasks, onTasksReady]);
-
-  if (isLoading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontWeight: 300, fontSize: '14px', gap: '10px' }}>
-      <div style={{ width: 20, height: 20, border: '2px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '9999px', animation: 'bpSpin 0.7s linear infinite' }} />
-      טוען...
-    </div>
-  );
-
-  if (!projectId) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontWeight: 300, fontSize: '14px' }}>
-      לא נמצאו נתונים לפרויקט זה
-    </div>
-  );
+    centered.current = false;
+    // Retry at 150ms, 400ms, 800ms to handle slow paint
+    const t1 = setTimeout(tryCenter, 150);
+    const t2 = setTimeout(tryCenter, 400);
+    const t3 = setTimeout(tryCenter, 800);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [tasks, tryCenter]);
 
   return (
     <TransformWrapper
       initialScale={1}
       minScale={0.15}
-      maxScale={2.5}
+      maxScale={3}
       limitToBounds={true}
       centerZoomedOut={true}
-      wheel={{ step: 0.07 }}
-      onInit={(ref) => { transformRef.current = ref; }}
+      wheel={{ step: 0.06 }}
+      panning={{ velocityDisabled: true }}
+      doubleClick={{ disabled: true }}
+      onInit={(ref) => {
+        transformRef.current = ref;
+        // Also try once on init (for re-opens)
+        setTimeout(() => tryCenter(), 200);
+      }}
     >
       {({ zoomIn, zoomOut }) => (
-        <div style={{ position: 'relative', width: '100%', height: '100%', background: '#f8fafc' }}>
+        <div style={{ position: 'relative', width: '100%', height: '100%' }}>
           <TransformComponent
             wrapperStyle={{ width: '100%', height: '100%', overflow: 'hidden', background: '#f8fafc' }}
-            contentStyle={{ display: 'inline-block' }}
+            contentStyle={{ display: 'inline-flex' }}
           >
-            <TreeCanvas tasks={tasks} />
+            <TreeCanvas tasks={tasks} treeRef={treeRef} />
           </TransformComponent>
 
-          {/* Zoom controls */}
-          <div style={{ position: 'absolute', top: '16px', left: '16px', display: 'flex', flexDirection: 'column', gap: '6px', zIndex: 10 }}>
+          {/* Controls */}
+          <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 10 }}>
             {[
-              { icon: <ZoomIn size={14} />,    fn: () => zoomIn(),                                            tip: 'הגדל' },
-              { icon: <ZoomOut size={14} />,   fn: () => zoomOut(),                                           tip: 'הקטן' },
-              { icon: <Maximize2 size={13} />, fn: () => transformRef.current && fitAndCenter(transformRef.current, 300), tip: 'מרכז' },
+              { icon: <ZoomIn size={14} />,    fn: () => zoomIn(),     tip: 'הגדל' },
+              { icon: <ZoomOut size={14} />,   fn: () => zoomOut(),    tip: 'הקטן' },
+              { icon: <Maximize2 size={13} />, fn: () => { centered.current = false; tryCenter(); }, tip: 'מרכז' },
             ].map(({ icon, fn, tip }) => (
               <button key={tip} onClick={fn} title={tip} style={{
                 width: 32, height: 32, background: '#ffffff', border: '1px solid #e2e8f0',
@@ -299,7 +319,11 @@ function TreeDataLoader({ transformRef, onTasksReady }: LoaderProps) {
             ))}
           </div>
 
-          <div style={{ position: 'absolute', bottom: '16px', left: '50%', transform: 'translateX(-50%)', fontSize: '11px', fontWeight: 300, color: '#94a3b8', fontFamily: typography.fontFamily, pointerEvents: 'none', whiteSpace: 'nowrap' }}>
+          <div style={{
+            position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
+            fontSize: '11px', fontWeight: 300, color: '#94a3b8',
+            fontFamily: typography.fontFamily, pointerEvents: 'none', whiteSpace: 'nowrap',
+          }}>
             גלול לזום · גרור לניווט
           </div>
         </div>
@@ -308,30 +332,47 @@ function TreeDataLoader({ transformRef, onTasksReady }: LoaderProps) {
   );
 }
 
+// ── Data loader — fetches only when mounted ───────────────────────────────────
+interface LoaderProps {
+  transformRef: React.MutableRefObject<ReactZoomPanPinchRef | null>;
+  treeRef: React.MutableRefObject<HTMLDivElement | null>;
+}
+
+function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
+  const { user } = useAuth();
+  const { projects, loading: projectsLoading } = useProjects(user?.id);
+  const projectId = projects[0]?.id ?? null;
+  const { tasks, loading: tasksLoading } = useTasks(projectId);
+
+  const isLoading = projectsLoading || (!!projectId && tasksLoading);
+
+  if (isLoading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontWeight: 300, fontSize: '14px', gap: '10px', background: '#f8fafc' }}>
+      <div style={{ width: 20, height: 20, border: '2px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '9999px', animation: 'bpSpin 0.7s linear infinite' }} />
+      טוען...
+    </div>
+  );
+
+  if (!projectId) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontWeight: 300, fontSize: '14px', background: '#f8fafc' }}>
+      לא נמצאו נתונים לפרויקט זה
+    </div>
+  );
+
+  return (
+    <TreeCanvas_Wrapper
+      tasks={tasks}
+      treeRef={treeRef}
+      transformRef={transformRef}
+    />
+  );
+}
+
 // ── Modal shell ───────────────────────────────────────────────────────────────
 function ModalShell({ onClose }: { onClose: () => void }) {
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
-  const animationDoneRef = useRef(false);
-  const tasksReadyRef = useRef(false);
+  const treeRef = useRef<HTMLDivElement | null>(null);
 
-  // Called by whichever arrives last — guarantees both modal and data are ready
-  function tryCenter() {
-    if (animationDoneRef.current && tasksReadyRef.current && transformRef.current) {
-      fitAndCenter(transformRef.current, 0);
-    }
-  }
-
-  function handleAnimationComplete() {
-    animationDoneRef.current = true;
-    tryCenter();
-  }
-
-  const handleTasksReady = useRef(() => {
-    tasksReadyRef.current = true;
-    tryCenter();
-  }).current;
-
-  // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
@@ -342,51 +383,40 @@ function ModalShell({ onClose }: { onClose: () => void }) {
     <>
       <style>{KEYFRAMES}</style>
 
-      {/* Backdrop */}
-      <motion.div
-        key="bp-backdrop"
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.2 }}
+      {/* Solid backdrop — blocks all interaction with dashboard below */}
+      <div
         onClick={onClose}
         style={{
           position: 'fixed', inset: 0,
-          background: 'rgba(15, 23, 42, 0.4)',
-          backdropFilter: 'blur(12px)',
-          WebkitBackdropFilter: 'blur(12px)',
-          zIndex: 1200,
+          background: 'rgba(15, 23, 42, 0.55)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+          zIndex: 9000,
         }}
       />
 
-      {/* Modal panel — centering wrapper (plain div, no transform conflicts) */}
-      <div
-        style={{
-          position: 'fixed', inset: 0,
-          zIndex: 1201,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'none',
-        }}
-      >
+      {/* Modal */}
       <motion.div
         key="bp-modal"
-        initial={{ opacity: 0, scale: 0.96, y: 12 }}
+        initial={{ opacity: 0, scale: 0.97, y: 10 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.96, y: 12 }}
-        transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
-        onAnimationComplete={handleAnimationComplete}
+        exit={{ opacity: 0, scale: 0.97, y: 10 }}
+        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
         style={{
+          position: 'fixed',
+          top: '50%', left: '50%',
+          transform: 'translate(-50%, -50%)',
           width: '95vw', height: '90vh',
           background: '#ffffff',
           borderRadius: '16px',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.06)',
+          boxShadow: '0 32px 80px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.07)',
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          pointerEvents: 'auto',
+          zIndex: 9001,
         }}
       >
-        {/* Modal header */}
+        {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '16px 20px',
@@ -408,8 +438,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
               background: 'none', border: '1px solid #e2e8f0',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: colors.text.tertiary,
-              transition: 'background 0.15s, color 0.15s',
-              padding: 0,
+              transition: 'background 0.15s, color 0.15s', padding: 0,
             }}
             onMouseEnter={e => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#0f172a'; }}
             onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = colors.text.tertiary; }}
@@ -418,12 +447,11 @@ function ModalShell({ onClose }: { onClose: () => void }) {
           </button>
         </div>
 
-        {/* Canvas — fills remaining height */}
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative', background: '#f8fafc' }}>
-          <TreeDataLoader transformRef={transformRef} onTasksReady={handleTasksReady} />
+        {/* Canvas */}
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+          <TreeDataLoader transformRef={transformRef} treeRef={treeRef} />
         </div>
       </motion.div>
-      </div>
     </>
   );
 }
