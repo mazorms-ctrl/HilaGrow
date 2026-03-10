@@ -309,7 +309,7 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
       style={{
         width: w, minWidth: w, maxWidth: w,
         background: T.bg,
-        color: T.text,
+        color: T.title,
         display: 'flex', flexDirection: 'column',
         borderLeft: `1px solid ${T.border}`,
         boxShadow: '-2px 0 12px rgba(0,0,0,0.04)',
@@ -350,7 +350,7 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
         {!collapsed && (
           <div style={{ overflow: 'hidden', flex: 1, minWidth: 0, direction: 'rtl' }}>
             <div style={{
-              fontSize: '12.5px', fontWeight: 300, color: T.text,
+              fontSize: '12.5px', fontWeight: 300, color: T.title,
               whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
             }}>
               {profile?.full_name || user.email || ''}
