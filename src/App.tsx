@@ -1391,13 +1391,13 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
                 aria-pressed={!taskMatch && viewMode === mode}
                 style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
-                title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'מרכז פיקוד' : undefined}
+                title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
                 onMouseEnter={(e) => { elevateHeaderButton(e, ''); }}
                 onMouseLeave={(e) => { resetHeaderButton(e, ''); }}
               >
                 <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                   {mode === 'tree' && <TreePine size={14} aria-hidden="true" />}
-                  {mode === 'command' ? 'מרכז פיקוד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
+                  {mode === 'command' ? 'עמוד הבית' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
                 </span>
               </button>
             ))}
@@ -1521,11 +1521,11 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
                   aria-pressed={!taskMatch && viewMode === mode}
                   style={{...getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'mobile'), minHeight: '44px'}}
-                  title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'מרכז פיקוד' : undefined}
+                  title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
                 >
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}>
                     {mode === 'tree' && <TreePine size={18} aria-hidden="true" />}
-                    {mode === 'command' ? 'מרכז פיקוד' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
+                    {mode === 'command' ? 'עמוד הבית' : mode === 'rows' ? 'משימות' : 'התמונה הגדולה'}
                   </span>
                 </button>
               ))}
@@ -4739,7 +4739,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 </h3>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   {[
-                    { keys: ['1'], desc: 'מרכז פיקוד' },
+                    { keys: ['1'], desc: 'עמוד הבית' },
                     { keys: ['2'], desc: 'משימות' },
                     { keys: ['3'], desc: 'התמונה הגדולה' }
                   ].map((item, idx) => (

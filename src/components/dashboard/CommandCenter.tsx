@@ -109,7 +109,7 @@ function DashboardContent() {
             fontFamily: typography.fontFamily,
           }}
         >
-          מרכז פיקוד
+          עמוד הבית
         </h2>
         <p
           style={{
