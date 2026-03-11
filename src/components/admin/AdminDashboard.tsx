@@ -4,30 +4,34 @@ import { useAuth } from '@/contexts/AuthContext';
 
 // ── Types ─────────────────────────────────────────────────────
 
+type UserRole = 'admin' | 'assignee' | 'participant' | 'user';
+
 interface UserRow {
   id: string;
   email: string;
   full_name: string | null;
-  role: 'admin' | 'user';
+  role: UserRole;
   created_at: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────
 
-function Badge({ role }: { role: 'admin' | 'user' }) {
+function Badge({ role }: { role: UserRole }) {
+  const map: Record<UserRole, { bg: string; color: string; border: string; label: string }> = {
+    admin:       { bg: '#DBEAFE', color: '#1D4ED8', border: '#BFDBFE', label: 'Admin' },
+    assignee:    { bg: '#DCFCE7', color: '#15803D', border: '#BBF7D0', label: 'Assignee' },
+    participant: { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0', label: 'Participant' },
+    user:        { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0', label: 'Participant' },
+  };
+  const s = map[role] ?? map.participant;
   return (
     <span style={{
-      display: 'inline-flex',
-      alignItems: 'center',
-      padding: '2px 10px',
-      borderRadius: '999px',
-      fontSize: '12px',
-      fontWeight: 600,
-      background: role === 'admin' ? '#DBEAFE' : '#F1F5F9',
-      color: role === 'admin' ? '#1D4ED8' : '#475569',
-      border: role === 'admin' ? '1px solid #BFDBFE' : '1px solid #E2E8F0',
+      display: 'inline-flex', alignItems: 'center',
+      padding: '2px 10px', borderRadius: '999px',
+      fontSize: '12px', fontWeight: 600,
+      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
     }}>
-      {role === 'admin' ? 'Admin' : 'User'}
+      {s.label}
     </span>
   );
 }
@@ -42,7 +46,7 @@ function NewUserForm({ onCreated }: NewUserFormProps) {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [role, setRole]         = useState<'user' | 'admin'>('user');
+  const [role, setRole]         = useState<UserRole>('participant');
   const [busy, setBusy]         = useState(false);
   const [error, setError]       = useState<string | null>(null);
   const [success, setSuccess]   = useState(false);
@@ -53,8 +57,6 @@ function NewUserForm({ onCreated }: NewUserFormProps) {
     setSuccess(false);
     setBusy(true);
     try {
-      // Create user via Supabase Auth admin API (service role not available
-      // client-side, so we use signUp which sends a confirmation email).
       const { data, error: signUpErr } = await supabase.auth.signUp({
         email,
         password,
@@ -62,17 +64,17 @@ function NewUserForm({ onCreated }: NewUserFormProps) {
       });
       if (signUpErr) throw signUpErr;
 
-      // If role is admin, update the profile row that the trigger created.
-      if (role === 'admin' && data.user) {
+      // Always write the selected role (trigger defaults to 'participant', but be explicit)
+      if (data.user) {
         const { error: roleErr } = await supabase
           .from('profiles')
-          .update({ role: 'admin' })
+          .update({ role })
           .eq('id', data.user.id);
         if (roleErr) throw roleErr;
       }
 
       setSuccess(true);
-      setEmail(''); setPassword(''); setFullName(''); setRole('user');
+      setEmail(''); setPassword(''); setFullName(''); setRole('participant');
       onCreated();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'שגיאה ביצירת המשתמש');
@@ -121,10 +123,11 @@ function NewUserForm({ onCreated }: NewUserFormProps) {
           <label style={labelStyle}>תפקיד</label>
           <select
             value={role}
-            onChange={e => setRole(e.target.value as 'user' | 'admin')}
+            onChange={e => setRole(e.target.value as UserRole)}
             style={inputStyle}
           >
-            <option value="user">User</option>
+            <option value="participant">Participant</option>
+            <option value="assignee">Assignee</option>
             <option value="admin">Admin</option>
           </select>
         </div>
@@ -149,7 +152,7 @@ export function AdminDashboard() {
   const [users, setUsers]       = useState<UserRow[]>([]);
   const [loading, setLoading]   = useState(true);
   const [search, setSearch]     = useState('');
-  const [busy, setBusy]         = useState<string | null>(null); // userId being updated
+  const [busy, setBusy]         = useState<string | null>(null);
   const [error, setError]       = useState<string | null>(null);
   const [showNewUser, setShowNewUser] = useState(false);
 
@@ -166,8 +169,7 @@ export function AdminDashboard() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  async function toggleRole(user: UserRow) {
-    const newRole = user.role === 'admin' ? 'user' : 'admin';
+  async function setUserRole(user: UserRow, newRole: 'participant' | 'assignee' | 'admin') {
     setBusy(user.id);
     const { error } = await supabase
       .from('profiles')
@@ -178,24 +180,14 @@ export function AdminDashboard() {
     setBusy(null);
   }
 
-  async function revokeAccess(user: UserRow) {
-    if (!confirm(`האם לבטל גישה למשתמש ${user.email}?`)) return;
-    setBusy(user.id);
-    // Downgrade to 'user' role — actual account deletion requires service role key
-    // so we demote and let the admin handle deletion via Supabase dashboard if needed.
-    const { error } = await supabase
-      .from('profiles')
-      .update({ role: 'user' })
-      .eq('id', user.id);
-    if (error) setError(error.message);
-    else setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: 'user' } : u));
-    setBusy(null);
-  }
-
   const filtered = users.filter(u =>
     u.email.toLowerCase().includes(search.toLowerCase()) ||
     (u.full_name ?? '').toLowerCase().includes(search.toLowerCase())
   );
+
+  const adminCount       = users.filter(u => u.role === 'admin').length;
+  const assigneeCount    = users.filter(u => u.role === 'assignee').length;
+  const participantCount = users.filter(u => u.role === 'participant' || u.role === 'user').length;
 
   return (
     <div dir="rtl" style={{ minHeight: '100vh', background: '#F8FAFC', fontFamily: 'Rubik, sans-serif' }}>
@@ -211,7 +203,7 @@ export function AdminDashboard() {
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <span style={{ fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>ניהול מערכת</span>
+          <span style={{ fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>ניהול צוות</span>
           <span style={{ fontSize: '12px', background: '#DBEAFE', color: '#1D4ED8', padding: '2px 10px', borderRadius: '999px', fontWeight: 600 }}>Admin</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -223,11 +215,12 @@ export function AdminDashboard() {
       <main style={{ maxWidth: '960px', margin: '0 auto', padding: '32px 24px' }}>
 
         {/* ── Stats row ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', marginBottom: '32px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '32px' }}>
           {[
             { label: 'סה״כ משתמשים', value: users.length },
-            { label: 'מנהלים', value: users.filter(u => u.role === 'admin').length },
-            { label: 'משתמשים רגילים', value: users.filter(u => u.role === 'user').length },
+            { label: 'מנהלים',        value: adminCount },
+            { label: 'Assignees',      value: assigneeCount },
+            { label: 'Participants',   value: participantCount },
           ].map(stat => (
             <div key={stat.label} style={cardStyle}>
               <p style={{ fontSize: '28px', fontWeight: 700, color: '#0F172A', margin: 0 }}>{stat.value}</p>
@@ -279,7 +272,7 @@ export function AdminDashboard() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                 <thead>
                   <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                    {['שם', 'אימייל', 'תפקיד', 'הצטרף', 'פעולות'].map(h => (
+                    {['שם', 'אימייל', 'תפקיד', 'הצטרף', 'שינוי תפקיד'].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#64748B', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -301,32 +294,35 @@ export function AdminDashboard() {
                         {new Date(user.created_at).toLocaleDateString('he-IL')}
                       </td>
                       <td style={{ padding: '12px' }}>
-                        <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
-                          {/* Don't allow self-demotion */}
-                          {user.email !== 'mazorms@gmail.com' && (
-                            <>
-                              <button
-                                onClick={() => toggleRole(user)}
-                                disabled={busy === user.id}
-                                style={smallBtnStyle}
-                                title={user.role === 'admin' ? 'הסר הרשאת מנהל' : 'הענק הרשאת מנהל'}
-                              >
-                                {busy === user.id ? '...' : user.role === 'admin' ? 'הסר Admin' : 'הפוך ל-Admin'}
-                              </button>
-                              <button
-                                onClick={() => revokeAccess(user)}
-                                disabled={busy === user.id}
-                                style={{ ...smallBtnStyle, color: '#DC2626', borderColor: '#FECACA' }}
-                                title="בטל גישה"
-                              >
-                                בטל גישה
-                              </button>
-                            </>
-                          )}
-                          {user.email === 'mazorms@gmail.com' && (
-                            <span style={{ fontSize: '12px', color: '#94A3B8' }}>Super Admin</span>
-                          )}
-                        </div>
+                        {user.email === 'mazorms@gmail.com' ? (
+                          <span style={{ fontSize: '12px', color: '#94A3B8' }}>Super Admin</span>
+                        ) : (
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={() => setUserRole(user, 'assignee')}
+                              disabled={busy === user.id || user.role === 'assignee'}
+                              style={{
+                                ...smallBtnStyle,
+                                background: user.role === 'assignee' ? '#DCFCE7' : undefined,
+                                color: user.role === 'assignee' ? '#15803D' : undefined,
+                                borderColor: user.role === 'assignee' ? '#BBF7D0' : undefined,
+                              }}
+                            >
+                              Assignee
+                            </button>
+                            <button
+                              onClick={() => setUserRole(user, 'participant')}
+                              disabled={busy === user.id || user.role === 'participant' || user.role === 'user'}
+                              style={{
+                                ...smallBtnStyle,
+                                background: (user.role === 'participant' || user.role === 'user') ? '#F1F5F9' : undefined,
+                                color: (user.role === 'participant' || user.role === 'user') ? '#475569' : undefined,
+                              }}
+                            >
+                              Participant
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

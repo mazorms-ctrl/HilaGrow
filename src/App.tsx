@@ -282,7 +282,7 @@ const initialTasks = [
 // Type for medical task to match TasksDashboard expectations
 
 function App() {
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, isAdmin, isParticipant, signOut } = useAuth();
   const navigate = useNavigate();
   // Detect task page route — renders TaskPageContent inside the normal layout
   const taskMatch = useMatch('/task/:taskId');
@@ -305,6 +305,9 @@ function App() {
   // Load tasks from Supabase for the effective project (null = no fetch)
   const { tasks: supabaseTasks } = useTasks(user ? effectiveProjectId : null);
 
+  // canEdit: admin can edit any task; everyone else only edits tasks they created
+  const canEdit = isAdmin || (!!selectedTask && selectedTask.createdBy === user?.id);
+
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
   const tasks = user
@@ -312,6 +315,15 @@ function App() {
     : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
+
+  // Participants land on the Big Picture view rather than the command center
+  useEffect(() => {
+    if (isParticipant && viewMode === 'command') {
+      setViewMode('tree');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isParticipant]);
+
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
@@ -3511,14 +3523,24 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               </button>
             </div>
 
-            <div style={{ 
-              padding: '24px', 
+            <div style={{
+              padding: '24px',
               display: 'flex',
               flexDirection: 'column',
               fontFamily: 'Rubik',
               fontWeight: '500',
               color: 'rgba(10, 10, 10, 1)',
             }}>
+              {/* Read-only notice for non-owners */}
+              {user && !canEdit && (
+                <div style={{
+                  background: '#fefce8', border: '1px solid #fde68a',
+                  borderRadius: '8px', padding: '10px 16px',
+                  fontSize: '13px', color: '#92400e', marginBottom: '16px',
+                }}>
+                  אתה צופה בפרויקט זה במצב קריאה בלבד
+                </div>
+              )}
               {/* Stepper Progress Bar */}
               <div style={{ marginBottom: '32px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -4304,7 +4326,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   ← הקודם
                 </button>
 
-                {user && (
+                {user && canEdit && (
                   <button
                     onClick={handleSaveTask}
                     style={{

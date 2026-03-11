@@ -10,13 +10,16 @@ export interface Profile {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
-  role: 'admin' | 'user';
+  role: 'admin' | 'assignee' | 'participant' | 'user';
+  department: string | null;
 }
 
 interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
   isAdmin: boolean;
+  isAssignee: boolean;
+  isParticipant: boolean;
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, fullName?: string) => Promise<void>;
@@ -37,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function fetchProfile(userId: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, full_name, avatar_url, role')
+      .select('id, email, full_name, avatar_url, role, department')
       .eq('id', userId)
       .maybeSingle();
     setProfile(data ?? null);
@@ -88,11 +91,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }
 
-  const isAdmin = profile?.role === 'admin';
+  const isAdmin       = profile?.role === 'admin';
+  const isAssignee    = profile?.role === 'assignee';
+  const isParticipant = profile?.role === 'participant' || profile?.role === 'user';
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, isAdmin, loading, signInWithEmail, signUpWithEmail, signOut }}
+      value={{ user, profile, isAdmin, isAssignee, isParticipant, loading, signInWithEmail, signUpWithEmail, signOut }}
     >
       {children}
     </AuthContext.Provider>
