@@ -555,13 +555,25 @@ export function useTasks(projectId: string | null) {
       const taskIds = allTaskRows.map(t => t.id);
       if (taskIds.length === 0) return [] as MedicalTask[];
 
-      // Milestones + participants in parallel
-      const [{ data: milestones, error: mError }, { data: participantRows }] = await Promise.all([
+      // Collect assigned_to UUIDs to resolve live full_names from profiles
+      const assignedIds = [...new Set(allTaskRows.map(t => t.assigned_to).filter(Boolean) as string[])];
+
+      // Milestones + participants + profile names in parallel
+      const [{ data: milestones, error: mError }, { data: participantRows }, { data: profileRows }] = await Promise.all([
         supabase.from('milestones').select('*').in('task_id', taskIds).order('order', { ascending: true }),
         supabase.from('task_participants').select('task_id, profile_id').in('task_id', taskIds),
+        assignedIds.length > 0
+          ? supabase.from('profiles').select('id, full_name').in('id', assignedIds)
+          : Promise.resolve({ data: [] as { id: string; full_name: string | null }[], error: null }),
       ]);
 
       if (mError) throw mError;
+
+      // UUID → live full_name map
+      const profileNameMap = new Map<string, string>();
+      (profileRows || []).forEach(p => {
+        if (p.id && p.full_name) profileNameMap.set(p.id, p.full_name);
+      });
 
       const milestonesByTask = new Map<string, MilestoneRow[]>();
       (milestones || []).forEach(m => {
@@ -579,7 +591,13 @@ export function useTasks(projectId: string | null) {
         .map(task => {
           const group = groupMap.get(task.group_id);
           if (!group) return null;
-          return dbRowToMedicalTask(task, group, milestonesByTask.get(task.id) || [], participantsByTask.get(task.id) || []);
+          // Only resolve a name when there is an active assigned_to UUID.
+          // Falling back to stored owner_name when assigned_to is null would
+          // show stale/ghost names on tasks that were unassigned after the fact.
+          const liveOwnerName = task.assigned_to
+            ? (profileNameMap.get(task.assigned_to) ?? task.owner_name)
+            : null;
+          return dbRowToMedicalTask({ ...task, owner_name: liveOwnerName }, group, milestonesByTask.get(task.id) || [], participantsByTask.get(task.id) || []);
         })
         .filter(Boolean) as MedicalTask[];
     },

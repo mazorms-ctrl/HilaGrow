@@ -1,4 +1,4 @@
-import { LogOut, ChevronRight, AlertCircle, Target, CheckSquare } from 'lucide-react';
+import { LogOut, ChevronRight, AlertCircle, Target, CheckSquare, ShieldAlert } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   useMyLeadInitiatives,
@@ -42,6 +42,7 @@ const T = {
 interface Props {
   user: User;
   profile: Profile | null;
+  isAdmin?: boolean;
   onSignOut: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
@@ -288,7 +289,7 @@ function CollapsedDot({
 }
 
 // ── Main Sidebar ───────────────────────────────────────────────────────────────
-export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse }: Props) {
+export function Sidebar({ user, profile, isAdmin = false, onSignOut, collapsed, onToggleCollapse }: Props) {
   const { initiatives, loading: initLoading } = useMyLeadInitiatives();
   const { milestones: myMilestones, loading: milestonesLoading } = useMyAssignedMilestones();
   const navigate = useNavigate();
@@ -515,6 +516,27 @@ export function Sidebar({ user, profile, onSignOut, collapsed, onToggleCollapse 
           />
           {!collapsed && <span>כווץ תפריט</span>}
         </button>
+
+        {isAdmin && (
+          <button
+            onClick={() => navigate('/admin')}
+            title="ניהול מערכת"
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '10px',
+              padding: collapsed ? '8px 0' : '7px 8px',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              background: 'transparent', color: T.blue, border: 'none',
+              borderRadius: '6px', cursor: 'pointer',
+              fontSize: '11.5px', fontWeight: 500,
+              fontFamily: 'inherit', transition: 'background 0.14s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.blueSoft; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+          >
+            <ShieldAlert size={12} style={{ flexShrink: 0 }} />
+            {!collapsed && <span>ניהול מערכת</span>}
+          </button>
+        )}
 
         <button
           onClick={onSignOut}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 function Spinner() {
   return (
@@ -14,38 +15,44 @@ interface Props {
   onClose: () => void;
 }
 
+type Mode = 'login' | 'register' | 'forgot';
+
 export function LoginModal({ onClose }: Props) {
   const { user, signInWithEmail, signUpWithEmail } = useAuth();
 
-  // Close automatically once the user is authenticated
   useEffect(() => {
     if (user) onClose();
   }, [user, onClose]);
 
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
+  const [mode, setMode]       = useState<Mode>('login');
+  const [email, setEmail]     = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [info, setInfo] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const [info, setInfo]       = useState<string | null>(null);
+  const [busy, setBusy]       = useState(false);
 
-  function clearMessages() {
-    setError(null);
-    setInfo(null);
-  }
+  function clearMessages() { setError(null); setInfo(null); }
 
-  async function handleSubmit(e: React.FormEvent) {
+  function switchMode(next: Mode) { setMode(next); clearMessages(); }
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     clearMessages();
     setBusy(true);
     try {
       if (mode === 'login') {
         await signInWithEmail(email, password);
-        // onClose() triggered by useEffect above when user state updates
-      } else {
+      } else if (mode === 'register') {
         await signUpWithEmail(email, password, fullName);
         setInfo('נשלח אימייל אימות — בדוק את תיבת הדואר שלך.');
+      } else {
+        // forgot password
+        const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: `${window.location.origin}/reset-password`,
+        });
+        if (resetErr) throw resetErr;
+        setInfo('נשלח קישור לאיפוס סיסמה — בדוק את תיבת הדואר שלך.');
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'אירעה שגיאה, נסה שנית.');
@@ -54,36 +61,31 @@ export function LoginModal({ onClose }: Props) {
     }
   }
 
+  const titles: Record<Mode, string> = {
+    login:    'כניסה לחשבון',
+    register: 'יצירת חשבון חדש',
+    forgot:   'איפוס סיסמה',
+  };
+
   return (
     <div
       style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0, 0, 0, 0.45)',
-        backdropFilter: 'blur(6px)',
-        WebkitBackdropFilter: 'blur(6px)',
-        zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
+        position: 'fixed', inset: 0,
+        background: 'rgba(0,0,0,0.45)',
+        backdropFilter: 'blur(6px)', WebkitBackdropFilter: 'blur(6px)',
+        zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center',
         padding: '16px',
       }}
       onClick={onClose}
     >
-      <div
-        dir="rtl"
-        style={{ width: '100%', maxWidth: '448px' }}
-        onClick={e => e.stopPropagation()}
-      >
+      <div dir="rtl" style={{ width: '100%', maxWidth: '448px' }} onClick={e => e.stopPropagation()}>
         <div className="bg-white rounded-2xl shadow-2xl p-8 space-y-6">
 
           {/* Header */}
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <h1 className="text-2xl font-bold text-gray-900">GROW</h1>
-              <p className="text-sm text-gray-500">
-                {mode === 'login' ? 'כניסה לחשבון' : 'יצירת חשבון חדש'}
-              </p>
+              <p className="text-sm text-gray-500">{titles[mode]}</p>
             </div>
             <button
               type="button"
@@ -97,7 +99,7 @@ export function LoginModal({ onClose }: Props) {
             </button>
           </div>
 
-          {/* Email / password form */}
+          {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
 
             {mode === 'register' && (
@@ -126,19 +128,38 @@ export function LoginModal({ onClose }: Props) {
               />
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-sm font-medium text-gray-700">סיסמה</label>
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="לפחות 6 תווים"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                dir="ltr"
-              />
-            </div>
+            {mode !== 'forgot' && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700">סיסמה</label>
+                  {mode === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => switchMode('forgot')}
+                      className="text-xs text-blue-600 hover:underline"
+                    >
+                      שכחת סיסמה?
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="לפחות 6 תווים"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  dir="ltr"
+                />
+              </div>
+            )}
+
+            {mode === 'forgot' && (
+              <p className="text-xs text-gray-500">
+                נשלח אליך קישור לאיפוס הסיסמה לכתובת האימייל שהזנת.
+              </p>
+            )}
 
             {error && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
@@ -157,21 +178,35 @@ export function LoginModal({ onClose }: Props) {
               className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {busy && <Spinner />}
-              {mode === 'login' ? 'כניסה' : 'הרשמה'}
+              {mode === 'login' ? 'כניסה' : mode === 'register' ? 'הרשמה' : 'שלח קישור לאיפוס'}
             </button>
           </form>
 
-          {/* Toggle login / register */}
-          <p className="text-center text-sm text-gray-500">
-            {mode === 'login' ? 'אין לך חשבון?' : 'יש לך חשבון?'}{' '}
-            <button
-              type="button"
-              onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); clearMessages(); }}
-              className="text-blue-600 font-medium hover:underline"
-            >
-              {mode === 'login' ? 'הרשמה' : 'כניסה'}
-            </button>
-          </p>
+          {/* Footer links */}
+          <div className="text-center text-sm text-gray-500 space-y-2">
+            {mode === 'forgot' ? (
+              <p>
+                <button
+                  type="button"
+                  onClick={() => switchMode('login')}
+                  className="text-blue-600 font-medium hover:underline"
+                >
+                  ← חזרה לכניסה
+                </button>
+              </p>
+            ) : (
+              <p>
+                {mode === 'login' ? 'אין לך חשבון?' : 'יש לך חשבון?'}{' '}
+                <button
+                  type="button"
+                  onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
+                  className="text-blue-600 font-medium hover:underline"
+                >
+                  {mode === 'login' ? 'הרשמה' : 'כניסה'}
+                </button>
+              </p>
+            )}
+          </div>
 
         </div>
       </div>
