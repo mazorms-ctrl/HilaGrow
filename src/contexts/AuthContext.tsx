@@ -12,6 +12,7 @@ export interface Profile {
   avatar_url: string | null;
   role: 'admin' | 'assignee' | 'participant' | 'user';
   department: string | null;
+  position: string | null;
 }
 
 interface AuthContextValue {
@@ -22,7 +23,13 @@ interface AuthContextValue {
   isParticipant: boolean;
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  signUpWithEmail: (email: string, password: string, fullName?: string) => Promise<void>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    fullName?: string,
+    department?: string,
+    position?: string
+  ) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -40,21 +47,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function fetchProfile(userId: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, full_name, avatar_url, role')
+      .select('id, email, full_name, avatar_url, role, department, position')
       .eq('id', userId)
       .maybeSingle();
     setProfile(data ?? null);
   }
 
   useEffect(() => {
-    // Load existing session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
       setLoading(false);
     });
 
-    // Keep state in sync with Supabase Auth events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
@@ -75,15 +80,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }
 
-  async function signUpWithEmail(email: string, password: string, fullName?: string) {
-    const { error } = await supabase.auth.signUp({
+  async function signUpWithEmail(
+    email: string,
+    password: string,
+    fullName?: string,
+    department?: string,
+    position?: string
+  ) {
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { full_name: fullName ?? '' },
-      },
+      options: { data: { full_name: fullName ?? '' } },
     });
     if (error) throw error;
+
+    // Save department + position to the profile row the trigger just created
+    if (data.user && (department || position)) {
+      await supabase
+        .from('profiles')
+        .update({
+          ...(department ? { department } : {}),
+          ...(position   ? { position }   : {}),
+        })
+        .eq('id', data.user.id);
+    }
   }
 
   async function signOut() {

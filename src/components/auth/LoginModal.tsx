@@ -24,30 +24,44 @@ export function LoginModal({ onClose }: Props) {
     if (user) onClose();
   }, [user, onClose]);
 
-  const [mode, setMode]       = useState<Mode>('login');
-  const [email, setEmail]     = useState('');
+  const [mode, setMode]         = useState<Mode>('login');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
-  const [error, setError]     = useState<string | null>(null);
-  const [info, setInfo]       = useState<string | null>(null);
-  const [busy, setBusy]       = useState(false);
+  const [department, setDepartment] = useState('');
+  const [position, setPosition]     = useState('');
+  const [touched, setTouched]       = useState({ department: false, position: false });
+  const [error, setError]       = useState<string | null>(null);
+  const [info, setInfo]         = useState<string | null>(null);
+  const [busy, setBusy]         = useState(false);
 
   function clearMessages() { setError(null); setInfo(null); }
-
-  function switchMode(next: Mode) { setMode(next); clearMessages(); }
+  function switchMode(next: Mode) {
+    setMode(next);
+    clearMessages();
+    setTouched({ department: false, position: false });
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     clearMessages();
+
+    // Manual validation for register fields
+    if (mode === 'register') {
+      if (!department.trim() || !position.trim()) {
+        setTouched({ department: true, position: true });
+        return;
+      }
+    }
+
     setBusy(true);
     try {
       if (mode === 'login') {
         await signInWithEmail(email, password);
       } else if (mode === 'register') {
-        await signUpWithEmail(email, password, fullName);
+        await signUpWithEmail(email, password, fullName, department.trim(), position.trim());
         setInfo('נשלח אימייל אימות — בדוק את תיבת הדואר שלך.');
       } else {
-        // forgot password
         const { error: resetErr } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/reset-password`,
         });
@@ -102,6 +116,7 @@ export function LoginModal({ onClose }: Props) {
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-4">
 
+            {/* Full name — register only */}
             {mode === 'register' && (
               <div className="space-y-1">
                 <label className="block text-sm font-medium text-gray-700">שם מלא</label>
@@ -115,6 +130,7 @@ export function LoginModal({ onClose }: Props) {
               </div>
             )}
 
+            {/* Email */}
             <div className="space-y-1">
               <label className="block text-sm font-medium text-gray-700">כתובת אימייל</label>
               <input
@@ -128,6 +144,50 @@ export function LoginModal({ onClose }: Props) {
               />
             </div>
 
+            {/* Department + Position — register only, between email and password */}
+            {mode === 'register' && (
+              <>
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    מחלקה <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={department}
+                    onChange={e => { setDepartment(e.target.value); setTouched(t => ({ ...t, department: true })); }}
+                    onBlur={() => setTouched(t => ({ ...t, department: true }))}
+                    placeholder="למשל: נוירולוגיה, אדמיניסטרציה..."
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      touched.department && !department.trim() ? 'border-red-400' : 'border-gray-300'
+                    }`}
+                  />
+                  {touched.department && !department.trim() && (
+                    <p className="text-xs text-red-500 mt-1">שדה חובה</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-sm font-medium text-gray-700">
+                    תפקיד <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={position}
+                    onChange={e => { setPosition(e.target.value); setTouched(t => ({ ...t, position: true })); }}
+                    onBlur={() => setTouched(t => ({ ...t, position: true }))}
+                    placeholder="למשל: רופא בכיר, חוקר..."
+                    className={`w-full px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                      touched.position && !position.trim() ? 'border-red-400' : 'border-gray-300'
+                    }`}
+                  />
+                  {touched.position && !position.trim() && (
+                    <p className="text-xs text-red-500 mt-1">שדה חובה</p>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Password */}
             {mode !== 'forgot' && (
               <div className="space-y-1">
                 <div className="flex items-center justify-between">
@@ -186,22 +246,14 @@ export function LoginModal({ onClose }: Props) {
           <div className="text-center text-sm text-gray-500 space-y-2">
             {mode === 'forgot' ? (
               <p>
-                <button
-                  type="button"
-                  onClick={() => switchMode('login')}
-                  className="text-blue-600 font-medium hover:underline"
-                >
+                <button type="button" onClick={() => switchMode('login')} className="text-blue-600 font-medium hover:underline">
                   ← חזרה לכניסה
                 </button>
               </p>
             ) : (
               <p>
                 {mode === 'login' ? 'אין לך חשבון?' : 'יש לך חשבון?'}{' '}
-                <button
-                  type="button"
-                  onClick={() => switchMode(mode === 'login' ? 'register' : 'login')}
-                  className="text-blue-600 font-medium hover:underline"
-                >
+                <button type="button" onClick={() => switchMode(mode === 'login' ? 'register' : 'login')} className="text-blue-600 font-medium hover:underline">
                   {mode === 'login' ? 'הרשמה' : 'כניסה'}
                 </button>
               </p>

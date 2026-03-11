@@ -12,6 +12,8 @@ interface UserRow {
   email: string;
   full_name: string | null;
   role: UserRole;
+  department: string | null;
+  position: string | null;
   created_at: string;
 }
 
@@ -131,7 +133,7 @@ export function AdminDashboard() {
     setLoading(true);
     const { data, error } = await supabase
       .from('profiles')
-      .select('id, email, full_name, role, created_at')
+      .select('id, email, full_name, role, department, position, created_at')
       .order('created_at', { ascending: false });
     if (error) setError(error.message);
     else setUsers((data as UserRow[]) ?? []);
@@ -252,7 +254,7 @@ export function AdminDashboard() {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                 <thead>
                   <tr style={{ borderBottom: '2px solid #F1F5F9' }}>
-                    {['שם', 'אימייל', 'תפקיד', 'הצטרף', 'שינוי תפקיד', ''].map(h => (
+                    {['שם', 'אימייל', 'מחלקה', 'תפקיד', 'הרשאה', 'הצטרף', 'שינוי הרשאה', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#64748B', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
@@ -272,6 +274,12 @@ export function AdminDashboard() {
                           {user.full_name ?? <span style={{ color: '#CBD5E1' }}>—</span>}
                         </td>
                         <td style={{ padding: '12px', color: '#475569', direction: 'ltr', textAlign: 'right' }}>{user.email}</td>
+                        <td style={{ padding: '12px', color: '#475569', fontSize: '13px' }}>
+                          {user.department ?? <span style={{ color: '#CBD5E1' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '12px', color: '#475569', fontSize: '13px' }}>
+                          {user.position ?? <span style={{ color: '#CBD5E1' }}>—</span>}
+                        </td>
                         <td style={{ padding: '12px' }}><Badge role={user.role} /></td>
                         <td style={{ padding: '12px', color: '#94A3B8', fontSize: '12px', whiteSpace: 'nowrap' }}>
                           {new Date(user.created_at).toLocaleDateString('he-IL')}
