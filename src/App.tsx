@@ -390,6 +390,16 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     }
   }, [viewMode]);
 
+  // Lock body scroll when tree view is active (prevents double scrollbar)
+  useEffect(() => {
+    if (viewMode === 'tree') {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [viewMode]);
+
   // Keyboard shortcuts for tree zoom
   useEffect(() => {
     if (viewMode !== 'tree') return;
@@ -1007,6 +1017,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     return (
       <div
         ref={treePanRef}
+        className="tree-pan-container"
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button,input,a,[role="button"]')) return;
           const el = treePanRef.current;
@@ -1031,16 +1042,12 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           treeDrag.current.active = false;
           if (treePanRef.current) treePanRef.current.style.cursor = 'grab';
         }}
-        style={{ 
+        style={{
           padding: isDashboard ? '0' : window.innerWidth < 768 ? '24px 4px' : '48px 32px',
           overflow: 'auto',
-          overflowX: 'auto',
-          overflowY: 'auto',
           position: 'relative',
           cursor: 'grab',
-        // Use concrete viewport height for full tree view (mobile fix)
-        height: isDashboard ? '100%' : isFullscreen ? '100%' : 'calc(100dvh - 110px)',
-        minHeight: isDashboard || isFullscreen ? undefined : 'calc(100vh - 110px)',
+          height: isDashboard ? '100%' : isFullscreen ? '100%' : 'calc(100dvh - 110px)',
           width: '100%',
           WebkitOverflowScrolling: 'touch',
           touchAction: 'pan-x pan-y',
@@ -1049,7 +1056,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           msUserSelect: 'none',
           userSelect: 'none',
           display: 'flex',
-          justifyContent: 'center'
+          justifyContent: 'center',
+          scrollbarWidth: 'thin' as const,
+          scrollbarColor: '#cbd5e1 transparent',
         }}>
         <div style={{
           transform: `scale(${treeZoom})`,
@@ -1091,19 +1100,19 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               }}
               autoFocus
               style={{
-                padding: `${spacing.xl} ${spacing.xxxxl}`,
+                padding: '6px 20px',
                 background: 'rgba(255, 255, 255, 0.95)',
                 color: colors.text.primary,
-                borderRadius: radius.xl,
-                fontSize: typography.fontSize.h2,
-                fontWeight: typography.fontWeight.black,
+                borderRadius: '8px',
+                fontSize: '16px',
+                fontWeight: 600,
                 fontFamily: typography.fontFamily,
-                boxShadow: shadows.brand,
+                boxShadow: shadows.sm,
                 border: `2px solid ${colors.brand.primary}`,
-                letterSpacing: '-0.5px',
+                letterSpacing: '-0.3px',
                 textAlign: 'center',
                 outline: 'none',
-                minWidth: '300px'
+                width: '200px'
               }}
             />
           ) : (
@@ -1113,28 +1122,27 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 setIsEditingProjectName(true);
               }}
               style={{
-                padding: `${spacing.xl} ${spacing.xxxxl}`,
+                padding: '10px 28px',
                 background: '#ffffff',
                 color: colors.text.primary,
-                borderRadius: radius.lg,
-                fontSize: typography.fontSize.h2,
-                fontWeight: 300,
+                borderRadius: '10px',
+                fontSize: '20px',
+                fontWeight: 600,
                 fontFamily: typography.fontFamily,
-                boxShadow: shadows.md,
-                border: `1px solid #e2e8f0`,
-                borderTop: `4px solid #4f46e5`,
-                letterSpacing: '-0.5px',
+                boxShadow: '0 0 0 1px #e0e7ff, 0 4px 16px rgba(79,70,229,0.12)',
+                border: `1px solid #c7d2fe`,
+                letterSpacing: '-0.4px',
                 cursor: 'pointer',
                 transition: 'all 0.2s',
                 position: 'relative',
-                minWidth: '260px',
+                width: '240px',
                 textAlign: 'center'
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.boxShadow = shadows.lg;
+                e.currentTarget.style.boxShadow = '0 0 0 1px #a5b4fc, 0 8px 24px rgba(79,70,229,0.20)';
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.boxShadow = shadows.md;
+                e.currentTarget.style.boxShadow = '0 0 0 1px #e0e7ff, 0 4px 16px rgba(79,70,229,0.12)';
               }}
               title="לחץ לעריכת שם הפרויקט"
             >
@@ -1146,7 +1154,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           {(() => {
             const N = categories.length;
             if (N === 0) return null;
-            const svgH = 64;
+            const svgH = 48;
             return (
               <svg
                 width="100%"
@@ -1178,8 +1186,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           {/* Categories */}
           <div style={{
             display: 'flex',
-            gap: '40px',
-            flexWrap: window.innerWidth < 768 ? 'nowrap' : 'wrap',
+            gap: '16px',
+            flexWrap: 'nowrap',
             justifyContent: 'center',
             minWidth: 'fit-content'
           }}>
@@ -1193,20 +1201,20 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
                   {/* Category Node */}
                   <div style={{
-                    padding: `${spacing.md} ${spacing.lg}`,
-                    background: color + '18',
-                    border: `1px solid ${color}45`,
+                    padding: '6px 10px',
+                    background: color + '22',
+                    border: `1px solid ${color}55`,
                     borderTop: `4px solid ${color}`,
-                    borderRadius: radius.md,
-                    width: '185px',
+                    borderRadius: '8px',
+                    width: '160px',
                     textAlign: 'center',
                     boxShadow: shadows.sm,
                     transition: 'all 0.3s ease'
                   }}>
-                    <div style={{ fontSize: '14px', fontWeight: 500, color: '#171717', marginBottom: '4px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '2px' }}>
                       {category}
                     </div>
-                    <div style={{ fontSize: '12px', fontWeight: 300, color: color }}>
+                    <div style={{ fontSize: '10px', fontWeight: 300, color: color }}>
                       {categoryTasks.length} משימות · {avgProgress}%
                     </div>
                   </div>
@@ -1217,22 +1225,47 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   {/* Tasks */}
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', position: 'relative' }}>
                     {categoryTasks.map((task, idx) => {
-                      const taskStatus = task.status || 'open';
+                      const taskStatus  = task.status || 'open';
                       const isDone      = taskStatus === 'done';
                       const isActive    = taskStatus === 'in_progress';
-                      const isPending   = taskStatus === 'open';
+                      const hasProgress = task.progress > 0;
 
-                      // Top-border color driven by status
-                      const accentColor = isDone    ? '#22c55e'   // success green
-                                        : isPending ? '#e2e8f0'   // light gray
-                                        : isActive  ? color       // category color
-                                        : '#f59e0b';              // amber for blocked
+                      // Personal: ID match (primary) → live full_name match (fallback)
+                      const myId      = user?.id;
+                      const myNameRaw = (profile?.full_name ?? '').trim().toLowerCase();
+                      const ownerNorm = (task.owner ?? '').trim().toLowerCase();
+                      const isPersonal = !!(
+                        (myId && task.assignedTo === myId) ||
+                        (myNameRaw && ownerNorm && ownerNorm === myNameRaw)
+                      );
+
+                      // Top-border: none for inactive, status-driven for active
+                      const accentColor = !hasProgress ? 'transparent'
+                                        : isDone      ? '#22c55e'
+                                        : isActive    ? color
+                                        : '#94a3b8';
+
+                      // Activity-based card styling — stronger color saturation
+                      const cardBg     = !hasProgress ? '#f1f5f9' : color + '44';
+                      const cardBorder = !hasProgress
+                        ? '1px dashed #e2e8f0'
+                        : `1px solid ${color}77`;
+                      const titleColor = !hasProgress ? '#94a3b8' : '#0f172a';
+                      const ownerColor = !hasProgress ? '#cbd5e1' : isDone ? '#94a3b8' : '#334155';
+
+                      // Elevation: ONLY personal cards float
+                      const cardShadow = isPersonal
+                        ? '0 24px 48px rgba(245,158,11,0.25), 0 8px 20px rgba(0,0,0,0.14)'
+                        : hoveredTaskInTree?.id === task.id ? shadows.md : shadows.sm;
+                      const cardTranslate = isPersonal
+                        ? 'translateY(-4px)'
+                        : hoveredTaskInTree?.id === task.id ? 'translateY(-2px)' : 'translateY(0)';
 
                       return (
                       <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                         {idx > 0 && <div style={{ width: '1px', height: '6px', background: '#e2e8f0' }} />}
 
-                        {/* Inject keyframes once per render — harmless duplicate <style> tags are deduplicated by the browser */}
+                        {/* Inject keyframes + scrollbar styles once per render */}
                         <style>{`
                           @keyframes fadeInTree {
                             from { opacity: 0; transform: translateX(50%) translateY(-4px); }
@@ -1242,6 +1275,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                             0%, 100% { opacity: 1; }
                             50%       { opacity: 0.55; }
                           }
+                          .tree-pan-container::-webkit-scrollbar { width: 6px; height: 6px; }
+                          .tree-pan-container::-webkit-scrollbar-track { background: transparent; }
+                          .tree-pan-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+                          .tree-pan-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
                         `}</style>
 
                         <div
@@ -1249,72 +1286,80 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                           onMouseEnter={() => setHoveredTaskInTree(task)}
                           onMouseLeave={() => setHoveredTaskInTree(null)}
                           style={{
-                            padding: '10px 13px 0 13px',   // bottom-0 so the progress strip sits flush
-                            background: isDone ? '#fafafa' : color + '12',
-                            border: `1px solid ${isDone ? '#e2e8f0' : color + '40'}`,
-                            borderTop: `3px solid ${accentColor}`,
+                            padding: '5px 8px 0 8px',
+                            background: cardBg,
+                            border: cardBorder,
                             ...(isActive ? { animation: 'treePulse 3s ease-in-out infinite' } : {}),
-                            borderRadius: '10px',
-                            width: '185px',
-                            height: '90px',
+                            borderRadius: '8px',
+                            width: '160px',
+                            height: 'auto',
+                            minHeight: '62px',
                             cursor: 'pointer',
                             transition: 'box-shadow 0.2s, transform 0.2s',
-                            boxShadow: hoveredTaskInTree?.id === task.id ? shadows.md : shadows.sm,
-                            transform: hoveredTaskInTree?.id === task.id ? 'translateY(-2px)' : 'translateY(0)',
+                            boxShadow: cardShadow,
+                            transform: cardTranslate,
                             overflow: 'hidden',
                             position: 'relative',
-                            zIndex: hoveredTaskInTree?.id === task.id ? 20 : 1,
+                            zIndex: isPersonal ? 10 : hoveredTaskInTree?.id === task.id ? 20 : 1,
                             textAlign: 'center',
                             display: 'flex',
                             flexDirection: 'column',
-                            justifyContent: 'space-between',
+                            justifyContent: 'flex-start',
+                            gap: '3px',
                           }}
                         >
-                          {/* Status dot — top-left corner */}
-                          {(() => {
-                            const isOverdueTask = task.dueDate ? new Date(task.dueDate) < new Date() && !isDone : false;
-                            const dotCfg = isDone
-                              ? { bg: '#16a34a', border: '#15803d', title: 'הושלם',
-                                  content: <svg width="9" height="9" viewBox="0 0 10 10" fill="none"><path d="M2 5.2L4.1 7.5L8 3" stroke="#ffffff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg> }
-                              : isOverdueTask
-                              ? { bg: '#ef4444', border: '#dc2626', title: 'באיחור',
-                                  content: <span style={{ fontSize: '10px', color: '#ffffff', fontWeight: 800, lineHeight: 1 }}>!</span> }
-                              : isActive
-                              ? { bg: '#22c55e', border: '#16a34a', title: 'בביצוע',
-                                  content: <div style={{ width: 6, height: 6, borderRadius: '9999px', background: '#ffffff', animation: 'treePulse 2s ease-in-out infinite' }} /> }
-                              : { bg: '#e2e8f0', border: '#cbd5e1', title: 'ממתין',
-                                  content: <div style={{ width: 5, height: 5, borderRadius: '9999px', background: '#94a3b8' }} /> };
+                          {/* Opacity overlay for inactive cards */}
+                          {!hasProgress && (
+                            <div style={{
+                              position: 'absolute', inset: 0,
+                              background: 'rgba(241,245,249,0.40)',
+                              borderRadius: '8px',
+                              pointerEvents: 'none',
+                              zIndex: 2,
+                            }} />
+                          )}
 
-                            return (
-                              <div title={dotCfg.title} style={{
-                                position: 'absolute', top: '8px', left: '8px',
-                                width: '18px', height: '18px', borderRadius: '9999px',
-                                background: dotCfg.bg, border: `1.5px solid ${dotCfg.border}`,
-                                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                                flexShrink: 0, zIndex: 2,
-                                boxShadow: `0 1px 4px ${dotCfg.bg}88`,
-                              }}>
-                                {dotCfg.content}
-                              </div>
-                            );
-                          })()}
+                          {/* Gold corner ribbon — sits in top-right, clear of title */}
+                          {isPersonal && (
+                            <div style={{
+                              position: 'absolute', top: 0, right: 0,
+                              width: 28, height: 28,
+                              overflow: 'hidden',
+                              borderRadius: '0 8px 0 0',
+                              pointerEvents: 'none',
+                              zIndex: 4,
+                            }}>
+                              <div style={{
+                                position: 'absolute',
+                                top: 6, right: -9,
+                                width: 36, height: 7,
+                                background: '#f59e0b',
+                                transform: 'rotate(45deg)',
+                                transformOrigin: 'center',
+                                boxShadow: '0 1px 3px rgba(245,158,11,0.6)',
+                              }} />
+                            </div>
+                          )}
 
-                          {/* Title — dimmed when done */}
+                          {/* Title */}
                           <div style={{
-                            fontSize: '12px',
-                            fontWeight: 400,
-                            color: isDone ? '#94a3b8' : '#0f172a',
-                            marginBottom: '6px',
-                            lineHeight: '1.35',
+                            fontSize: '11px',
+                            fontWeight: hasProgress ? 500 : 400,
+                            color: titleColor,
+                            lineHeight: '1.25',
                             textAlign: 'center',
+                            paddingRight: isPersonal ? '10px' : 0,
+                            overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
                           }}>
                             {task.title}
                           </div>
 
-
-                          {/* Progress bar with % label */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '6px' }}>
-                            <div style={{ flex: 1, background: isDone ? '#f1f5f9' : color + '25', height: '3px', borderRadius: '2px', overflow: 'hidden' }}>
+                          {/* Progress bar + % */}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                            <div style={{ flex: 1, background: !hasProgress ? '#e2e8f0' : color + '30', height: '1.5px', borderRadius: '1px', overflow: 'hidden' }}>
                               <div style={{
                                 background: isDone ? '#22c55e' : color,
                                 height: '100%',
@@ -1322,35 +1367,29 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                                 transition: 'width 0.4s ease'
                               }} />
                             </div>
-                            <span style={{ fontSize: '9px', fontWeight: 500, color: isDone ? '#94a3b8' : color, flexShrink: 0 }}>
+                            <span style={{ fontSize: '8px', fontWeight: 600, color: !hasProgress ? '#94a3b8' : color, flexShrink: 0, lineHeight: 1 }}>
                               {task.progress}%
                             </span>
                           </div>
 
-                          {/* Bottom row: milestones + owner */}
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px', paddingBottom: '8px' }}>
-                            <div style={{ fontSize: '10px', fontWeight: 300, color: isDone ? '#94a3b8' : color }}>
+                          {/* Footer: milestones fraction + assignee */}
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '4px', paddingBottom: '5px' }}>
+                            <span style={{ fontSize: '9px', fontWeight: 300, color: !hasProgress ? '#cbd5e1' : color, flexShrink: 0 }}>
                               {task.milestones.filter(m => m.done).length}/{task.milestones.length}
-                            </div>
-                            {task.owner && (
-                              <div
-                                title={task.owner}
-                                style={{
-                                  fontSize: '10px', fontWeight: 400,
-                                  color: isDone ? '#94a3b8' : color,
-                                  background: isDone ? '#f1f5f9' : color + '15',
-                                  border: `1px solid ${isDone ? '#e2e8f0' : color + '40'}`,
-                                  borderRadius: '4px',
-                                  padding: '1px 5px',
-                                  maxWidth: '60px',
-                                  overflow: 'hidden',
-                                  textOverflow: 'ellipsis',
-                                  whiteSpace: 'nowrap',
-                                  flexShrink: 0,
-                                }}
-                              >
-                                {task.owner}
-                              </div>
+                            </span>
+                            {task.owner && task.owner !== 'ללא אחראי' && task.owner.trim() !== '' && (
+                              <span style={{
+                                fontSize: '9px',
+                                fontWeight: isPersonal ? 700 : hasProgress ? 500 : 300,
+                                color: isPersonal ? '#92400e' : ownerColor,
+                                maxWidth: '100px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                flexShrink: 0,
+                              }}>
+                                👤 {task.owner}
+                              </span>
                             )}
                           </div>
 
