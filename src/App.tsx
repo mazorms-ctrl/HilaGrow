@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, type CSSProperties } from 'react';
 import { useNavigate, useMatch } from 'react-router-dom';
-import { TreePine, X, LogOut, LogIn } from 'lucide-react';
+import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { Sidebar } from './components/Sidebar';
@@ -2784,155 +2784,78 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             }}>
               {renderTreeDiagram('full')}
               
-              {/* Zoom Controls */}
+              {/* Zoom Controls — floating glass panel, bottom-right */}
               <div style={{
                 position: 'fixed',
                 bottom: '24px',
-                left: '24px',
+                right: '24px',
                 zIndex: 50,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
-                pointerEvents: 'auto'
+                alignItems: 'center',
+                gap: '2px',
+                background: 'rgba(255,255,255,0.88)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                borderRadius: '14px',
+                border: '1px solid rgba(226,232,240,0.8)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
+                padding: '6px',
+                pointerEvents: 'auto',
               }}>
-                <button
-                  onClick={zoomIn}
-                  style={{
-                    minWidth: '48px',
-                    minHeight: '48px',
-                    width: '48px',
-                    height: '48px',
-                    fontSize: '24px',
-                    fontWeight: 'bold',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(34, 197, 94, 0.4)',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(34, 197, 94, 0.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(34, 197, 94, 0.4)';
-                  }}
-                  aria-label="הגדל"
-                  title="הגדל (Zoom In)"
-                >
-                  +
-                </button>
-                
-                <button
-                  onClick={zoomOut}
-                  style={{
-                    minWidth: '48px',
-                    minHeight: '48px',
-                    width: '48px',
-                    height: '48px',
-                    fontSize: '24px',
-                    fontWeight: 'bold',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(239, 68, 68, 0.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.4)';
-                  }}
-                  aria-label="הקטן"
-                  title="הקטן (Zoom Out)"
-                >
-                  −
-                </button>
-                
-                <button
-                  onClick={resetZoom}
-                  style={{
-                    minWidth: '48px',
-                    minHeight: '48px',
-                    width: '48px',
-                    height: '48px',
-                    fontSize: '20px',
-                    fontWeight: 'bold',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(14, 165, 233, 0.4)',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(14, 165, 233, 0.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.4)';
-                  }}
-                  aria-label="התאם למסך"
-                  title="התאם למסך (Reset)"
-                >
-                  ⊡
-                </button>
-                
-                {/* Zoom indicator */}
+                {/* Zoom In */}
+                {([
+                  { icon: <Plus size={16} />, onClick: zoomIn, title: 'הגדל (Zoom In)', label: 'הגדל' },
+                  { icon: <Minus size={16} />, onClick: zoomOut, title: 'הקטן (Zoom Out)', label: 'הקטן' },
+                  { icon: <Maximize2 size={16} />, onClick: resetZoom, title: 'התאם למסך', label: 'Reset' },
+                  { icon: <Expand size={16} />, onClick: () => setTreeFullscreen(true), title: 'מסך מלא', label: 'Fullscreen' },
+                ] as { icon: React.ReactNode; onClick: () => void; title: string; label: string }[]).map(({ icon, onClick, title, label }, i) => (
+                  <button
+                    key={label}
+                    onClick={onClick}
+                    title={title}
+                    aria-label={label}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: 'none',
+                      borderRadius: '10px',
+                      background: 'transparent',
+                      color: '#475569',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s, color 0.15s',
+                      marginBottom: i === 1 ? '4px' : 0, // gap between zoom pair and util pair
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f1f5f9';
+                      e.currentTarget.style.color = '#1e293b';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = '#475569';
+                    }}
+                  >
+                    {icon}
+                  </button>
+                ))}
+
+                {/* Divider */}
+                <div style={{ width: '24px', height: '1px', background: '#e2e8f0', margin: '2px 0' }} />
+
+                {/* Zoom % badge */}
                 <div style={{
-                  minWidth: '48px',
-                  height: '32px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  borderRadius: '8px',
-                  background: 'rgba(255, 255, 255, 0.95)',
-                  color: '#171717',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                  border: '1px solid #e5e5e5'
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: '#64748b',
+                  letterSpacing: '0.02em',
+                  padding: '4px 0 2px',
+                  lineHeight: 1,
                 }}>
                   {Math.round(treeZoom * 100)}%
                 </div>
-
-                {/* Fullscreen button */}
-                <button
-                  onClick={() => setTreeFullscreen(true)}
-                  title="מסך מלא"
-                  style={{
-                    minWidth: '48px', minHeight: '48px', width: '48px', height: '48px',
-                    fontSize: '18px', borderRadius: '12px', border: 'none',
-                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                    color: 'white', cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(99,102,241,0.4)',
-                    transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(99,102,241,0.5)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)';    e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)'; }}
-                  aria-label="מסך מלא"
-                >
-                  ⛶
-                </button>
               </div>
 
               {/* Fullscreen overlay */}
@@ -2955,41 +2878,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       </span>
                     </div>
 
-                    {/* Zoom controls */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {[
-                        { label: '+', title: 'הגדל', fn: zoomIn,    color: '#22c55e', shadow: 'rgba(34,197,94,0.3)' },
-                        { label: '−', title: 'הקטן', fn: zoomOut,   color: '#ef4444', shadow: 'rgba(239,68,68,0.3)'  },
-                        { label: '⊡', title: 'אפס',  fn: resetZoom, color: '#0ea5e9', shadow: 'rgba(14,165,233,0.3)' },
-                      ].map(({ label, title, fn, color: c, shadow }) => (
-                        <button
-                          key={title}
-                          onClick={fn}
-                          title={title}
-                          style={{
-                            width: 32, height: 32, borderRadius: 8, border: 'none',
-                            background: c, color: '#fff',
-                            fontSize: label === '⊡' ? '14px' : '18px', fontWeight: 700,
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: `0 2px 8px ${shadow}`, transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                      <div style={{
-                        height: 28, padding: '0 8px', borderRadius: 6,
-                        background: '#f1f5f9', border: '1px solid #e2e8f0',
-                        display: 'flex', alignItems: 'center',
-                        fontSize: '12px', fontWeight: 600, color: '#475569',
-                        minWidth: 44, justifyContent: 'center',
-                      }}>
-                        {Math.round(treeZoom * 100)}%
-                      </div>
-                    </div>
-
                     <button
                       onClick={() => { setTreeFullscreen(false); setViewMode('command'); }}
                       title="סגור מסך מלא (Esc)"
@@ -3009,6 +2897,37 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   {/* Tree canvas */}
                   <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
                     {renderTreeDiagram('fullscreen')}
+                    {/* Floating zoom panel — bottom-right */}
+                    <div style={{
+                      position: 'absolute', bottom: 20, right: 20, zIndex: 10,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                      background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)',
+                      borderRadius: '14px', border: '1px solid rgba(226,232,240,0.8)',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 1.5px 6px rgba(0,0,0,0.06)',
+                      padding: '6px',
+                    }}>
+                      {([
+                        { icon: <Plus size={15} />,      fn: zoomIn,    title: 'הגדל' },
+                        { icon: <Minus size={15} />,     fn: zoomOut,   title: 'הקטן' },
+                        { icon: <Maximize2 size={14} />, fn: resetZoom, title: 'התאם למסך' },
+                      ] as { icon: React.ReactNode; fn: () => void; title: string }[]).map(({ icon, fn, title }) => (
+                        <button key={title} onClick={fn} title={title} style={{
+                          width: 32, height: 32, border: 'none', borderRadius: 9,
+                          background: 'transparent', color: '#475569',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', transition: 'background 0.15s, color 0.15s',
+                        }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#0f172a'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }}
+                        >{icon}</button>
+                      ))}
+                      <div style={{
+                        fontSize: '11px', fontWeight: 600, color: '#64748b',
+                        padding: '2px 0 0', minWidth: 32, textAlign: 'center', lineHeight: 1,
+                      }}>
+                        {Math.round(treeZoom * 100)}%
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

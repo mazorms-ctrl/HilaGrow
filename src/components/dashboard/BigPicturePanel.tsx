@@ -391,18 +391,33 @@ function TreeCanvas_Wrapper({
             <TreeCanvas tasks={tasks} treeRef={treeRef} currentUserName={currentUserName} />
           </TransformComponent>
 
-          {/* Zoom controls */}
-          <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 10 }}>
+          {/* Zoom controls — glass panel, bottom-right */}
+          <div style={{
+            position: 'absolute', bottom: 14, right: 14, zIndex: 10,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            background: 'rgba(255,255,255,0.88)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderRadius: '14px',
+            border: '1px solid rgba(226,232,240,0.8)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
+            padding: '6px',
+          }}>
             {[
-              { icon: <ZoomIn size={14} />,    fn: () => zoomIn(),                                          tip: 'הגדל' },
-              { icon: <ZoomOut size={14} />,   fn: () => zoomOut(),                                         tip: 'הקטן' },
-              { icon: <Maximize2 size={13} />, fn: () => { centered.current = false; tryCenter(); },        tip: 'התאם רוחב' },
+              { icon: <ZoomIn size={16} />,    fn: () => zoomIn(),                                   tip: 'הגדל' },
+              { icon: <ZoomOut size={16} />,   fn: () => zoomOut(),                                  tip: 'הקטן' },
+              { icon: <Maximize2 size={16} />, fn: () => { centered.current = false; tryCenter(); }, tip: 'התאם רוחב' },
             ].map(({ icon, fn, tip }) => (
-              <button key={tip} onClick={fn} title={tip} style={{
-                width: 32, height: 32, background: '#ffffff', border: '1px solid #e2e8f0',
-                borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: colors.text.secondary, boxShadow: shadows.sm, padding: 0,
-              }}>{icon}</button>
+              <button key={tip} onClick={fn} title={tip}
+                style={{
+                  width: 36, height: 36, border: 'none', borderRadius: '10px',
+                  background: 'transparent', color: '#475569',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', padding: 0, transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }}
+              >{icon}</button>
             ))}
           </div>
 
