@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -14,35 +15,39 @@ interface UserRow {
   created_at: string;
 }
 
-// ── Helpers ───────────────────────────────────────────────────
+// Hebrew display labels
+const ROLE_LABEL: Record<UserRole, string> = {
+  admin:       'מנהל',
+  assignee:    'אחראי משימה',
+  participant: 'משתתף',
+  user:        'משתתף',
+};
+
+// ── Badge ─────────────────────────────────────────────────────
 
 function Badge({ role }: { role: UserRole }) {
-  const map: Record<UserRole, { bg: string; color: string; border: string; label: string }> = {
-    admin:       { bg: '#DBEAFE', color: '#1D4ED8', border: '#BFDBFE', label: 'Admin' },
-    assignee:    { bg: '#DCFCE7', color: '#15803D', border: '#BBF7D0', label: 'Assignee' },
-    participant: { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0', label: 'Participant' },
-    user:        { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0', label: 'Participant' },
+  const map: Record<UserRole, { bg: string; color: string; border: string }> = {
+    admin:       { bg: '#DBEAFE', color: '#1D4ED8', border: '#BFDBFE' },
+    assignee:    { bg: '#EDE9FE', color: '#6D28D9', border: '#DDD6FE' },
+    participant: { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' },
+    user:        { bg: '#F1F5F9', color: '#475569', border: '#E2E8F0' },
   };
   const s = map[role] ?? map.participant;
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center',
-      padding: '2px 10px', borderRadius: '999px',
+      padding: '3px 10px', borderRadius: '999px',
       fontSize: '12px', fontWeight: 600,
       background: s.bg, color: s.color, border: `1px solid ${s.border}`,
     }}>
-      {s.label}
+      {ROLE_LABEL[role]}
     </span>
   );
 }
 
 // ── New-user form ─────────────────────────────────────────────
 
-interface NewUserFormProps {
-  onCreated: () => void;
-}
-
-function NewUserForm({ onCreated }: NewUserFormProps) {
+function NewUserForm({ onCreated }: { onCreated: () => void }) {
   const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -53,26 +58,17 @@ function NewUserForm({ onCreated }: NewUserFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSuccess(false);
-    setBusy(true);
+    setError(null); setSuccess(false); setBusy(true);
     try {
       const { data, error: signUpErr } = await supabase.auth.signUp({
-        email,
-        password,
-        options: { data: { full_name: fullName } },
+        email, password, options: { data: { full_name: fullName } },
       });
       if (signUpErr) throw signUpErr;
-
-      // Always write the selected role (trigger defaults to 'participant', but be explicit)
       if (data.user) {
         const { error: roleErr } = await supabase
-          .from('profiles')
-          .update({ role })
-          .eq('id', data.user.id);
+          .from('profiles').update({ role }).eq('id', data.user.id);
         if (roleErr) throw roleErr;
       }
-
       setSuccess(true);
       setEmail(''); setPassword(''); setFullName(''); setRole('participant');
       onCreated();
@@ -88,58 +84,33 @@ function NewUserForm({ onCreated }: NewUserFormProps) {
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <div>
           <label style={labelStyle}>שם מלא</label>
-          <input
-            type="text"
-            value={fullName}
-            onChange={e => setFullName(e.target.value)}
-            placeholder="ישראל ישראלי"
-            style={inputStyle}
-          />
+          <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
+            placeholder="ישראל ישראלי" style={inputStyle} />
         </div>
         <div>
           <label style={labelStyle}>כתובת אימייל</label>
-          <input
-            type="email"
-            required
-            value={email}
-            onChange={e => setEmail(e.target.value)}
-            placeholder="user@example.com"
-            style={{ ...inputStyle, direction: 'ltr' }}
-          />
+          <input type="email" required value={email} onChange={e => setEmail(e.target.value)}
+            placeholder="user@example.com" style={{ ...inputStyle, direction: 'ltr' }} />
         </div>
         <div>
           <label style={labelStyle}>סיסמה זמנית</label>
-          <input
-            type="password"
-            required
-            minLength={6}
-            value={password}
+          <input type="password" required minLength={6} value={password}
             onChange={e => setPassword(e.target.value)}
-            placeholder="לפחות 6 תווים"
-            style={{ ...inputStyle, direction: 'ltr' }}
-          />
+            placeholder="לפחות 6 תווים" style={{ ...inputStyle, direction: 'ltr' }} />
         </div>
         <div>
           <label style={labelStyle}>תפקיד</label>
-          <select
-            value={role}
-            onChange={e => setRole(e.target.value as UserRole)}
-            style={inputStyle}
-          >
-            <option value="participant">Participant</option>
-            <option value="assignee">Assignee</option>
-            <option value="admin">Admin</option>
+          <select value={role} onChange={e => setRole(e.target.value as UserRole)} style={inputStyle}>
+            <option value="participant">משתתף</option>
+            <option value="assignee">אחראי משימה</option>
+            <option value="admin">מנהל</option>
           </select>
         </div>
       </div>
-
       {error   && <p style={{ fontSize: '13px', color: '#DC2626', background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '8px', padding: '8px 12px' }}>{error}</p>}
       {success && <p style={{ fontSize: '13px', color: '#16A34A', background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '8px', padding: '8px 12px' }}>המשתמש נוצר בהצלחה — נשלח אימייל אימות.</p>}
-
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        <button type="submit" disabled={busy} style={primaryBtnStyle}>
-          {busy ? 'יוצר...' : 'צור משתמש'}
-        </button>
+        <button type="submit" disabled={busy} style={primaryBtnStyle}>{busy ? 'יוצר...' : 'צור משתמש'}</button>
       </div>
     </form>
   );
@@ -149,11 +120,11 @@ function NewUserForm({ onCreated }: NewUserFormProps) {
 
 export function AdminDashboard() {
   const { profile, signOut } = useAuth();
-  const [users, setUsers]       = useState<UserRow[]>([]);
-  const [loading, setLoading]   = useState(true);
-  const [search, setSearch]     = useState('');
-  const [busy, setBusy]         = useState<string | null>(null);
-  const [error, setError]       = useState<string | null>(null);
+  const [users, setUsers]     = useState<UserRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState('');
+  const [busy, setBusy]       = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
   const [showNewUser, setShowNewUser] = useState(false);
 
   async function fetchUsers() {
@@ -169,14 +140,28 @@ export function AdminDashboard() {
 
   useEffect(() => { fetchUsers(); }, []);
 
-  async function setUserRole(user: UserRow, newRole: 'participant' | 'assignee' | 'admin') {
+  async function setUserRole(user: UserRow, newRole: 'participant' | 'assignee') {
     setBusy(user.id);
     const { error } = await supabase
-      .from('profiles')
-      .update({ role: newRole })
-      .eq('id', user.id);
+      .from('profiles').update({ role: newRole }).eq('id', user.id);
     if (error) setError(error.message);
     else setUsers(prev => prev.map(u => u.id === user.id ? { ...u, role: newRole } : u));
+    setBusy(null);
+  }
+
+  async function deleteUser(user: UserRow) {
+    const displayName = user.full_name || user.email;
+    const confirmed = window.confirm(
+      `האם אתה בטוח שברצונך למחוק את ${displayName} לצמיתות?`
+    );
+    if (!confirmed) return;
+    setBusy(user.id);
+    // Delete the profile row (cascade or auth deletion requires service role;
+    // this removes their app data and locks them out of profile-gated features)
+    const { error } = await supabase
+      .from('profiles').delete().eq('id', user.id);
+    if (error) setError(error.message);
+    else setUsers(prev => prev.filter(u => u.id !== user.id));
     setBusy(null);
   }
 
@@ -195,16 +180,13 @@ export function AdminDashboard() {
       {/* ── Top bar ── */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 10,
-        background: 'rgba(255,255,255,0.92)',
-        backdropFilter: 'blur(10px)',
-        borderBottom: '1px solid #E2E8F0',
-        padding: '0 24px',
-        height: '60px',
+        background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(10px)',
+        borderBottom: '1px solid #E2E8F0', padding: '0 24px', height: '60px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '18px', fontWeight: 700, color: '#0F172A' }}>ניהול צוות</span>
-          <span style={{ fontSize: '12px', background: '#DBEAFE', color: '#1D4ED8', padding: '2px 10px', borderRadius: '999px', fontWeight: 600 }}>Admin</span>
+          <span style={{ fontSize: '12px', background: '#DBEAFE', color: '#1D4ED8', padding: '2px 10px', borderRadius: '999px', fontWeight: 600 }}>מנהל</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           <span style={{ fontSize: '13px', color: '#64748B' }}>{profile?.email}</span>
@@ -219,8 +201,8 @@ export function AdminDashboard() {
           {[
             { label: 'סה״כ משתמשים', value: users.length },
             { label: 'מנהלים',        value: adminCount },
-            { label: 'Assignees',      value: assigneeCount },
-            { label: 'Participants',   value: participantCount },
+            { label: 'אחראי משימה',   value: assigneeCount },
+            { label: 'משתתפים',       value: participantCount },
           ].map(stat => (
             <div key={stat.label} style={cardStyle}>
               <p style={{ fontSize: '28px', fontWeight: 700, color: '#0F172A', margin: 0 }}>{stat.value}</p>
@@ -253,10 +235,8 @@ export function AdminDashboard() {
               <span style={{ fontSize: '13px', fontWeight: 400, color: '#94A3B8', marginRight: '8px' }}>({filtered.length})</span>
             </span>
             <input
-              type="search"
-              placeholder="חיפוש לפי שם / אימייל..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+              type="search" placeholder="חיפוש לפי שם / אימייל..."
+              value={search} onChange={e => setSearch(e.target.value)}
               style={{ ...inputStyle, width: '220px', margin: 0 }}
             />
           </div>
@@ -271,61 +251,84 @@ export function AdminDashboard() {
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
                 <thead>
-                  <tr style={{ borderBottom: '1px solid #F1F5F9' }}>
-                    {['שם', 'אימייל', 'תפקיד', 'הצטרף', 'שינוי תפקיד'].map(h => (
+                  <tr style={{ borderBottom: '2px solid #F1F5F9' }}>
+                    {['שם', 'אימייל', 'תפקיד', 'הצטרף', 'שינוי תפקיד', ''].map(h => (
                       <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 600, color: '#64748B', fontSize: '12px', whiteSpace: 'nowrap' }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(user => (
-                    <tr
-                      key={user.id}
-                      style={{ borderBottom: '1px solid #F8FAFC', transition: 'background 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-                    >
-                      <td style={{ padding: '12px', color: '#0F172A', fontWeight: 500 }}>
-                        {user.full_name ?? <span style={{ color: '#CBD5E1' }}>—</span>}
-                      </td>
-                      <td style={{ padding: '12px', color: '#475569', direction: 'ltr', textAlign: 'right' }}>{user.email}</td>
-                      <td style={{ padding: '12px' }}><Badge role={user.role} /></td>
-                      <td style={{ padding: '12px', color: '#94A3B8', fontSize: '12px', whiteSpace: 'nowrap' }}>
-                        {new Date(user.created_at).toLocaleDateString('he-IL')}
-                      </td>
-                      <td style={{ padding: '12px' }}>
-                        {user.email === 'mazorms@gmail.com' ? (
-                          <span style={{ fontSize: '12px', color: '#94A3B8' }}>Super Admin</span>
-                        ) : (
-                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                  {filtered.map(user => {
+                    const isSuperAdmin = user.email === 'mazorms@gmail.com';
+                    const isCurrentRole = (r: UserRole) => user.role === r || (r === 'participant' && user.role === 'user');
+                    return (
+                      <tr
+                        key={user.id}
+                        style={{ borderBottom: '1px solid #F8FAFC', transition: 'background 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget.style.background = '#F8FAFC')}
+                        onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                      >
+                        <td style={{ padding: '12px', color: '#0F172A', fontWeight: 500 }}>
+                          {user.full_name ?? <span style={{ color: '#CBD5E1' }}>—</span>}
+                        </td>
+                        <td style={{ padding: '12px', color: '#475569', direction: 'ltr', textAlign: 'right' }}>{user.email}</td>
+                        <td style={{ padding: '12px' }}><Badge role={user.role} /></td>
+                        <td style={{ padding: '12px', color: '#94A3B8', fontSize: '12px', whiteSpace: 'nowrap' }}>
+                          {new Date(user.created_at).toLocaleDateString('he-IL')}
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          {isSuperAdmin ? (
+                            <span style={{ fontSize: '12px', color: '#94A3B8' }}>Super Admin</span>
+                          ) : (
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                              {/* Promote to אחראי משימה */}
+                              <button
+                                onClick={() => setUserRole(user, 'assignee')}
+                                disabled={busy === user.id || isCurrentRole('assignee')}
+                                style={{
+                                  ...smallBtnStyle,
+                                  ...(isCurrentRole('assignee') ? activeRoleStyle('assignee') : {}),
+                                }}
+                              >
+                                אחראי משימה
+                              </button>
+                              {/* Demote to משתתף */}
+                              <button
+                                onClick={() => setUserRole(user, 'participant')}
+                                disabled={busy === user.id || isCurrentRole('participant')}
+                                style={{
+                                  ...smallBtnStyle,
+                                  ...(isCurrentRole('participant') ? activeRoleStyle('participant') : {}),
+                                }}
+                              >
+                                משתתף
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                        {/* Delete column */}
+                        <td style={{ padding: '12px', textAlign: 'center' }}>
+                          {!isSuperAdmin && (
                             <button
-                              onClick={() => setUserRole(user, 'assignee')}
-                              disabled={busy === user.id || user.role === 'assignee'}
+                              onClick={() => deleteUser(user)}
+                              disabled={busy === user.id}
+                              title={`מחק את ${user.full_name || user.email}`}
                               style={{
-                                ...smallBtnStyle,
-                                background: user.role === 'assignee' ? '#DCFCE7' : undefined,
-                                color: user.role === 'assignee' ? '#15803D' : undefined,
-                                borderColor: user.role === 'assignee' ? '#BBF7D0' : undefined,
+                                width: 30, height: 30, border: 'none', borderRadius: '6px',
+                                background: 'transparent', color: '#94A3B8',
+                                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                                cursor: 'pointer', transition: 'background 0.15s, color 0.15s',
                               }}
+                              onMouseEnter={e => { e.currentTarget.style.background = '#FEF2F2'; e.currentTarget.style.color = '#DC2626'; }}
+                              onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#94A3B8'; }}
                             >
-                              Assignee
+                              <Trash2 size={14} />
                             </button>
-                            <button
-                              onClick={() => setUserRole(user, 'participant')}
-                              disabled={busy === user.id || user.role === 'participant' || user.role === 'user'}
-                              style={{
-                                ...smallBtnStyle,
-                                background: (user.role === 'participant' || user.role === 'user') ? '#F1F5F9' : undefined,
-                                color: (user.role === 'participant' || user.role === 'user') ? '#475569' : undefined,
-                              }}
-                            >
-                              Participant
-                            </button>
-                          </div>
-                        )}
-                      </td>
-                    </tr>
-                  ))}
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -336,67 +339,44 @@ export function AdminDashboard() {
   );
 }
 
+// ── Helpers ───────────────────────────────────────────────────
+
+function activeRoleStyle(role: 'assignee' | 'participant'): React.CSSProperties {
+  if (role === 'assignee') return { background: '#EDE9FE', color: '#6D28D9', borderColor: '#DDD6FE' };
+  return { background: '#F1F5F9', color: '#475569', borderColor: '#E2E8F0' };
+}
+
 // ── Shared styles ─────────────────────────────────────────────
 
 const cardStyle: React.CSSProperties = {
-  background: '#FFFFFF',
-  border: '1px solid #E2E8F0',
-  borderRadius: '16px',
-  padding: '20px 24px',
-  boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
+  background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: '16px',
+  padding: '20px 24px', boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
 };
 
 const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '8px 12px',
-  border: '1px solid #E2E8F0',
-  borderRadius: '8px',
-  fontSize: '14px',
-  outline: 'none',
-  fontFamily: 'Rubik, sans-serif',
-  background: '#F8FAFC',
-  boxSizing: 'border-box',
+  width: '100%', padding: '8px 12px', border: '1px solid #E2E8F0', borderRadius: '8px',
+  fontSize: '14px', outline: 'none', fontFamily: 'Rubik, sans-serif',
+  background: '#F8FAFC', boxSizing: 'border-box',
 };
 
 const labelStyle: React.CSSProperties = {
-  display: 'block',
-  fontSize: '13px',
-  fontWeight: 500,
-  color: '#374151',
-  marginBottom: '6px',
+  display: 'block', fontSize: '13px', fontWeight: 500, color: '#374151', marginBottom: '6px',
 };
 
 const primaryBtnStyle: React.CSSProperties = {
-  padding: '8px 20px',
-  background: '#2563EB',
-  color: '#FFFFFF',
-  border: 'none',
-  borderRadius: '8px',
-  fontSize: '14px',
-  fontWeight: 600,
-  cursor: 'pointer',
+  padding: '8px 20px', background: '#2563EB', color: '#FFFFFF', border: 'none',
+  borderRadius: '8px', fontSize: '14px', fontWeight: 600, cursor: 'pointer',
   fontFamily: 'Rubik, sans-serif',
 };
 
 const ghostBtnStyle: React.CSSProperties = {
-  padding: '6px 14px',
-  background: 'transparent',
-  color: '#64748B',
-  border: '1px solid #E2E8F0',
-  borderRadius: '8px',
-  fontSize: '13px',
-  cursor: 'pointer',
-  fontFamily: 'Rubik, sans-serif',
+  padding: '6px 14px', background: 'transparent', color: '#64748B',
+  border: '1px solid #E2E8F0', borderRadius: '8px', fontSize: '13px',
+  cursor: 'pointer', fontFamily: 'Rubik, sans-serif',
 };
 
 const smallBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  background: 'transparent',
-  color: '#475569',
-  border: '1px solid #E2E8F0',
-  borderRadius: '6px',
-  fontSize: '12px',
-  cursor: 'pointer',
-  fontFamily: 'Rubik, sans-serif',
-  whiteSpace: 'nowrap',
+  padding: '4px 12px', background: 'transparent', color: '#475569',
+  border: '1px solid #E2E8F0', borderRadius: '6px', fontSize: '12px',
+  cursor: 'pointer', fontFamily: 'Rubik, sans-serif', whiteSpace: 'nowrap',
 };
