@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -58,15 +58,34 @@ function PasswordInput({
 // ── Main modal ────────────────────────────────────────────────
 
 export function ProfileEditModal({ onClose }: Props) {
-  const { user, profile, refreshProfile } = useAuth();
+  const { user, refreshProfile } = useAuth();
 
   // ── Profile section ──
-  const [fullName,   setFullName]   = useState(profile?.full_name  ?? '');
-  const [department, setDepartment] = useState(profile?.department ?? '');
-  const [position,   setPosition]   = useState(profile?.position   ?? '');
+  const [fullName,   setFullName]   = useState('');
+  const [department, setDepartment] = useState('');
+  const [position,   setPosition]   = useState('');
+  const [fetchingProfile, setFetchingProfile] = useState(true);
   const [profBusy,    setProfBusy]    = useState(false);
   const [profError,   setProfError]   = useState<string | null>(null);
   const [profSuccess, setProfSuccess] = useState(false);
+
+  // Fetch fresh profile data on mount so fields show the actual saved values
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('profiles')
+      .select('full_name, department, position')
+      .eq('id', user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (data) {
+          setFullName(data.full_name ?? '');
+          setDepartment(data.department ?? '');
+          setPosition(data.position ?? '');
+        }
+        setFetchingProfile(false);
+      });
+  }, [user]);
 
   // ── Password section ──
   const [showPwSection, setShowPwSection] = useState(false);
@@ -177,19 +196,25 @@ export function ProfileEditModal({ onClose }: Props) {
             <div>
               <label style={labelStyle}>שם מלא</label>
               <input type="text" value={fullName} onChange={e => setFullName(e.target.value)}
-                placeholder="ישראל ישראלי" style={inputStyle} />
+                placeholder={fetchingProfile ? 'טוען...' : 'ישראל ישראלי'}
+                disabled={fetchingProfile}
+                style={{ ...inputStyle, ...(fetchingProfile ? loadingFieldStyle : {}) }} />
             </div>
 
             <div>
               <label style={labelStyle}>מחלקה</label>
               <input type="text" value={department} onChange={e => setDepartment(e.target.value)}
-                placeholder="למשל: נוירולוגיה, אדמיניסטרציה..." style={inputStyle} />
+                placeholder={fetchingProfile ? 'טוען...' : 'למשל: נוירולוגיה, אדמיניסטרציה...'}
+                disabled={fetchingProfile}
+                style={{ ...inputStyle, ...(fetchingProfile ? loadingFieldStyle : {}) }} />
             </div>
 
             <div>
               <label style={labelStyle}>תפקיד</label>
               <input type="text" value={position} onChange={e => setPosition(e.target.value)}
-                placeholder="למשל: רופא בכיר, חוקר..." style={inputStyle} />
+                placeholder={fetchingProfile ? 'טוען...' : 'למשל: רופא בכיר, חוקר...'}
+                disabled={fetchingProfile}
+                style={{ ...inputStyle, ...(fetchingProfile ? loadingFieldStyle : {}) }} />
             </div>
 
             {profError   && <Alert type="error">{profError}</Alert>}
@@ -197,7 +222,7 @@ export function ProfileEditModal({ onClose }: Props) {
 
             <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
               <button type="button" onClick={onClose} style={ghostBtn}>ביטול</button>
-              <button type="submit" disabled={profBusy} style={primaryBtn(profBusy)}>
+              <button type="submit" disabled={profBusy || fetchingProfile} style={primaryBtn(profBusy || fetchingProfile)}>
                 {profBusy ? 'שומר...' : 'שמור שינויים'}
               </button>
             </div>
@@ -301,6 +326,11 @@ function Alert({ type, children }: { type: 'error' | 'success'; children: React.
 }
 
 // ── Styles ────────────────────────────────────────────────────
+
+const loadingFieldStyle: React.CSSProperties = {
+  background: '#f8fafc', color: '#94a3b8', cursor: 'not-allowed',
+  animation: 'pulse 1.5s ease-in-out infinite',
+};
 
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '9px 12px',
