@@ -3,6 +3,7 @@ import { useNavigate, useMatch } from 'react-router-dom';
 import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
+import { ProfileEditModal } from './components/auth/ProfileEditModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button } from './components/ui';
@@ -291,6 +292,7 @@ function App() {
 
   // ── Project workspace state ────────────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
 
   // Load all profiles for assignment dropdowns (only when logged in)
   const { profiles } = useProfiles();
@@ -1763,6 +1765,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             profile={profile}
             isAdmin={isAdmin}
             onSignOut={signOut}
+            onEditProfile={() => setShowProfileEdit(true)}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed(v => !v)}
           />
@@ -5199,6 +5202,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       {/* Login Modal */}
       {showLoginModal && (
         <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
+
+      {showProfileEdit && (
+        <ProfileEditModal onClose={() => setShowProfileEdit(false)} />
       )}
 
       {/* Quick View Modal — Work Queue section */}

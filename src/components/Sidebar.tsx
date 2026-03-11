@@ -1,4 +1,4 @@
-import { LogOut, ChevronRight, AlertCircle, Target, CheckSquare, ShieldAlert } from 'lucide-react';
+import { LogOut, ChevronRight, AlertCircle, Target, CheckSquare, ShieldAlert, UserCog } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   useMyLeadInitiatives,
@@ -44,6 +44,7 @@ interface Props {
   profile: Profile | null;
   isAdmin?: boolean;
   onSignOut: () => void;
+  onEditProfile: () => void;
   collapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -289,7 +290,7 @@ function CollapsedDot({
 }
 
 // ── Main Sidebar ───────────────────────────────────────────────────────────────
-export function Sidebar({ user, profile, isAdmin = false, onSignOut, collapsed, onToggleCollapse }: Props) {
+export function Sidebar({ user, profile, isAdmin = false, onSignOut, onEditProfile, collapsed, onToggleCollapse }: Props) {
   const { initiatives, loading: initLoading } = useMyLeadInitiatives();
   const { milestones: myMilestones, loading: milestonesLoading } = useMyAssignedMilestones();
   const navigate = useNavigate();
@@ -374,6 +375,21 @@ export function Sidebar({ user, profile, isAdmin = false, onSignOut, collapsed, 
           <div style={{ padding: '8px 14px 3px', fontSize: '10.5px', fontWeight: 300, color: T.textSub, textAlign: 'right' }}>
             {user.email}
           </div>
+          <button
+            onClick={e => { e.stopPropagation(); onEditProfile(); setProfileDropdownOpen(false); }}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '7px',
+              padding: '9px 14px', background: 'none', border: 'none',
+              cursor: 'pointer', fontSize: '12px', fontWeight: 300,
+              color: T.title, fontFamily: 'inherit', textAlign: 'right',
+              transition: 'background 0.1s',
+            }}
+            onMouseEnter={e => { e.currentTarget.style.background = T.surfaceHover; }}
+            onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+          >
+            <UserCog size={12} />
+            עריכת פרופיל
+          </button>
           <button
             onClick={e => { e.stopPropagation(); onSignOut(); }}
             style={{

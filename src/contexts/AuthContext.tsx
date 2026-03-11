@@ -31,6 +31,7 @@ interface AuthContextValue {
     position?: string
   ) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 // ── Context ──────────────────────────────────────────────────
@@ -111,13 +112,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }
 
+  async function refreshProfile() {
+    if (user) await fetchProfile(user.id);
+  }
+
   const isAdmin       = profile?.role === 'admin';
   const isAssignee    = profile?.role === 'assignee';
   const isParticipant = profile?.role === 'participant' || profile?.role === 'user';
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, isAdmin, isAssignee, isParticipant, loading, signInWithEmail, signUpWithEmail, signOut }}
+      value={{ user, profile, isAdmin, isAssignee, isParticipant, loading, signInWithEmail, signUpWithEmail, signOut, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>
