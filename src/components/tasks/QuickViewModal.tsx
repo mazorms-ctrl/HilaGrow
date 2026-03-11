@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { X, ExternalLink, AlertCircle, Trash2 } from 'lucide-react';
 import { type MedicalTask, useTaskById, useProfiles, deleteTask } from '@/lib/supabase-hooks';
 import { useEffect, useState } from 'react';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -45,11 +46,7 @@ function ModalContent({ task, onClose }: { task: MedicalTask; onClose: () => voi
     return () => document.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  // Lock body scroll
-  useEffect(() => {
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = ''; };
-  }, []);
+  useBodyScrollLock(true);
 
   const statusCfg = STATUS_CONFIG[task.status] ?? STATUS_CONFIG.open;
   const priorityCfg = PRIORITY_CONFIG[task.priority];

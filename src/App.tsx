@@ -7,6 +7,7 @@ import { Sidebar } from './components/Sidebar';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
+import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { TaskPageContent } from './components/tasks/TaskPage';
 import { QuickViewModal } from './components/tasks/QuickViewModal';
@@ -391,14 +392,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   }, [viewMode]);
 
   // Lock body scroll when tree view is active (prevents double scrollbar)
-  useEffect(() => {
-    if (viewMode === 'tree') {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [viewMode]);
+  useBodyScrollLock(viewMode === 'tree');
 
   // Keyboard shortcuts for tree zoom
   useEffect(() => {
@@ -1231,12 +1225,12 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       const hasProgress = task.progress > 0;
 
                       // Personal: ID match (primary) → live full_name match (fallback)
-                      const myId      = user?.id;
-                      const myNameRaw = (profile?.full_name ?? '').trim().toLowerCase();
-                      const ownerNorm = (task.owner ?? '').trim().toLowerCase();
+                      // user?.id and profile?.full_name come from outer component scope
+                      const ownerNorm  = (task.owner ?? '').trim().toLowerCase();
+                      const myNameNorm = (profile?.full_name ?? '').trim().toLowerCase();
                       const isPersonal = !!(
-                        (myId && task.assignedTo === myId) ||
-                        (myNameRaw && ownerNorm && ownerNorm === myNameRaw)
+                        (user?.id && task.assignedTo === user.id) ||
+                        (myNameNorm && ownerNorm && ownerNorm === myNameNorm)
                       );
 
                       // Top-border: none for inactive, status-driven for active
@@ -1264,22 +1258,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       return (
                       <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                         {idx > 0 && <div style={{ width: '1px', height: '6px', background: '#e2e8f0' }} />}
-
-                        {/* Inject keyframes + scrollbar styles once per render */}
-                        <style>{`
-                          @keyframes fadeInTree {
-                            from { opacity: 0; transform: translateX(50%) translateY(-4px); }
-                            to   { opacity: 1; transform: translateX(50%) translateY(0);    }
-                          }
-                          @keyframes treePulse {
-                            0%, 100% { opacity: 1; }
-                            50%       { opacity: 0.55; }
-                          }
-                          .tree-pan-container::-webkit-scrollbar { width: 6px; height: 6px; }
-                          .tree-pan-container::-webkit-scrollbar-track { background: transparent; }
-                          .tree-pan-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-                          .tree-pan-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-                        `}</style>
 
                         <div
                           onClick={() => navigate(`/task/${task.id}`)}
