@@ -305,9 +305,6 @@ function App() {
   // Load tasks from Supabase for the effective project (null = no fetch)
   const { tasks: supabaseTasks } = useTasks(user ? effectiveProjectId : null);
 
-  // canEdit: admin can edit any task; everyone else only edits tasks they created
-  const canEdit = isAdmin || (!!selectedTask && selectedTask.createdBy === user?.id);
-
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
   const tasks = user
@@ -325,6 +322,10 @@ function App() {
   }, [isParticipant]);
 
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
+
+  // canEdit: admin can edit any task; everyone else only edits tasks they created
+  const canEdit = isAdmin || (!!selectedTask && selectedTask.createdBy === user?.id);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
