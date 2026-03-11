@@ -119,7 +119,8 @@ export function ProfileEditModal({ onClose }: Props) {
     if (!user) return;
     setProfError(null); setProfSuccess(false); setProfBusy(true);
     try {
-      const { error } = await supabase
+      // Try full update (requires migration 024 — department + position columns)
+      const { error: fullErr } = await supabase
         .from('profiles')
         .update({
           full_name:  fullName.trim(),
@@ -127,12 +128,22 @@ export function ProfileEditModal({ onClose }: Props) {
           position:   position.trim()   || null,
         })
         .eq('id', user.id);
-      if (error) throw error;
+
+      if (fullErr) {
+        // Column may not exist yet — fall back to just full_name
+        const { error: nameErr } = await supabase
+          .from('profiles')
+          .update({ full_name: fullName.trim() })
+          .eq('id', user.id);
+        if (nameErr) throw nameErr;
+      }
+
       await refreshProfile();
       setProfSuccess(true);
       setTimeout(() => onClose(), 1400);
     } catch (err: unknown) {
-      setProfError(err instanceof Error ? err.message : 'שגיאה בשמירה');
+      const msg = (err as { message?: string })?.message ?? '';
+      setProfError(msg || 'שגיאה בשמירת הפרופיל');
     } finally {
       setProfBusy(false);
     }
