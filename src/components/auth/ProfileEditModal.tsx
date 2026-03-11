@@ -69,22 +69,35 @@ export function ProfileEditModal({ onClose }: Props) {
   const [profError,   setProfError]   = useState<string | null>(null);
   const [profSuccess, setProfSuccess] = useState(false);
 
-  // Fetch fresh profile data on mount so fields show the actual saved values
+  // Fetch fresh profile data on mount so fields show the actual saved values.
+  // Falls back to full_name-only query if department/position columns don't exist yet.
   useEffect(() => {
     if (!user) return;
-    supabase
-      .from('profiles')
-      .select('full_name, department, position')
-      .eq('id', user.id)
-      .maybeSingle()
-      .then(({ data }) => {
-        if (data) {
-          setFullName(data.full_name ?? '');
-          setDepartment(data.department ?? '');
-          setPosition(data.position ?? '');
+    (async () => {
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('full_name, department, position')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (!error && data) {
+          setFullName((data.full_name as string | null) ?? '');
+          setDepartment(((data as Record<string, unknown>).department as string | null) ?? '');
+          setPosition(((data as Record<string, unknown>).position as string | null) ?? '');
+        } else {
+          // Columns may not exist yet — fall back to just full_name
+          const { data: fallback } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', user.id)
+            .maybeSingle();
+          if (fallback) setFullName((fallback.full_name as string | null) ?? '');
         }
+      } finally {
         setFetchingProfile(false);
-      });
+      }
+    })();
   }, [user]);
 
   // ── Password section ──
