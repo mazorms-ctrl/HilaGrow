@@ -17,6 +17,7 @@ import { WorkItemRow } from './components/ui/WorkItemRow';
 import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 import { CommandCenter } from './components/dashboard/CommandCenter';
 import { BigPictureModal } from './components/dashboard/BigPicturePanel';
+import { BottomNav } from './components/BottomNav';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -1884,7 +1885,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             main:not(.task-active) > div:not(.no-main-padding) { padding: 32px !important; }
           }
           @media (max-width: 767px) {
-            main:not(.task-active) { padding: 12px !important; }
+            main:not(.task-active) { padding: 12px !important; padding-bottom: calc(56px + 12px) !important; }
             main:not(.task-active) > div:not(.no-main-padding) { padding: 16px !important; }
           }
         `}</style>
@@ -5316,6 +5317,18 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       {/* Big Picture Modal — portal, rendered once at app root */}
       <BigPictureModal />
+
+      {/* Mobile bottom navigation — hidden on md+ */}
+      {user && (
+        <BottomNav
+          viewMode={viewMode}
+          onNavigate={(mode) => {
+            setViewMode(mode);
+            setTreeFullscreen(mode === 'tree');
+            if (taskMatch) navigate('/');
+          }}
+        />
+      )}
     </div>
   );
 }
