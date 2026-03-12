@@ -1,9 +1,22 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import { useAuth } from './contexts/AuthContext';
+import { forceReleaseScrollLock } from './hooks/useBodyScrollLock';
 import App from './App';
 import { LoginPage } from './components/auth/LoginPage';
 import { AdminRoute } from './components/auth/AdminRoute';
 import { AdminDashboard } from './components/admin/AdminDashboard';
+
+/** Force-release any scroll lock on every navigation.
+ *  Guards against the race where a modal unmounts mid-navigation
+ *  before its useBodyScrollLock cleanup can decrement the counter. */
+function ScrollLockReset() {
+  const { pathname } = useLocation();
+  useEffect(() => {
+    forceReleaseScrollLock();
+  }, [pathname]);
+  return null;
+}
 
 export function AppRouter() {
   const { loading, user } = useAuth();
@@ -38,6 +51,8 @@ export function AppRouter() {
 
   // Authenticated → full app (owns layout: header + sidebar + routes)
   return (
+    <>
+    <ScrollLockReset />
     <Routes>
       <Route
         path="/admin"
@@ -49,5 +64,6 @@ export function AppRouter() {
       />
       <Route path="/*" element={<App />} />
     </Routes>
+    </>
   );
 }

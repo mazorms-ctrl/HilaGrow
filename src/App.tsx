@@ -1202,7 +1202,14 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             minWidth: 'fit-content'
           }}>
             {categories.map(category => {
-              const categoryTasks = tasks.filter(t => t.category === category);
+              const categoryTasks = tasks
+                .filter(t => t.category === category)
+                .sort((a, b) => {
+                  // Active tasks (higher progress) float to top; inactive sink to bottom
+                  const sa = Number(a.progress) * 10 + (a.assignedTo ? 1 : 0);
+                  const sb = Number(b.progress) * 10 + (b.assignedTo ? 1 : 0);
+                  return sb - sa;
+                });
               const color = categoryTasks[0].color;
               const avgProgress = Math.round(categoryTasks.reduce((sum, t) => sum + t.progress, 0) / categoryTasks.length);
 

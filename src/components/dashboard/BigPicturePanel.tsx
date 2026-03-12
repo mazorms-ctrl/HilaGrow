@@ -3,7 +3,7 @@
  * Full-screen modal with zoom/pan tree canvas.
  * Triggered via useUIStore.openBigPicture() — rendered once at app root.
  */
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -12,6 +12,7 @@ import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { useTasks, useProjects } from '@/lib/supabase-hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUIStore } from '@/store/uiStore';
+import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { colors, shadows, typography } from '@/styles/tokens';
 import type { MedicalTask } from '@/lib/supabase-hooks';
 
@@ -260,7 +261,7 @@ function TreeCanvas({
         flexWrap: 'nowrap', // one row, no wrapping
       }}>
         {categories.map(cat => {
-          const catTasks = tasks.filter(t => t.category === cat);
+          const catTasks = tasks.filter(t => t.category === cat); // pre-sorted by TreeDataLoader
           const color    = catTasks[0]?.color ?? '#94a3b8';
           const avg      = catTasks.length
             ? Math.round(catTasks.reduce((s, t) => s + (t.progress ?? 0), 0) / catTasks.length)
@@ -466,7 +467,35 @@ function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
 
   const { projects, loading: projectsLoading } = useProjects(user?.id);
   const projectId = projects[0]?.id ?? null;
-  const { tasks, loading: tasksLoading } = useTasks(projectId);
+  const { tasks: rawTasks, loading: tasksLoading } = useTasks(projectId);
+
+  // Sort within each category: higher activity score → top.
+  // Groups are sorted independently so the comparator is always a valid
+  // total order — mixing categories in one sort() call with return 0 for
+  // cross-category pairs produces non-transitive comparisons and unpredictable results.
+  const tasks = useMemo(() => {
+    // 1. Collect unique category order from the raw array
+    const categoryOrder = [...new Set(rawTasks.map(t => t.category))];
+
+    // 2. Bucket tasks by category
+    const buckets = new Map<string, MedicalTask[]>();
+    for (const t of rawTasks) {
+      if (!buckets.has(t.category)) buckets.set(t.category, []);
+      buckets.get(t.category)!.push(t);
+    }
+
+    // 3. Sort each bucket independently (valid total order within bucket)
+    for (const bucket of buckets.values()) {
+      bucket.sort((a, b) => {
+        const sa = Number(a.progress) * 10 + (a.assignedTo ? 1 : 0);
+        const sb = Number(b.progress) * 10 + (b.assignedTo ? 1 : 0);
+        return sb - sa; // descending — 50% → top, 0%/no-assignee → bottom
+      });
+    }
+
+    // 4. Flatten preserving original category order
+    return categoryOrder.flatMap(cat => buckets.get(cat) ?? []);
+  }, [rawTasks]);
 
   const isLoading = projectsLoading || (!!projectId && tasksLoading);
 
@@ -593,6 +622,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
 export function BigPictureModal() {
   const bigPictureOpen  = useUIStore(s => s.bigPictureOpen);
   const closeBigPicture = useUIStore(s => s.closeBigPicture);
+  useBodyScrollLock(bigPictureOpen);
 
   return createPortal(
     <AnimatePresence>

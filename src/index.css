@@ -4,6 +4,13 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent layout shift when overflow:hidden removes the scrollbar.
+   The browser reserves the scrollbar gutter permanently so the page
+   width never changes when a modal opens/closes.                     */
+html {
+  scrollbar-gutter: stable;
+}
+
 @layer base {
   :root {
     --background: 0 0% 100%;
