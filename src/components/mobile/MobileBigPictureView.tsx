@@ -18,13 +18,6 @@ function statusDotColor(status: string, progress: number) {
   return '#cbd5e1';
 }
 
-function statusLabel(status: string, progress: number) {
-  if (status === 'done'    || progress >= 100) return 'הושלם';
-  if (status === 'blocked')                    return 'תקוע';
-  if (progress > 0)                            return 'פעיל';
-  return 'טרם החל';
-}
-
 // ── Milestone row ─────────────────────────────────────────────────────────────
 function MilestoneRow({
   milestone,
@@ -124,7 +117,6 @@ function TaskNode({
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const dotColor    = statusDotColor(task.status, task.progress);
-  const label       = statusLabel(task.status, task.progress);
   const hasMiles    = (task.milestones?.length ?? 0) > 0;
   const doneMiles   = task.milestones?.filter(m => m.done).length ?? 0;
   const totalMiles  = task.milestones?.length ?? 0;

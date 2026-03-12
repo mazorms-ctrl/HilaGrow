@@ -5,7 +5,7 @@ interface Props {
   onAddTask?: () => void;
 }
 
-export function MobileHeader({ user, onAddTask }: Props) {
+export function MobileHeader(_props: Props) {
   return (
     <header
       className="flex md:hidden"
