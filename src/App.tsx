@@ -1750,26 +1750,25 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             </span>
           </div>
 
-          {/* Mobile: user avatar (right side, only when logged in) */}
+          {/* Mobile: + quick-add button (only when logged in) */}
           {user && (
-            <div
+            <button
               className="mobile-only"
-              style={{ marginInlineStart: 'auto', flexShrink: 0 }}
-            >
-              <div style={{
+              onClick={() => setShowAddCategory(true)}
+              style={{
+                marginInlineStart: 'auto',
                 width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-                background: 'linear-gradient(135deg, #2563eb 0%, #6366f1 100%)',
+                background: colors.brand.primary,
+                border: 'none',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13, fontWeight: 600, color: '#fff',
-                boxShadow: '0 1px 6px rgba(37,99,235,0.25)',
-                userSelect: 'none',
-              }}>
-                {profile?.avatar_url
-                  ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 11 }} />
-                  : (profile?.full_name || user.email || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
-                }
-              </div>
-            </div>
+                cursor: 'pointer',
+                boxShadow: '0 2px 8px rgba(37,99,235,0.35)',
+                WebkitTapHighlightColor: 'transparent',
+              } as React.CSSProperties}
+              title="הוסף משימה"
+            >
+              <Plus size={20} color="#fff" strokeWidth={2.5} />
+            </button>
           )}
           {/* Mobile: hamburger for non-authenticated users */}
           {!user && (

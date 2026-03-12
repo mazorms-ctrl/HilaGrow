@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { Home, Briefcase, TreePine, Settings } from 'lucide-react';
+import { Home, Briefcase, TreePine, Menu } from 'lucide-react';
 import { colors, typography } from '@/styles/tokens';
 
 export type MobileTab = 'home' | 'my-work' | 'big-picture' | 'settings';
@@ -9,11 +9,12 @@ interface BottomNavProps {
   onTabChange: (tab: MobileTab) => void;
 }
 
+// RTL order: first item appears on the RIGHT in a dir="rtl" flex container
 const NAV_ITEMS: { tab: MobileTab; icon: React.ElementType; label: string }[] = [
-  { tab: 'home',        icon: Home,      label: 'בית'          },
-  { tab: 'my-work',     icon: Briefcase, label: 'המשימות שלי'  },
-  { tab: 'big-picture', icon: TreePine,  label: 'עץ'           },
-  { tab: 'settings',    icon: Settings,  label: 'הגדרות'       },
+  { tab: 'home',        icon: Home,      label: 'עמוד הבית'     },
+  { tab: 'my-work',     icon: Briefcase, label: 'המשימות שלי'   },
+  { tab: 'big-picture', icon: TreePine,  label: 'התמונה הגדולה' },
+  { tab: 'settings',    icon: Menu,      label: 'תפריט'          },
 ];
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
@@ -48,7 +49,7 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '3px',
+              gap: '2px',
               border: 'none',
               background: 'transparent',
               cursor: 'pointer',
@@ -56,15 +57,16 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
               transition: 'color 0.15s ease',
               fontFamily: typography.fontFamily,
               WebkitTapHighlightColor: 'transparent',
-              fontSize: 'inherit',
+              padding: '0 2px',
             } as CSSProperties}
           >
-            <Icon size={22} strokeWidth={isActive ? 2.2 : 1.8} />
+            <Icon size={21} strokeWidth={isActive ? 2.2 : 1.8} />
             <span style={{
-              fontSize: '0.6rem',
+              fontSize: '9px',
               fontWeight: isActive ? '600' : '400',
               letterSpacing: '0.01em',
               whiteSpace: 'nowrap',
+              lineHeight: 1.2,
             }}>
               {label}
             </span>
