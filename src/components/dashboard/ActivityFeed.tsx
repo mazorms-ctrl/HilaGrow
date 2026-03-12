@@ -161,23 +161,26 @@ export function ActivityFeed() {
       <style>{`
         @media (max-width: 767px) {
           .feed-row {
-            flex-direction: column !important;
-            align-items: flex-start !important;
-            gap: 4px !important;
-            padding: 12px 4px !important;
+            flex-direction: row !important;
+            flex-wrap: wrap !important;
+            align-items: baseline !important;
+            gap: 0 4px !important;
+            padding: 7px 4px !important;
             margin: 0 !important;
           }
-          .feed-row .feed-meta { display: flex; align-items: center; gap: 6px; }
-          .feed-row .feed-name { font-size: 13px; font-weight: 600; }
-          .feed-row .feed-action { font-size: 12px; }
-          .feed-row .feed-task { font-size: 12px; font-weight: 500; }
-          .feed-row .feed-date { font-size: 11px; order: 3; }
-          .feed-row .feed-sep { display: none !important; }
-          .feed-list { padding: 0 12px !important; }
+          .feed-row .feed-name { font-size: 12px; font-weight: 600; }
+          .feed-row .feed-action { font-size: 11px; }
+          .feed-row .feed-task { font-size: 11px; font-weight: 500; }
+          .feed-row .feed-date { font-size: 10px; order: unset; }
+          .feed-row .feed-sep { display: inline !important; }
+          .feed-list { padding: 0 10px !important; }
+          .feed-header { padding: 8px 12px !important; }
+          .feed-pagination { padding: 4px 12px 6px !important; }
         }
       `}</style>
       {/* Header row */}
       <div
+        className="feed-header"
         style={{
           padding: `${spacing.md} ${spacing.xl}`,
           borderBottom: `1px solid ${colors.border.light}`,
@@ -242,6 +245,7 @@ export function ActivityFeed() {
       {/* Pagination controls */}
       {!isLoading && entries.length > PAGE && (
         <div
+          className="feed-pagination"
           style={{
             padding: `${spacing.sm} ${spacing.xl} ${spacing.md}`,
             display: 'flex',

@@ -88,8 +88,17 @@ function DashboardContent() {
   useDashboardRealtime();
 
   return (
+    <>
+      <style>{`
+        @media (max-width: 767px) {
+          .cmd-root  { gap: 12px !important; padding: 12px !important; }
+          .cmd-title { font-size: 17px !important; letter-spacing: -0.3px !important; }
+          .cmd-date  { font-size: 10px !important; }
+        }
+      `}</style>
     <div
       dir="rtl"
+      className="cmd-root"
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -99,8 +108,9 @@ function DashboardContent() {
       }}
     >
       {/* ── Section header ── */}
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+      <div className="cmd-header-row" style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
         <h2
+          className="cmd-title"
           style={{
             fontSize: typography.fontSize.h2,
             fontWeight: typography.fontWeight.black,
@@ -113,6 +123,7 @@ function DashboardContent() {
           עמוד הבית
         </h2>
         <span
+          className="cmd-date"
           style={{
             fontSize: typography.fontSize.sm,
             color: colors.text.tertiary,
@@ -131,6 +142,7 @@ function DashboardContent() {
         <ProjectTaskList filter={activeFilter} />
       </section>
     </div>
+    </>
   );
 }
 

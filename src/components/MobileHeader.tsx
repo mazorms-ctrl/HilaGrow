@@ -26,20 +26,20 @@ export function MobileHeader({ user, onAddTask }: Props) {
       } as React.CSSProperties}
     >
       {/* GROW wordmark — centered */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
         <span style={{
-          fontWeight: 900, fontSize: 22, color: '#0a0f1e',
+          fontWeight: 900, fontSize: 21, color: '#0a0f1e',
           letterSpacing: '-0.5px', fontFamily: 'Rubik, sans-serif', lineHeight: 1,
         }}>
           GROW
         </span>
         <span style={{
-          width: 1.5, background: '#d1d5db', alignSelf: 'stretch',
-          borderRadius: 1, flexShrink: 0,
+          width: 1, height: 16, background: '#cbd5e1',
+          borderRadius: 1, flexShrink: 0, alignSelf: 'center',
         }} />
         <span style={{
-          fontWeight: 300, fontSize: 13, color: '#4b5563',
-          fontFamily: 'Rubik, sans-serif', lineHeight: 1,
+          fontWeight: 300, fontSize: 11, color: '#6b7280',
+          fontFamily: 'Rubik, sans-serif', lineHeight: 1, letterSpacing: '0.2px',
         }}>
           יוצרים שינוי
         </span>
