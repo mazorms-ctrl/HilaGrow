@@ -2,54 +2,6 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 
-// ── 5-pointed star icon ───────────────────────────────────────
-function StarIcon({ size = 22 }: { size?: number }) {
-  // Classic 5-pointed star, multi-colour segments
-  // Points computed for a 5-star: tip angles at 90°, 162°, 234°, 306°, 18°
-  const R = 10, r = 4.2, cx = 11, cy = 11;
-  const pts: [number, number][] = [];
-  for (let i = 0; i < 5; i++) {
-    const outer = ((i * 72) - 90) * (Math.PI / 180);
-    const inner = (outer + 36  * (Math.PI / 180));
-    pts.push([cx + R * Math.cos(outer), cy + R * Math.sin(outer)]);
-    pts.push([cx + r * Math.cos(inner), cy + r * Math.sin(inner)]);
-  }
-  const d = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(2)},${p[1].toFixed(2)}`).join(' ') + ' Z';
-  const segColors = ['#2563EB', '#7C3AED', '#06B6D4', '#84CC16', '#F59E0B'];
-  // Draw 5 coloured triangles from centre to each outer tip
-  const segments = Array.from({ length: 5 }).map((_, i) => {
-    const a0 = ((i * 72) - 90) * (Math.PI / 180);
-    const a1 = (((i + 1) * 72) - 90) * (Math.PI / 180);
-    const x0 = (cx + R * Math.cos(a0)).toFixed(2);
-    const y0 = (cy + R * Math.sin(a0)).toFixed(2);
-    const x1 = (cx + R * Math.cos(a1)).toFixed(2);
-    const y1 = (cy + R * Math.sin(a1)).toFixed(2);
-    return (
-      <path key={i}
-        d={`M${cx},${cy} L${x0},${y0} L${x1},${y1} Z`}
-        fill={segColors[i]}
-        opacity="0.9"
-      />
-    );
-  });
-
-  return (
-    <svg width={size} height={size} viewBox="0 0 22 22" fill="none" aria-hidden>
-      {/* clipping mask to star shape */}
-      <defs>
-        <clipPath id="starClip">
-          <path d={d} />
-        </clipPath>
-      </defs>
-      <g clipPath="url(#starClip)">
-        {segments}
-      </g>
-      {/* subtle star outline */}
-      <path d={d} fill="none" stroke="rgba(255,255,255,0.5)" strokeWidth="0.5" />
-    </svg>
-  );
-}
-
 // ── Field icons ───────────────────────────────────────────────
 function IconMail() {
   return (
@@ -139,6 +91,7 @@ function Field({
           color: '#0F172A',
           outline: 'none',
           boxSizing: 'border-box',
+          textAlign: 'right',
           transition: 'border-color 0.18s, box-shadow 0.18s, background 0.18s',
         }}
         onFocus={e => {
@@ -285,33 +238,35 @@ export function LoginPage() {
           animation: 'lpSlideUp 0.4s cubic-bezier(0.16,1,0.3,1)',
         }}>
 
-          {/* ══ HEADER: GROW (left)  |  ★ הילה (right) — dir=ltr so order is visual ══ */}
+          {/* ══ HEADER: GROW (left)  |  הילה logo (right) ══ */}
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             gap: '16px', marginBottom: '24px',
-            direction: 'ltr',   /* force visual left→right regardless of page RTL */
+            direction: 'ltr',
           }}>
-            {/* LEFT: GROW */}
-            <span style={{
-              fontSize: '26px', fontWeight: 900, letterSpacing: '-0.5px',
-              fontFamily: 'Heebo, sans-serif', color: '#0F172A', lineHeight: 1,
-            }}>
-              GROW
-            </span>
-
-            {/* CENTER: vertical separator */}
-            <div style={{ width: '1.5px', height: '32px', background: '#CBD5E1', borderRadius: '1px', flexShrink: 0 }} />
-
-            {/* RIGHT: Star + הילה */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-              <StarIcon size={24} />
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
               <span style={{
-                fontSize: '22px', fontWeight: 800,
+                fontSize: '32px', fontWeight: 900, letterSpacing: '-0.5px',
                 fontFamily: 'Heebo, sans-serif', color: '#0F172A', lineHeight: 1,
               }}>
-                הילה
+                GROW
+              </span>
+              <span style={{
+                fontSize: '13px', fontWeight: 500, letterSpacing: '0.3px',
+                fontFamily: 'Heebo, sans-serif', color: '#64748B', lineHeight: 1,
+                alignSelf: 'flex-end',
+              }}>
+                יוצרים שינוי
               </span>
             </div>
+
+            <div style={{ width: '1.5px', height: '32px', background: '#CBD5E1', borderRadius: '1px', flexShrink: 0 }} />
+
+            <img
+              src="/hila-logo.png"
+              alt="הילה"
+              style={{ height: '64px', objectFit: 'contain' }}
+            />
           </div>
 
           {/* ══ TITLES ══ */}
@@ -320,18 +275,18 @@ export function LoginPage() {
               <>
                 <h1 style={{
                   margin: '0 0 10px',
-                  fontSize: '32px', fontWeight: 900,
-                  color: '#0A0F1E',
+                  fontSize: '36px', fontWeight: 900,
+                  color: '#0F172A',
                   fontFamily: 'Heebo, sans-serif',
-                  lineHeight: 1.25, letterSpacing: '-0.6px',
+                  lineHeight: 1.2, letterSpacing: '-1px',
                 }}>
-                  ברוכים הבאים ל&quot;הילה&quot;
+                  ברוכים הבאים
                 </h1>
                 <p style={{
-                  margin: 0, fontSize: '14px', color: '#64748B',
+                  margin: 0, fontSize: '16px', color: '#64748B',
                   fontFamily: 'Heebo, sans-serif', fontWeight: 400, lineHeight: 1.6,
                 }}>
-                  המערכת שלך לניהול ולצמיחה ארגונית
+                  הפלטפורמה למעורבות, השפעה וצמיחה משותפת
                 </p>
               </>
             )}

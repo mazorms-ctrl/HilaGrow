@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useMatch } from 'react-router-dom';
 import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
@@ -320,6 +321,7 @@ function App() {
   useEffect(() => {
     if (isParticipant && viewMode === 'command') {
       setViewMode('tree');
+      setTreeFullscreen(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isParticipant]);
@@ -364,7 +366,7 @@ function App() {
   // Project name state with localStorage persistence
   const [projectName, setProjectName] = useState(() => {
     const saved = localStorage.getItem('grow.projectName');
-    if (!saved || saved === 'GROW - מחזור ב מובילים שינוי') return 'GROW - מובילים שינוי';
+    if (!saved || saved === 'GROW - מחזור ב מובילים שינוי' || saved === 'GROW - מובילים שינוי') return 'GROW';
     return saved;
   });
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
@@ -693,15 +695,15 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       // 1-3 - Switch views
       if (e.key === '1') {
-        setViewMode('command');
+        setViewMode('command'); setTreeFullscreen(false);
         e.preventDefault();
       }
       if (e.key === '2') {
-        setViewMode('rows');
+        setViewMode('rows'); setTreeFullscreen(false);
         e.preventDefault();
       }
       if (e.key === '3') {
-        setViewMode('tree');
+        setViewMode('tree'); setTreeFullscreen(true);
         e.preventDefault();
       }
 
@@ -724,11 +726,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isCategoryModalOpen, showNewTaskModal, editingTask, showKeyboardShortcuts, treeFullscreen]);
 
-  // Auto-fullscreen when switching to tree view
-  useEffect(() => {
-    if (viewMode === 'tree') setTreeFullscreen(true);
-    else setTreeFullscreen(false);
-  }, [viewMode]);
+  // treeFullscreen is now set synchronously alongside setViewMode — no useEffect needed.
 
   const filteredTasks = tasks.filter(task => {
     // Search filter
@@ -1618,7 +1616,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             position: 'relative',
             backgroundColor: 'transparent',
           }}
-          className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px]"
+          className="px-4 md:!px-8 h-[72px]"
         >
           {/* Nav buttons — desktop, stuck to the right (flex-start in RTL) */}
           <div
@@ -1628,7 +1626,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             {(['command', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
-                onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
+                onClick={() => { setViewMode(mode); setTreeFullscreen(mode === 'tree'); if (taskMatch) navigate('/'); }}
                 aria-pressed={!taskMatch && viewMode === mode}
                 style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
                 title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
@@ -1671,38 +1669,47 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 className="header-logo-img h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
               />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'right', pointerEvents: 'auto' }}>
-              <h1
+            {/* Brand text: GROW · יוצרים שינוי */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              direction: 'ltr', pointerEvents: 'auto',
+            }}>
+              <span
                 style={{
-                  fontWeight: typography.fontWeight.black,
-                  color: '#000000',
+                  fontWeight: 900,
+                  color: '#0a0f1e',
                   letterSpacing: '-0.5px',
                   fontFamily: typography.fontFamily,
-                  margin: 0, padding: 0, whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap', lineHeight: 1,
                 }}
-                className="leading-none text-[19px] md:text-2xl lg:text-3xl"
+                className="text-[22px] md:text-[28px] lg:text-[34px]"
               >
                 GROW
-              </h1>
-              <p
+              </span>
+              {/* Thin vertical separator */}
+              <span style={{
+                width: '1.5px', background: '#d1d5db',
+                borderRadius: '1px', flexShrink: 0, alignSelf: 'stretch',
+              }} />
+              <span
                 style={{
-                  color: '#1a1a1a',
-                  margin: 0, marginTop: '2px', padding: 0,
-                  fontWeight: typography.fontWeight.medium,
+                  fontWeight: 300,
+                  color: '#4b5563',
+                  letterSpacing: '0.2px',
                   fontFamily: typography.fontFamily,
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap', lineHeight: 1,
                 }}
-                className="leading-tight text-[9px] md:text-xs lg:text-sm"
+                className="text-[13px] md:text-[16px] lg:text-[19px]"
               >
-                פיתוח וחיזוק מחוברות ארגונית
-              </p>
+                יוצרים שינוי
+              </span>
             </div>
           </div>
 
-          {/* Left side — sign-in for guests (pushes to the left via margin-inline-start auto) */}
+          {/* Left side — credits + sign-in */}
           <div
             className="desktop-only"
-            style={{ marginInlineStart: 'auto', flexShrink: 0 }}
+            style={{ marginInlineStart: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '16px' }}
           >
             {!user && (
               <button
@@ -1715,6 +1722,26 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 <span>כניסה</span>
               </button>
             )}
+          </div>
+
+          {/* Credits — absolute, bottom-left, single line, desktop only */}
+          <div
+            className="hidden md:block"
+            style={{
+              position: 'absolute',
+              bottom: '3px',
+              left: '20px',
+              direction: 'rtl',
+              pointerEvents: 'none',
+            }}
+          >
+            <span style={{
+              fontSize: '8px', color: '#D1D5DB',
+              fontFamily: 'Heebo, sans-serif',
+              whiteSpace: 'nowrap', lineHeight: 1,
+            }}>
+              פיתוח: ד&quot;ר שי שבו &nbsp;|&nbsp; אפיון: ד&quot;ר שי שבו, ד&quot;ר ליבי מדר, ד&quot;ר אדם פולמן
+            </span>
           </div>
 
           {/* Mobile: logo centered (handled by absolute above), hamburger on the left */}
@@ -1766,7 +1793,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               {(['command', 'rows', 'tree'] as const).map(mode => (
                 <button
                   key={mode}
-                  onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
+                  onClick={() => { setViewMode(mode); setTreeFullscreen(mode === 'tree'); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
                   aria-pressed={!taskMatch && viewMode === mode}
                   style={{...getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'mobile'), minHeight: '44px'}}
                   title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
@@ -1796,6 +1823,21 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   יציאה
                 </button>
               )}
+
+              {/* Credits — bottom of mobile menu */}
+              <div style={{
+                marginTop: '4px', paddingTop: '12px',
+                borderTop: '1px solid #F1F5F9',
+                display: 'flex', flexDirection: 'column', gap: '3px',
+                direction: 'rtl',
+              }}>
+                <span style={{ fontSize: '10px', color: '#9CA3AF', lineHeight: 1.4, fontFamily: 'Heebo, sans-serif' }}>
+                  פיתוח: ד&quot;ר שי שבו
+                </span>
+                <span style={{ fontSize: '10px', color: '#9CA3AF', lineHeight: 1.4, fontFamily: 'Heebo, sans-serif' }}>
+                  אפיון: ד&quot;ר שי שבו, ד&quot;ר ליבי מדר, ד&quot;ר אדם פולמן
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -2923,8 +2965,15 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               </div>
 
               {/* Fullscreen overlay */}
+              <AnimatePresence>
               {treeFullscreen && (
-                <div style={{
+                <motion.div
+                  key="tree-fullscreen"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  style={{
                   position: 'fixed', inset: 0, zIndex: 9000,
                   background: '#ffffff',
                   display: 'flex', flexDirection: 'column',
@@ -2993,9 +3042,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       </div>
                     </div>
                   </div>
-                </div>
+                </motion.div>
               )}
-              
+              </AnimatePresence>
+
               {/* Zoom Hint - shows on first view */}
               {showTreeZoomHint && (
                 <div style={{

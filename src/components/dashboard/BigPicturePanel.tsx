@@ -3,7 +3,7 @@
  * Full-screen modal with zoom/pan tree canvas.
  * Triggered via useUIStore.openBigPicture() — rendered once at app root.
  */
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -343,11 +343,13 @@ function TreeCanvas_Wrapper({
   treeRef,
   transformRef,
   currentUserName,
+  animDone,
 }: {
   tasks: MedicalTask[];
   treeRef: React.RefObject<HTMLDivElement | null>;
   transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
   currentUserName: string | null;
+  animDone: boolean;
 }) {
   const centered = useRef(false);
 
@@ -358,14 +360,16 @@ function TreeCanvas_Wrapper({
     if (ok) centered.current = true;
   }, [transformRef, treeRef]);
 
+  // Only start centering after the modal open animation has finished —
+  // prevents fitView from measuring a partially-sized container.
   useEffect(() => {
-    if (!tasks.length) return;
+    if (!animDone || !tasks.length) return;
     centered.current = false;
-    const t1 = setTimeout(tryCenter, 150);
-    const t2 = setTimeout(tryCenter, 400);
-    const t3 = setTimeout(tryCenter, 800);
+    const t1 = setTimeout(tryCenter, 50);
+    const t2 = setTimeout(tryCenter, 250);
+    const t3 = setTimeout(tryCenter, 600);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [tasks, tryCenter]);
+  }, [tasks, tryCenter, animDone]);
 
   return (
     <TransformWrapper
@@ -379,7 +383,7 @@ function TreeCanvas_Wrapper({
       doubleClick={{ disabled: true }}
       onInit={(ref) => {
         transformRef.current = ref;
-        setTimeout(() => tryCenter(), 200);
+        // Centering is deferred to the animDone effect; no action needed here.
       }}
     >
       {({ zoomIn, zoomOut }) => (
@@ -453,9 +457,10 @@ function TreeCanvas_Wrapper({
 interface LoaderProps {
   transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
   treeRef: React.RefObject<HTMLDivElement | null>;
+  animDone: boolean;
 }
 
-function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
+function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
   const { user, profile } = useAuth();
   const currentUserName = profile?.full_name ?? null;
 
@@ -484,6 +489,7 @@ function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
       treeRef={treeRef}
       transformRef={transformRef}
       currentUserName={currentUserName}
+      animDone={animDone}
     />
   );
 }
@@ -492,6 +498,7 @@ function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
 function ModalShell({ onClose }: { onClose: () => void }) {
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const treeRef = useRef<HTMLDivElement | null>(null);
+  const [animDone, setAnimDone] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -503,8 +510,13 @@ function ModalShell({ onClose }: { onClose: () => void }) {
     <>
       <style>{KEYFRAMES}</style>
 
-      {/* Backdrop */}
-      <div
+      {/* Backdrop — fades in with the modal */}
+      <motion.div
+        key="bp-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.28, ease: 'easeOut' }}
         onClick={onClose}
         style={{
           position: 'fixed', inset: 0,
@@ -515,13 +527,14 @@ function ModalShell({ onClose }: { onClose: () => void }) {
         }}
       />
 
-      {/* Modal */}
+      {/* Modal — subtle scale + fade with ease-out spring feel */}
       <motion.div
         key="bp-modal"
-        initial={{ opacity: 0, scale: 0.97, y: 10 }}
+        initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 10 }}
-        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+        exit={{ opacity: 0, scale: 0.98, y: 8 }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        onAnimationComplete={() => setAnimDone(true)}
         style={{
           position: 'fixed',
           top: '50%', left: '50%',
@@ -569,7 +582,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
 
         {/* Canvas */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          <TreeDataLoader transformRef={transformRef} treeRef={treeRef} />
+          <TreeDataLoader transformRef={transformRef} treeRef={treeRef} animDone={animDone} />
         </div>
       </motion.div>
     </>
