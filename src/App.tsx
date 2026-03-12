@@ -22,6 +22,7 @@ import { MobileHeader } from './components/MobileHeader';
 import { MobileMyWorkView } from './components/mobile/MobileMyWorkView';
 import { MobileSettingsView } from './components/mobile/MobileSettingsView';
 import { MobileBigPictureView } from './components/mobile/MobileBigPictureView';
+import { InstallBanner } from './components/InstallBanner';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -5346,6 +5347,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       {/* Mobile header — fixed top bar, hidden on md+ */}
       <MobileHeader user={user} onAddTask={() => setShowAddCategory(true)} />
+
+      {/* PWA install banner — mobile only, hides when installed or dismissed */}
+      <InstallBanner />
 
       {/* Mobile bottom navigation — hidden on md+ */}
       {user && (
