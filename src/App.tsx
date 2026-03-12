@@ -21,6 +21,7 @@ import { BottomNav, type MobileTab } from './components/BottomNav';
 import { MobileHeader } from './components/MobileHeader';
 import { MobileMyWorkView } from './components/mobile/MobileMyWorkView';
 import { MobileSettingsView } from './components/mobile/MobileSettingsView';
+import { MobileBigPictureView } from './components/mobile/MobileBigPictureView';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -327,7 +328,7 @@ function App() {
     : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
-  const [mobilePage, setMobilePage] = useState<'my-work' | 'settings' | null>(null);  // 'tasks' is a viewMode, not a mobilePage
+  const [mobilePage, setMobilePage] = useState<'my-work' | 'settings' | 'big-picture' | null>(null);  // 'tasks' is a viewMode, not a mobilePage
 
   // All users (including participants) land on the command center dashboard.
   // Do NOT auto-redirect to tree view on mount — landing must always be '/'.
@@ -5326,6 +5327,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       <BigPictureModal />
 
       {/* Mobile overlays (My Work / Settings) */}
+      {user && mobilePage === 'big-picture' && (
+        <MobileBigPictureView onClose={() => setMobilePage(null)} />
+      )}
       {user && mobilePage === 'my-work' && (
         <MobileMyWorkView onClose={() => setMobilePage(null)} />
       )}
@@ -5347,10 +5351,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       {user && (
         <BottomNav
           activeTab={
-            mobilePage === 'my-work'   ? 'my-work'     :
-            mobilePage === 'settings'  ? 'settings'    :
-            viewMode   === 'tree'      ? 'big-picture' :
-            viewMode   === 'rows'      ? 'tasks'       : 'home'
+            mobilePage === 'big-picture' ? 'big-picture' :
+            mobilePage === 'my-work'     ? 'my-work'     :
+            mobilePage === 'settings'    ? 'settings'    :
+            viewMode   === 'rows'        ? 'tasks'       : 'home'
           }
           onTabChange={(tab: MobileTab) => {
             if (tab === 'home') {
@@ -5362,9 +5366,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               setViewMode('rows');
               if (taskMatch) navigate('/');
             } else if (tab === 'big-picture') {
-              setMobilePage(null);
-              setViewMode('tree');
-              setTreeFullscreen(true);
+              setMobilePage('big-picture');
               if (taskMatch) navigate('/');
             } else if (tab === 'my-work') {
               setMobilePage('my-work');
