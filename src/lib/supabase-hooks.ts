@@ -1005,7 +1005,7 @@ export function useTaskComments(taskId: string | null) {
         .in('id', authorIds);
 
       const profileMap = new Map<string, ProfileSummary>();
-      (profiles || []).forEach(p => profileMap.set(p.id, p));
+      (profiles || []).forEach(p => profileMap.set(p.id, { ...p, department: null, position: null }));
 
       return (data || []).map(c => ({
         ...c,

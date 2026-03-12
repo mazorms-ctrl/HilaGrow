@@ -946,6 +946,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         milestones: [{ text: 'שלב ראשון', done: false }],
         status: 'open',
         currentState: '',
+        createdBy: null,
       };
       await createTask(newTask, effectiveProjectId);
       setExpandedCategories([...expandedCategories, name]);
@@ -4573,6 +4574,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   milestones: milestonesText.length > 0 ? milestonesText.map(text => ({ text, done: false })) : [{ text: 'שלב ראשון', done: false }],
                   status: 'open' as const,
                   currentState: '',
+                  createdBy: null,
                 };
 
                 addNewTask(newTask);
