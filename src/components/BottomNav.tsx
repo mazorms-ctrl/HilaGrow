@@ -32,47 +32,65 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
         backdropFilter: 'blur(18px)',
         WebkitBackdropFilter: 'blur(18px)',
         borderTop: '1px solid rgba(226,232,240,0.8)',
-        height: '56px',
+        flexDirection: 'column',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         direction: 'rtl',
       } as CSSProperties}
     >
-      {NAV_ITEMS.map(({ tab, icon: Icon, label }) => {
-        const isActive = activeTab === tab;
-        return (
-          <button
-            key={tab}
-            onClick={() => onTabChange(tab)}
-            style={{
-              flex: 1,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: '2px',
-              border: 'none',
-              background: 'transparent',
-              cursor: 'pointer',
-              color: isActive ? colors.brand.primary : colors.text.tertiary,
-              transition: 'color 0.15s ease',
-              fontFamily: typography.fontFamily,
-              WebkitTapHighlightColor: 'transparent',
-              padding: '0 2px',
-            } as CSSProperties}
-          >
-            <Icon size={19} strokeWidth={isActive ? 2.2 : 1.7} />
-            <span style={{
-              fontSize: '8px',
-              fontWeight: isActive ? '600' : '400',
-              letterSpacing: '0em',
-              whiteSpace: 'nowrap',
-              lineHeight: 1.2,
-            }}>
-              {label}
-            </span>
-          </button>
-        );
-      })}
+      {/* Tab icons row */}
+      <div style={{ display: 'flex', height: 56 }}>
+        {NAV_ITEMS.map(({ tab, icon: Icon, label }) => {
+          const isActive = activeTab === tab;
+          return (
+            <button
+              key={tab}
+              onClick={() => onTabChange(tab)}
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '2px',
+                border: 'none',
+                background: 'transparent',
+                cursor: 'pointer',
+                color: isActive ? colors.brand.primary : colors.text.tertiary,
+                transition: 'color 0.15s ease',
+                fontFamily: typography.fontFamily,
+                WebkitTapHighlightColor: 'transparent',
+                padding: '0 2px',
+              } as CSSProperties}
+            >
+              <Icon size={19} strokeWidth={isActive ? 2.2 : 1.7} />
+              <span style={{
+                fontSize: '8px',
+                fontWeight: isActive ? '600' : '400',
+                letterSpacing: '0em',
+                whiteSpace: 'nowrap',
+                lineHeight: 1.2,
+              }}>
+                {label}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Credit strip */}
+      <div style={{
+        textAlign: 'center',
+        fontSize: '8.5px',
+        color: '#c1c9d4',
+        paddingBottom: '3px',
+        letterSpacing: '0.1px',
+        lineHeight: 1.3,
+        direction: 'rtl',
+        userSelect: 'none',
+        pointerEvents: 'none',
+      }}>
+        פיתוח: ד״ר שי שבו | אפיון: ד״ר שי שבו, ד״ר ליבי מדר, ד״ר אדם פולמן
+      </div>
     </nav>
   );
 }
