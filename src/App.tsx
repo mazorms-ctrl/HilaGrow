@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
 import { useNavigate, useMatch } from 'react-router-dom';
 import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
@@ -296,6 +296,7 @@ function App() {
 
   // Load all profiles for assignment dropdowns (only when logged in)
   const { profiles } = useProfiles();
+  const profileMap = useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles]);
   // Load projects — must be before useTasks so we can derive effectiveProjectId first
   const { projects, loading: projectsLoading } = useProjects(user?.id);
 
@@ -338,6 +339,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [hoveredTaskInTree, setHoveredTaskInTree] = useState<typeof tasks[0] | null>(null);
+  const [hoveredAssigneeTaskId, setHoveredAssigneeTaskId] = useState<string | null>(null);
   const [treeZoom, setTreeZoom] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 0.5 : 1.0);
   const [treeFullscreen, setTreeFullscreen] = useState(false);
   const [showTreeZoomHint, setShowTreeZoomHint] = useState(() => {
@@ -1239,6 +1241,11 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       const isActive    = taskStatus === 'in_progress';
                       const hasProgress = task.progress > 0;
 
+                      // Assignee profile lookup for department / tooltip
+                      const assigneeProfile = task.assignedTo ? profileMap.get(task.assignedTo) : null;
+                      const assigneeDept = assigneeProfile?.department ?? null;
+                      const assigneePosition = assigneeProfile?.position ?? null;
+
                       // Personal: ID match (primary) → live full_name match (fallback)
                       // user?.id and profile?.full_name come from outer component scope
                       const ownerNorm  = (task.owner ?? '').trim().toLowerCase();
@@ -1271,7 +1278,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                         : hoveredTaskInTree?.id === task.id ? 'translateY(-2px)' : 'translateY(0)';
 
                       return (
-                      <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                      <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', zIndex: hoveredAssigneeTaskId === task.id ? 100 : 'auto' }}>
                         {idx > 0 && <div style={{ width: '1px', height: '6px', background: '#e2e8f0' }} />}
 
                         <div
@@ -1371,17 +1378,22 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                               {task.milestones.filter(m => m.done).length}/{task.milestones.length}
                             </span>
                             {task.owner && task.owner !== 'ללא אחראי' && task.owner.trim() !== '' && (
-                              <span style={{
-                                fontSize: '9px',
-                                fontWeight: isPersonal ? 700 : hasProgress ? 500 : 300,
-                                color: isPersonal ? '#92400e' : ownerColor,
-                                maxWidth: '100px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                              }}>
-                                👤 {task.owner}
+                              <span
+                                onMouseEnter={() => setHoveredAssigneeTaskId(task.id)}
+                                onMouseLeave={() => setHoveredAssigneeTaskId(null)}
+                                style={{
+                                  fontSize: '9px',
+                                  fontWeight: isPersonal ? 700 : hasProgress ? 500 : 300,
+                                  color: isPersonal ? '#92400e' : ownerColor,
+                                  maxWidth: '110px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  cursor: 'default',
+                                  position: 'relative',
+                                }}>
+                                👤 {task.owner}{assigneeDept ? ` | ${assigneeDept}` : ''}
                               </span>
                             )}
                           </div>
@@ -1468,6 +1480,41 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                             </div>
                           )}
                         </div>
+
+                        {/* Assignee profile tooltip */}
+                        {hoveredAssigneeTaskId === task.id && assigneeProfile && (
+                          <div style={{
+                            position: 'absolute',
+                            bottom: '-4px',
+                            left: '50%',
+                            transform: 'translateX(-50%) translateY(100%)',
+                            background: 'white',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '10px',
+                            padding: '10px 14px',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                            zIndex: 200,
+                            minWidth: '160px',
+                            textAlign: 'right',
+                            pointerEvents: 'none',
+                            fontSize: '12px',
+                            lineHeight: '1.6',
+                          }}>
+                            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
+                              {assigneeProfile.full_name || assigneeProfile.email}
+                            </div>
+                            {assigneePosition && (
+                              <div style={{ color: '#64748b', fontWeight: 300 }}>
+                                <span style={{ color: '#94a3b8' }}>תפקיד: </span>{assigneePosition}
+                              </div>
+                            )}
+                            {assigneeDept && (
+                              <div style={{ color: '#64748b', fontWeight: 300 }}>
+                                <span style={{ color: '#94a3b8' }}>מחלקה: </span>{assigneeDept}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       );
                     })}

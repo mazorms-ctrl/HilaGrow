@@ -101,6 +101,8 @@ export interface ProfileSummary {
   id: string;
   full_name: string | null;
   email: string;
+  department: string | null;
+  position: string | null;
 }
 
 // Database row types
@@ -366,10 +368,19 @@ export function useProfiles() {
       console.log('[useProfiles] fetching profiles from Supabase...');
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, email, department, position')
         .order('full_name', { ascending: true });
-      console.log('[useProfiles] result:', { count: data?.length ?? 0, error: error ?? null });
-      if (error) throw error;
+      if (error) {
+        // Fallback: columns may not exist yet (migration pending)
+        console.warn('[useProfiles] full select failed, falling back:', error.message);
+        const { data: fallback, error: fallbackError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .order('full_name', { ascending: true });
+        if (fallbackError) throw fallbackError;
+        return (fallback || []).map(p => ({ ...p, department: null, position: null })) as ProfileSummary[];
+      }
+      console.log('[useProfiles] result:', { count: data?.length ?? 0 });
       return (data || []) as ProfileSummary[];
     },
   });
