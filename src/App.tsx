@@ -1609,7 +1609,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       }}>
         <div
           style={{
-            maxWidth: '1440px',
+            maxWidth: '1920px',
             margin: '0 auto',
             display: 'flex',
             alignItems: 'center',
@@ -1618,7 +1618,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             backgroundColor: 'transparent',
             width: '100%',
           }}
-          className="px-4 sm:px-6 lg:px-8 h-[72px]"
+          className="px-6 md:px-12 xl:px-20 h-[72px]"
         >
           {/* Nav buttons — desktop, stuck to the right (flex-start in RTL) */}
           <div
@@ -1869,7 +1869,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         className={taskMatch ? 'task-active' : undefined}
         style={{
           width: '100%',
-          maxWidth: '1440px',
+          maxWidth: '1920px',
           margin: '0 auto',
           padding: taskMatch ? '0' : '16px',
           backgroundColor: taskMatch ? '#f8fafc' : 'rgba(255, 255, 255, 1)',
