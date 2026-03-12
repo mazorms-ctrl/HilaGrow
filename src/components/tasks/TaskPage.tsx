@@ -502,20 +502,22 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         @keyframes tpSpin   { to { transform: rotate(360deg); } }
         @keyframes tpFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* ── Base grids (mobile-first) ── */
+        /* ── Base grids (mobile-first: single column on all phones) ── */
         .tp-grid, .tp-grid-3, .tp-grid-4 {
           display: grid;
           grid-template-columns: minmax(0, 1fr);
           gap: 12px;
         }
+        /* On mobile: span-2 must not overflow a 1-column grid */
         .tp-span-full  { grid-column: 1 / -1; }
-        .tp-span-2     { grid-column: span 2; }
+        .tp-span-2     { grid-column: 1 / -1; }
 
-        /* ── 520px+: 2 columns for all grids ── */
-        @media (min-width: 520px) {
+        /* ── 768px+: 2 columns for all grids ── */
+        @media (min-width: 768px) {
           .tp-grid   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .tp-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .tp-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tp-span-2 { grid-column: span 2; }
         }
         /* ── 860px+: 3-col and 4-col unlock ── */
         @media (min-width: 860px) {
