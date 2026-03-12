@@ -161,8 +161,8 @@ function Section({ icon: Icon, title, badge, children, style, iconColor }: {
   iconColor?: string;
 }) {
   return (
-    <section style={{ ...cardStyle, ...style }}>
-      <div style={sectionHeadStyle}>
+    <section className="tp-section" style={{ ...cardStyle, ...style }}>
+      <div className="tp-section-head" style={sectionHeadStyle}>
         <Icon size={16} style={{ color: iconColor ?? '#94a3b8', flexShrink: 0 }} />
         {title}
         {badge}
@@ -487,6 +487,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   return (
     <div
       dir="rtl"
+      className="tp-page"
       style={{
         fontFamily: 'inherit',
         width: '100%',
@@ -526,13 +527,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-tabbar {
           display: flex;
           align-items: center;
-          gap: 18px;
-          padding: 0;
+          gap: 4px;
+          padding: 0 0 0 8px;
           margin-bottom: 16px;
           border-bottom: 1px solid #e2e8f0;
           direction: rtl;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
         }
+        .tp-tabbar::-webkit-scrollbar { display: none; }
         .tp-tab-button {
           display: inline-flex;
           align-items: center;
@@ -1052,6 +1057,46 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           transform: rotate(45deg);
         }
         .tp-check:hover:not(:checked) { border-color: #6366f1; }
+
+        /* ── Desktop: restore tab gap ── */
+        @media (min-width: 768px) {
+          .tp-tabbar { gap: 14px; padding: 0; }
+        }
+
+        /* ── Mobile tweaks ── */
+        @media (max-width: 767px) {
+          /* Outer page: tighter horizontal padding */
+          .tp-page { padding-left: 14px !important; padding-right: 14px !important; }
+
+          /* Section cards: more breathing room horizontally */
+          .tp-section { padding: 20px 18px !important; }
+
+          /* More vertical space between section cards */
+          .tp-grid, .tp-grid-3, .tp-grid-4 { gap: 18px; }
+
+          /* Section headers: bolder, slightly larger, blue tint */
+          .tp-section-head {
+            font-size: 14.5px !important;
+            font-weight: 800 !important;
+            color: #1e3a5f !important;
+            margin-bottom: 14px !important;
+            padding-bottom: 10px !important;
+          }
+
+          /* Body text: relaxed line-height for Hebrew readability */
+          .tp-section p { line-height: 1.75; margin: 0 0 8px 0; }
+
+          /* Lists: proper indentation, no awkward wrapping under bullet */
+          .tp-section ul, .tp-section ol {
+            padding-inline-start: 20px;
+            margin: 6px 0;
+          }
+          .tp-section li {
+            line-height: 1.7;
+            margin-bottom: 4px;
+            padding-inline-start: 4px;
+          }
+        }
       `}</style>
 
       {/* ── Compact internal header: breadcrumb + title + actions ────────────── */}
