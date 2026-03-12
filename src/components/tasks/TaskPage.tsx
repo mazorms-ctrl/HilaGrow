@@ -1065,39 +1065,41 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           .tp-tabbar { gap: 14px; padding: 0; }
         }
 
-        /* ── Mobile tweaks ── */
+        /* ── Mobile tweaks — density-first ── */
         @media (max-width: 767px) {
-          /* Outer page: tighter horizontal padding */
-          .tp-page { padding-left: 14px !important; padding-right: 14px !important; }
+          /* Outer page: tight horizontal padding, extra bottom for nav bar */
+          .tp-page { padding: 0 12px 100px 12px !important; }
 
-          /* Section cards: more breathing room horizontally */
-          .tp-section { padding: 20px 18px !important; }
+          /* Section cards: compact padding */
+          .tp-section { padding: 12px 14px !important; }
 
-          /* More vertical space between section cards */
-          .tp-grid, .tp-grid-3, .tp-grid-4 { gap: 18px; }
+          /* Tight gaps between section cards */
+          .tp-grid, .tp-grid-3, .tp-grid-4 { gap: 10px; }
 
-          /* Section headers: bolder, slightly larger, blue tint */
+          /* Section headers: smaller, tighter, blue tint */
           .tp-section-head {
-            font-size: 14.5px !important;
-            font-weight: 800 !important;
+            font-size: 13px !important;
+            font-weight: 700 !important;
             color: #1e3a5f !important;
-            margin-bottom: 14px !important;
-            padding-bottom: 10px !important;
+            margin-bottom: 8px !important;
+            padding-bottom: 6px !important;
           }
 
-          /* Body text: relaxed line-height for Hebrew readability */
-          .tp-section p { line-height: 1.75; margin: 0 0 8px 0; }
+          /* Editable boxes: tighter internal padding */
+          .tp-editable { padding: 2px 6px !important; }
 
-          /* Lists: proper indentation, no awkward wrapping under bullet */
+          /* Body text: smaller font, readable line-height */
+          .tp-section textarea { font-size: 13px !important; line-height: 1.6 !important; }
+
+          /* Section description text */
+          .tp-section-desc { font-size: 11.5px !important; margin-bottom: 8px !important; }
+
+          /* Lists: proper indentation */
           .tp-section ul, .tp-section ol {
-            padding-inline-start: 20px;
-            margin: 6px 0;
+            padding-inline-start: 18px;
+            margin: 4px 0;
           }
-          .tp-section li {
-            line-height: 1.7;
-            margin-bottom: 4px;
-            padding-inline-start: 4px;
-          }
+          .tp-section li { line-height: 1.6; margin-bottom: 3px; }
         }
       `}</style>
 
