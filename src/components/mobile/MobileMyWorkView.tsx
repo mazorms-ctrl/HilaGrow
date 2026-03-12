@@ -1,4 +1,4 @@
-import { AlertCircle, CheckSquare, Target, X } from 'lucide-react';
+import { CheckSquare, Target, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useMyLeadInitiatives, useMyAssignedMilestones, type InitiativeSummary, type AssignedMilestone } from '@/lib/supabase-hooks';
 
@@ -44,7 +44,7 @@ function SectionLabel({ icon, label, count }: { icon: React.ReactNode; label: st
   return (
     <div style={{
       display: 'flex', alignItems: 'center', gap: 7,
-      padding: '20px 16px 10px',
+      padding: '14px 16px 8px',
     }}>
       <span style={{ color: T.dim, display: 'flex' }}>{icon}</span>
       <span style={{
@@ -66,6 +66,12 @@ function SectionLabel({ icon, label, count }: { icon: React.ReactNode; label: st
   );
 }
 
+function StatusBadge({ overdue, done }: { overdue: boolean; done: boolean }) {
+  if (done)    return <span style={{ fontSize: 10, fontWeight: 600, color: T.success, background: 'rgba(16,185,129,0.1)', padding: '2px 7px', borderRadius: 20, flexShrink: 0 }}>הושלם</span>;
+  if (overdue) return <span style={{ fontSize: 10, fontWeight: 600, color: T.danger,  background: 'rgba(239,68,68,0.1)',  padding: '2px 7px', borderRadius: 20, flexShrink: 0 }}>באיחור</span>;
+  return             <span style={{ fontSize: 10, fontWeight: 600, color: T.blue,    background: 'rgba(37,99,235,0.08)', padding: '2px 7px', borderRadius: 20, flexShrink: 0 }}>פעיל</span>;
+}
+
 function InitiativeCard({ initiative, onClick }: { initiative: InitiativeSummary; onClick: () => void }) {
   const overdue = isOverdue(initiative.dueDate) && initiative.progress < 100;
   const done    = initiative.progress === 100;
@@ -76,42 +82,45 @@ function InitiativeCard({ initiative, onClick }: { initiative: InitiativeSummary
       onClick={onClick}
       style={{
         width: '100%', textAlign: 'right', cursor: 'pointer',
-        padding: '14px 14px 14px 12px',
-        borderRadius: 14,
+        padding: '10px 12px 10px 10px',
+        borderRadius: 12,
         background: T.card,
         boxShadow: T.cardShadow,
         borderTop:    '1px solid rgba(0,0,0,0.04)',
         borderBottom: '1px solid rgba(0,0,0,0.04)',
         borderLeft:   '1px solid rgba(0,0,0,0.04)',
-        borderRight:  `4px solid ${accent}`,
+        borderRight:  `3px solid ${accent}`,
         fontFamily: 'inherit',
-        minHeight: 64,
-        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5,
+        minHeight: 52,
+        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4,
         WebkitTapHighlightColor: 'transparent',
         transition: 'background 0.12s',
-        border: undefined, // override to set specific sides
       }}
       onTouchStart={e => { (e.currentTarget as HTMLElement).style.background = overdue ? T.dangerSoft : T.blueSoft; }}
       onTouchEnd={e   => { (e.currentTarget as HTMLElement).style.background = T.card; }}
     >
-      <div style={{ fontSize: 14, fontWeight: 500, color: T.title, lineHeight: 1.4, direction: 'rtl' }}>
-        {initiative.title}
+      {/* Title row with status badge */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, direction: 'rtl' }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.title, lineHeight: 1.3, flex: 1, textAlign: 'right' }}>
+          {initiative.title}
+        </span>
+        <StatusBadge overdue={overdue} done={done} />
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, direction: 'rtl', flexWrap: 'nowrap' }}>
+      {/* Meta row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, direction: 'rtl' }}>
         {initiative.milestoneCount > 0 && (
-          <span style={{ fontSize: 12, color: done ? T.success : T.sub }}>
+          <span style={{ fontSize: 11, color: done ? T.success : T.sub }}>
             {initiative.milestoneDone}/{initiative.milestoneCount} אבני דרך
           </span>
         )}
         {initiative.dueDate && (
           <>
             {initiative.milestoneCount > 0 && <span style={{ fontSize: 10, color: T.dim }}>·</span>}
-            <span style={{ fontSize: 12, color: overdue ? T.danger : T.sub }}>
+            <span style={{ fontSize: 11, color: overdue ? T.danger : T.sub }}>
               {fmtDate(initiative.dueDate)}
             </span>
           </>
         )}
-        {overdue && <span style={{ fontSize: 11, color: T.danger }}>· פג תוקף</span>}
       </div>
     </button>
   );
@@ -126,37 +135,41 @@ function MilestoneCard({ milestone, onClick }: { milestone: AssignedMilestone; o
       onClick={onClick}
       style={{
         width: '100%', textAlign: 'right', cursor: 'pointer',
-        padding: '14px 14px 14px 12px',
-        borderRadius: 14,
+        padding: '10px 12px 10px 10px',
+        borderRadius: 12,
         background: T.card,
         boxShadow: T.cardShadow,
         borderTop:    '1px solid rgba(0,0,0,0.04)',
         borderBottom: '1px solid rgba(0,0,0,0.04)',
         borderLeft:   '1px solid rgba(0,0,0,0.04)',
-        borderRight:  `4px solid ${accent}`,
+        borderRight:  `3px solid ${accent}`,
         fontFamily: 'inherit',
-        minHeight: 60,
-        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 5,
+        minHeight: 48,
+        display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4,
         WebkitTapHighlightColor: 'transparent',
         transition: 'background 0.12s',
       }}
       onTouchStart={e => { (e.currentTarget as HTMLElement).style.background = overdue ? T.dangerSoft : T.tealSoft; }}
       onTouchEnd={e   => { (e.currentTarget as HTMLElement).style.background = T.card; }}
     >
-      <div style={{ fontSize: 14, fontWeight: 500, color: T.title, lineHeight: 1.4, direction: 'rtl' }}>
-        {milestone.title}
+      {/* Title row with status badge */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, direction: 'rtl' }}>
+        <span style={{ fontSize: 13, fontWeight: 500, color: T.title, lineHeight: 1.3, flex: 1, textAlign: 'right' }}>
+          {milestone.title}
+        </span>
+        <StatusBadge overdue={overdue} done={false} />
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, direction: 'rtl' }}>
+      {/* Meta row */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 5, direction: 'rtl' }}>
         {milestone.taskTitle && (
-          <span style={{ fontSize: 12, color: T.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          <span style={{ fontSize: 11, color: T.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, textAlign: 'right' }}>
             {milestone.taskTitle}
           </span>
         )}
         {milestone.taskTitle && <span style={{ fontSize: 10, color: T.dim }}>·</span>}
-        <span style={{ fontSize: 12, color: overdue ? T.danger : (milestone.dueDate ? T.sub : T.dim), flexShrink: 0 }}>
-          {milestone.dueDate ? fmtDate(milestone.dueDate) : 'ללא תאריך יעד'}
+        <span style={{ fontSize: 11, color: overdue ? T.danger : (milestone.dueDate ? T.sub : T.dim), flexShrink: 0 }}>
+          {milestone.dueDate ? fmtDate(milestone.dueDate) : 'ללא תאריך'}
         </span>
-        {overdue && <span style={{ fontSize: 11, color: T.danger }}>· פג תוקף</span>}
       </div>
     </button>
   );
@@ -193,7 +206,7 @@ export function MobileMyWorkView({ onClose }: Props) {
         flexShrink: 0,
       }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.title, letterSpacing: '-0.3px' }}>
-          המשימות שלי
+          משימות
         </h2>
         <button
           onClick={onClose}
@@ -213,7 +226,7 @@ export function MobileMyWorkView({ onClose }: Props) {
 
         {/* Initiatives */}
         <SectionLabel icon={<Target size={12} />} label="פרויקטים באחריותי" count={initiatives.length} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 12px 8px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 12px 8px' }}>
           {initLoading
             ? <Spinner />
             : initiatives.length === 0
@@ -228,7 +241,7 @@ export function MobileMyWorkView({ onClose }: Props) {
 
         {/* Milestones */}
         <SectionLabel icon={<CheckSquare size={12} />} label="אחראי על אבני דרך" count={myMilestones.length} />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 12px 24px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '0 12px 24px' }}>
           {milLoad
             ? <Spinner />
             : myMilestones.length === 0

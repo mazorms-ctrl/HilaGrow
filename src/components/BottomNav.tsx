@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { Home, Briefcase, TreePine, Menu } from 'lucide-react';
+import { Home, ClipboardList, Network, Menu } from 'lucide-react';
 import { colors, typography } from '@/styles/tokens';
 
 export type MobileTab = 'home' | 'my-work' | 'big-picture' | 'settings';
@@ -11,10 +11,10 @@ interface BottomNavProps {
 
 // RTL order: first item appears on the RIGHT in a dir="rtl" flex container
 const NAV_ITEMS: { tab: MobileTab; icon: React.ElementType; label: string }[] = [
-  { tab: 'home',        icon: Home,      label: 'עמוד הבית'     },
-  { tab: 'my-work',     icon: Briefcase, label: 'המשימות שלי'   },
-  { tab: 'big-picture', icon: TreePine,  label: 'התמונה הגדולה' },
-  { tab: 'settings',    icon: Menu,      label: 'תפריט'          },
+  { tab: 'home',        icon: Home,          label: 'עמוד הבית'     },
+  { tab: 'my-work',     icon: ClipboardList, label: 'משימות'        },
+  { tab: 'big-picture', icon: Network,       label: 'התמונה הגדולה' },
+  { tab: 'settings',    icon: Menu,          label: 'תפריט'          },
 ];
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {

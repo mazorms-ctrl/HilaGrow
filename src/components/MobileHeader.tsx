@@ -1,6 +1,4 @@
-import { Plus } from 'lucide-react';
 import type { User } from '@supabase/supabase-js';
-import { colors } from '@/styles/tokens';
 
 interface Props {
   user: User | null;
@@ -13,7 +11,7 @@ export function MobileHeader({ user, onAddTask }: Props) {
       className="flex md:hidden"
       style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
-        height: 56,
+        height: 64,
         background: 'rgba(255,255,255,0.96)',
         backdropFilter: 'blur(18px)',
         WebkitBackdropFilter: 'blur(18px)',
@@ -25,45 +23,46 @@ export function MobileHeader({ user, onAddTask }: Props) {
         boxShadow: '0 1px 8px rgba(0,0,0,0.06)',
       } as React.CSSProperties}
     >
-      {/* GROW wordmark — centered */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-        <span style={{
-          fontWeight: 900, fontSize: 21, color: '#0a0f1e',
-          letterSpacing: '-0.5px', fontFamily: 'Rubik, sans-serif', lineHeight: 1,
-        }}>
-          GROW
-        </span>
-        <span style={{
-          width: 1, height: 16, background: '#cbd5e1',
-          borderRadius: 1, flexShrink: 0, alignSelf: 'center',
-        }} />
-        <span style={{
-          fontWeight: 300, fontSize: 11, color: '#6b7280',
-          fontFamily: 'Rubik, sans-serif', lineHeight: 1, letterSpacing: '0.2px',
-        }}>
-          יוצרים שינוי
-        </span>
+      {/* Brand block — mirrors desktop layout at mobile scale */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 12,
+        direction: 'rtl', flexShrink: 0,
+      }}>
+        {/* Hillel-Yaffe logo — right side (first child in RTL flex) */}
+        <div style={{ background: 'white', lineHeight: 0, borderRadius: 4 }}>
+          <img
+            src={`${import.meta.env.BASE_URL}hillel-yaffe-logo.png?v=2`}
+            alt="הלל יפה"
+            style={{
+              height: 44, width: 'auto', objectFit: 'contain', display: 'block',
+              filter: 'brightness(1) contrast(1.05)', mixBlendMode: 'multiply',
+            }}
+          />
+        </div>
+
+        {/* GROW | separator | יוצרים שינוי — left side */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, direction: 'ltr' }}>
+          <span style={{
+            fontWeight: 900, fontSize: 24, color: '#0a0f1e',
+            letterSpacing: '-0.5px', fontFamily: 'Rubik, sans-serif', lineHeight: 1,
+            whiteSpace: 'nowrap',
+          }}>
+            GROW
+          </span>
+          <span style={{
+            width: 1, height: 18, background: '#d1d5db',
+            borderRadius: 1, flexShrink: 0, alignSelf: 'center',
+          }} />
+          <span style={{
+            fontWeight: 300, fontSize: 14, color: '#6b7280',
+            fontFamily: 'Rubik, sans-serif', lineHeight: 1,
+            letterSpacing: '0.2px', whiteSpace: 'nowrap',
+          }}>
+            יוצרים שינוי
+          </span>
+        </div>
       </div>
 
-      {/* + button — physical right side */}
-      {user && onAddTask && (
-        <button
-          onClick={onAddTask}
-          style={{
-            position: 'absolute',
-            right: 14, top: '50%', transform: 'translateY(-50%)',
-            width: 34, height: 34, borderRadius: 10,
-            background: colors.brand.primary,
-            border: 'none', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 8px rgba(37,99,235,0.35)',
-            WebkitTapHighlightColor: 'transparent',
-          } as React.CSSProperties}
-          title="הוסף משימה"
-        >
-          <Plus size={18} color="#fff" strokeWidth={2.5} />
-        </button>
-      )}
     </header>
   );
 }
