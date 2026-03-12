@@ -284,7 +284,7 @@ const initialTasks = [
 // Type for medical task to match TasksDashboard expectations
 
 function App() {
-  const { user, profile, isAdmin, isParticipant, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
   const { pathname } = useLocation();
   // Detect task page route — renders TaskPageContent inside the normal layout
