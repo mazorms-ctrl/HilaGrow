@@ -153,6 +153,7 @@ export function KpiCards({ activeFilter, onFilterChange }: KpiCardsProps) {
   return (
     <div
       dir="rtl"
+      className="kpi-grid"
       style={{
         display: 'grid',
         gridTemplateColumns: 'repeat(2, 1fr)',

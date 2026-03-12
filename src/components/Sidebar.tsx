@@ -302,7 +302,7 @@ export function Sidebar({ user, profile, isAdmin = false, onSignOut, onEditProfi
     .join('')
     .toUpperCase();
 
-  const w = collapsed ? '58px' : '232px';
+  const w = collapsed ? '58px' : 'clamp(232px, 18vw, 300px)';
 
   return (
     <aside

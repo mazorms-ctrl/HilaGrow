@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate, useMatch } from 'react-router-dom';
+import { useNavigate, useMatch, useLocation } from 'react-router-dom';
 import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
@@ -284,10 +284,17 @@ const initialTasks = [
 // Type for medical task to match TasksDashboard expectations
 
 function App() {
-  const { user, profile, isAdmin, isParticipant, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const navigate = useNavigate();
+  const { pathname } = useLocation();
   // Detect task page route — renders TaskPageContent inside the normal layout
   const taskMatch = useMatch('/task/:taskId');
+
+  // Scroll safety-net: clear any lingering overflow:hidden on every navigation
+  // so a modal that failed to clean up after itself never freezes the page.
+  useEffect(() => {
+    document.body.style.overflow = '';
+  }, [pathname]);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [quickViewTask, setQuickViewTask] = useState<MedicalTask | null>(null);
 
@@ -317,14 +324,8 @@ function App() {
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
 
-  // Participants land on the Big Picture view rather than the command center
-  useEffect(() => {
-    if (isParticipant && viewMode === 'command') {
-      setViewMode('tree');
-      setTreeFullscreen(true);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isParticipant]);
+  // All users (including participants) land on the command center dashboard.
+  // Do NOT auto-redirect to tree view on mount — landing must always be '/'.
 
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
 
@@ -1615,8 +1616,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             direction: 'rtl',
             position: 'relative',
             backgroundColor: 'transparent',
+            width: '100%',
           }}
-          className="px-4 md:!px-8 h-[72px]"
+          className="px-6 md:px-12 xl:px-20 h-[72px]"
         >
           {/* Nav buttons — desktop, stuck to the right (flex-start in RTL) */}
           <div
