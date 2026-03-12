@@ -1,21 +1,22 @@
 import type { CSSProperties } from 'react';
-import { Home, ListChecks, TreePine } from 'lucide-react';
+import { Home, Briefcase, TreePine, Settings } from 'lucide-react';
 import { colors, typography } from '@/styles/tokens';
 
-export type ViewMode = 'command' | 'rows' | 'tree';
+export type MobileTab = 'home' | 'my-work' | 'big-picture' | 'settings';
 
 interface BottomNavProps {
-  viewMode: ViewMode;
-  onNavigate: (mode: ViewMode) => void;
+  activeTab: MobileTab;
+  onTabChange: (tab: MobileTab) => void;
 }
 
-const NAV_ITEMS: { mode: ViewMode; icon: React.ElementType; label: string }[] = [
-  { mode: 'command', icon: Home,       label: 'בית'    },
-  { mode: 'rows',    icon: ListChecks, label: 'משימות' },
-  { mode: 'tree',    icon: TreePine,   label: 'עץ'     },
+const NAV_ITEMS: { tab: MobileTab; icon: React.ElementType; label: string }[] = [
+  { tab: 'home',        icon: Home,      label: 'בית'          },
+  { tab: 'my-work',     icon: Briefcase, label: 'המשימות שלי'  },
+  { tab: 'big-picture', icon: TreePine,  label: 'עץ'           },
+  { tab: 'settings',    icon: Settings,  label: 'הגדרות'       },
 ];
 
-export function BottomNav({ viewMode, onNavigate }: BottomNavProps) {
+export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
     <nav
       className="md:hidden"
@@ -25,7 +26,7 @@ export function BottomNav({ viewMode, onNavigate }: BottomNavProps) {
         left: 0,
         right: 0,
         zIndex: 40,
-        background: 'rgba(255,255,255,0.94)',
+        background: 'rgba(255,255,255,0.96)',
         backdropFilter: 'blur(18px)',
         WebkitBackdropFilter: 'blur(18px)',
         borderTop: '1px solid rgba(226,232,240,0.8)',
@@ -35,12 +36,12 @@ export function BottomNav({ viewMode, onNavigate }: BottomNavProps) {
         direction: 'rtl',
       } as CSSProperties}
     >
-      {NAV_ITEMS.map(({ mode, icon: Icon, label }) => {
-        const isActive = viewMode === mode;
+      {NAV_ITEMS.map(({ tab, icon: Icon, label }) => {
+        const isActive = activeTab === tab;
         return (
           <button
-            key={mode}
-            onClick={() => onNavigate(mode)}
+            key={tab}
+            onClick={() => onTabChange(tab)}
             style={{
               flex: 1,
               display: 'flex',
@@ -55,13 +56,15 @@ export function BottomNav({ viewMode, onNavigate }: BottomNavProps) {
               transition: 'color 0.15s ease',
               fontFamily: typography.fontFamily,
               WebkitTapHighlightColor: 'transparent',
+              fontSize: 'inherit',
             } as CSSProperties}
           >
             <Icon size={22} strokeWidth={isActive ? 2.2 : 1.8} />
             <span style={{
-              fontSize: '0.6875rem',
+              fontSize: '0.6rem',
               fontWeight: isActive ? '600' : '400',
               letterSpacing: '0.01em',
+              whiteSpace: 'nowrap',
             }}>
               {label}
             </span>

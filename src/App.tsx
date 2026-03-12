@@ -17,7 +17,9 @@ import { WorkItemRow } from './components/ui/WorkItemRow';
 import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 import { CommandCenter } from './components/dashboard/CommandCenter';
 import { BigPictureModal } from './components/dashboard/BigPicturePanel';
-import { BottomNav } from './components/BottomNav';
+import { BottomNav, type MobileTab } from './components/BottomNav';
+import { MobileMyWorkView } from './components/mobile/MobileMyWorkView';
+import { MobileSettingsView } from './components/mobile/MobileSettingsView';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -324,6 +326,7 @@ function App() {
     : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
+  const [mobilePage, setMobilePage] = useState<'my-work' | 'settings' | null>(null);
 
   // All users (including participants) land on the command center dashboard.
   // Do NOT auto-redirect to tree view on mount — landing must always be '/'.
@@ -1747,26 +1750,49 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             </span>
           </div>
 
-          {/* Mobile: logo centered (handled by absolute above), hamburger on the left */}
-          <button
-            className="mobile-only"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            style={{
-              marginInlineStart: 'auto',
-              padding: '10px',
-              background: 'white',
-              border: '2px solid #e5e5e5',
-              borderRadius: '12px',
-              cursor: 'pointer',
-              fontSize: '24px',
-              transition: 'all 0.2s',
-              minHeight: '44px',
-              minWidth: '44px',
-              flexShrink: 0,
-            }}
-          >
-            {isMobileMenuOpen ? '✕' : '☰'}
-          </button>
+          {/* Mobile: user avatar (right side, only when logged in) */}
+          {user && (
+            <div
+              className="mobile-only"
+              style={{ marginInlineStart: 'auto', flexShrink: 0 }}
+            >
+              <div style={{
+                width: 38, height: 38, borderRadius: 11, flexShrink: 0,
+                background: 'linear-gradient(135deg, #2563eb 0%, #6366f1 100%)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 13, fontWeight: 600, color: '#fff',
+                boxShadow: '0 1px 6px rgba(37,99,235,0.25)',
+                userSelect: 'none',
+              }}>
+                {profile?.avatar_url
+                  ? <img src={profile.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 11 }} />
+                  : (profile?.full_name || user.email || '?').split(' ').map((w: string) => w[0]).slice(0, 2).join('').toUpperCase()
+                }
+              </div>
+            </div>
+          )}
+          {/* Mobile: hamburger for non-authenticated users */}
+          {!user && (
+            <button
+              className="mobile-only"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              style={{
+                marginInlineStart: 'auto',
+                padding: '10px',
+                background: 'white',
+                border: '2px solid #e5e5e5',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontSize: '24px',
+                transition: 'all 0.2s',
+                minHeight: '44px',
+                minWidth: '44px',
+                flexShrink: 0,
+              }}
+            >
+              {isMobileMenuOpen ? '✕' : '☰'}
+            </button>
+          )}
 
         </div>
 
@@ -5318,14 +5344,44 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       {/* Big Picture Modal — portal, rendered once at app root */}
       <BigPictureModal />
 
+      {/* Mobile overlays (My Work / Settings) */}
+      {user && mobilePage === 'my-work' && (
+        <MobileMyWorkView onClose={() => setMobilePage(null)} />
+      )}
+      {user && mobilePage === 'settings' && (
+        <MobileSettingsView
+          user={user}
+          profile={profile}
+          isAdmin={isAdmin ?? false}
+          onClose={() => setMobilePage(null)}
+          onEditProfile={() => setShowProfileEdit(true)}
+          onSignOut={signOut}
+        />
+      )}
+
       {/* Mobile bottom navigation — hidden on md+ */}
       {user && (
         <BottomNav
-          viewMode={viewMode}
-          onNavigate={(mode) => {
-            setViewMode(mode);
-            setTreeFullscreen(mode === 'tree');
-            if (taskMatch) navigate('/');
+          activeTab={
+            mobilePage === 'my-work'   ? 'my-work'     :
+            mobilePage === 'settings'  ? 'settings'    :
+            viewMode   === 'tree'      ? 'big-picture' : 'home'
+          }
+          onTabChange={(tab: MobileTab) => {
+            if (tab === 'home') {
+              setMobilePage(null);
+              setViewMode('command');
+              if (taskMatch) navigate('/');
+            } else if (tab === 'big-picture') {
+              setMobilePage(null);
+              setViewMode('tree');
+              setTreeFullscreen(true);
+              if (taskMatch) navigate('/');
+            } else if (tab === 'my-work') {
+              setMobilePage('my-work');
+            } else if (tab === 'settings') {
+              setMobilePage('settings');
+            }
           }}
         />
       )}
