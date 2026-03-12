@@ -1,15 +1,14 @@
 import { Routes, Route } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import App from './App';
-import { LandingPage } from './components/landing/LandingPage';
+import { LoginPage } from './components/auth/LoginPage';
 import { AdminRoute } from './components/auth/AdminRoute';
 import { AdminDashboard } from './components/admin/AdminDashboard';
 
 export function AppRouter() {
   const { loading, user } = useAuth();
 
-  // Spinner while session resolves — background matches the landing page
-  // so there is no jarring colour flash before auth finishes.
+  // Spinner while session resolves — matches the login page background
   if (loading) {
     return (
       <div style={{
@@ -17,13 +16,13 @@ export function AppRouter() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#0B1628',
+        background: '#F4F6FB',
       }}>
         <div style={{
           width: '32px',
           height: '32px',
-          border: '3px solid rgba(56,189,248,0.2)',
-          borderTopColor: '#38BDF8',
+          border: '3px solid rgba(74,108,247,0.15)',
+          borderTopColor: '#4A6CF7',
           borderRadius: '50%',
           animation: 'spin 0.8s linear infinite',
         }} />
@@ -32,9 +31,9 @@ export function AppRouter() {
     );
   }
 
-  // Unauthenticated → landing page (owns its own LoginModal)
+  // Unauthenticated → halo login page
   if (!user) {
-    return <LandingPage />;
+    return <LoginPage />;
   }
 
   // Authenticated → full app (owns layout: header + sidebar + routes)

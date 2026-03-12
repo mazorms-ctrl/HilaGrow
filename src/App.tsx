@@ -1574,10 +1574,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   return (
-    <div className="app-container" style={{ 
-      minHeight: '100vh', 
+    <div className="app-container" style={{
+      minHeight: '100vh',
       background: colors.background.primary,
-      direction: 'rtl', 
+      direction: 'rtl',
       fontFamily: typography.fontFamily,
       position: 'relative',
       display: 'flex',
