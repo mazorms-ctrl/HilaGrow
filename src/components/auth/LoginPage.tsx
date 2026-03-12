@@ -175,6 +175,33 @@ export function LoginPage() {
         .lp-link { background:none;border:none;cursor:pointer;font-family:Heebo,sans-serif;font-size:13px;color:#2563EB;font-weight:600;padding:0; }
         .lp-link:hover { text-decoration:underline; }
         .lp-check { accent-color:#2563EB; width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+
+        /* ── Fluid scale for large monitors ── */
+        @media (min-width: 1536px) {
+          .lp-card { max-width: 480px !important; padding: 48px !important; }
+          .lp-card h1 { font-size: 40px !important; }
+          .lp-card p  { font-size: 17px !important; }
+          .lp-card input { font-size: 15px !important; }
+          .lp-halo-outer { width: 1400px !important; height: 1400px !important; }
+          .lp-halo-inner { width: 800px  !important; height: 800px  !important; }
+        }
+        @media (min-width: 1920px) {
+          .lp-card { max-width: 560px !important; padding: 56px !important; }
+          .lp-card h1 { font-size: 48px !important; }
+          .lp-card p  { font-size: 19px !important; }
+          .lp-card input { font-size: 17px !important; padding: 15px 16px 15px 50px !important; }
+          .lp-card .lp-btn { font-size: 18px !important; padding: 18px 32px !important; }
+          .lp-card .lp-link { font-size: 15px !important; }
+          .lp-halo-outer { width: 1800px !important; height: 1800px !important; }
+          .lp-halo-inner { width: 1000px !important; height: 1000px !important; }
+        }
+        @media (min-width: 2560px) {
+          .lp-card { max-width: 680px !important; padding: 72px !important; }
+          .lp-card h1 { font-size: 60px !important; }
+          .lp-card p  { font-size: 22px !important; }
+          .lp-card input { font-size: 20px !important; }
+          .lp-card .lp-btn { font-size: 21px !important; padding: 22px 40px !important; }
+        }
       `}</style>
 
       {/* ── Page ── */}
@@ -189,7 +216,7 @@ export function LoginPage() {
       }}>
 
         {/* ── Halo: wide soft cloud of light, two layers ── */}
-        <div aria-hidden style={{
+        <div aria-hidden className="lp-halo-outer" style={{
           position: 'absolute',
           width: '1100px', height: '1100px',
           borderRadius: '50%',
@@ -207,7 +234,7 @@ export function LoginPage() {
           filter: 'blur(72px)',
           pointerEvents: 'none',
         }} />
-        <div aria-hidden style={{
+        <div aria-hidden className="lp-halo-inner" style={{
           position: 'absolute',
           width: '620px', height: '620px',
           borderRadius: '50%',
@@ -225,7 +252,7 @@ export function LoginPage() {
         }} />
 
         {/* ── Card ── */}
-        <div style={{
+        <div className="lp-card" style={{
           position: 'relative', zIndex: 2,
           width: '100%', maxWidth: '420px',
           background: '#FFFFFF',
