@@ -206,7 +206,7 @@ export function MobileMyWorkView({ onClose }: Props) {
         flexShrink: 0,
       }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700, color: T.title, letterSpacing: '-0.3px' }}>
-          משימות
+          באחריותי
         </h2>
         <button
           onClick={onClose}

@@ -327,7 +327,7 @@ function App() {
     : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
-  const [mobilePage, setMobilePage] = useState<'my-work' | 'settings' | null>(null);
+  const [mobilePage, setMobilePage] = useState<'my-work' | 'settings' | null>(null);  // 'tasks' is a viewMode, not a mobilePage
 
   // All users (including participants) land on the command center dashboard.
   // Do NOT auto-redirect to tree view on mount — landing must always be '/'.
@@ -5349,12 +5349,17 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           activeTab={
             mobilePage === 'my-work'   ? 'my-work'     :
             mobilePage === 'settings'  ? 'settings'    :
-            viewMode   === 'tree'      ? 'big-picture' : 'home'
+            viewMode   === 'tree'      ? 'big-picture' :
+            viewMode   === 'rows'      ? 'tasks'       : 'home'
           }
           onTabChange={(tab: MobileTab) => {
             if (tab === 'home') {
               setMobilePage(null);
               setViewMode('command');
+              if (taskMatch) navigate('/');
+            } else if (tab === 'tasks') {
+              setMobilePage(null);
+              setViewMode('rows');
               if (taskMatch) navigate('/');
             } else if (tab === 'big-picture') {
               setMobilePage(null);

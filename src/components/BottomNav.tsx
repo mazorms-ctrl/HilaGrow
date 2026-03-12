@@ -1,8 +1,8 @@
 import type { CSSProperties } from 'react';
-import { Home, ClipboardList, Network, Menu } from 'lucide-react';
+import { Home, Briefcase, ClipboardList, Network, Settings } from 'lucide-react';
 import { colors, typography } from '@/styles/tokens';
 
-export type MobileTab = 'home' | 'my-work' | 'big-picture' | 'settings';
+export type MobileTab = 'home' | 'my-work' | 'tasks' | 'big-picture' | 'settings';
 
 interface BottomNavProps {
   activeTab: MobileTab;
@@ -12,9 +12,10 @@ interface BottomNavProps {
 // RTL order: first item appears on the RIGHT in a dir="rtl" flex container
 const NAV_ITEMS: { tab: MobileTab; icon: React.ElementType; label: string }[] = [
   { tab: 'home',        icon: Home,          label: 'עמוד הבית'     },
-  { tab: 'my-work',     icon: ClipboardList, label: 'משימות'        },
+  { tab: 'my-work',     icon: Briefcase,     label: 'באחריותי'      },
+  { tab: 'tasks',       icon: ClipboardList, label: 'משימות'        },
   { tab: 'big-picture', icon: Network,       label: 'התמונה הגדולה' },
-  { tab: 'settings',    icon: Menu,          label: 'תפריט'          },
+  { tab: 'settings',    icon: Settings,      label: 'הגדרות'        },
 ];
 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
@@ -59,11 +60,11 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
               padding: '0 2px',
             } as CSSProperties}
           >
-            <Icon size={21} strokeWidth={isActive ? 2.2 : 1.8} />
+            <Icon size={19} strokeWidth={isActive ? 2.2 : 1.7} />
             <span style={{
-              fontSize: '9px',
+              fontSize: '8px',
               fontWeight: isActive ? '600' : '400',
-              letterSpacing: '0.01em',
+              letterSpacing: '0em',
               whiteSpace: 'nowrap',
               lineHeight: 1.2,
             }}>
