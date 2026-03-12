@@ -51,6 +51,7 @@ function FeedRow({ entry }: { entry: ActivityFeedEntry }) {
   return (
     <div
       role="button"
+      className="feed-row"
       tabIndex={0}
       onClick={() => navigate(`/task/${entry.task_id}`)}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate(`/task/${entry.task_id}`); }}
@@ -75,6 +76,7 @@ function FeedRow({ entry }: { entry: ActivityFeedEntry }) {
     >
       {/* Date — DD/MM with full timestamp tooltip on hover */}
       <span
+        className="feed-date"
         title={fullTimestamp}
         style={{ color: colors.text.tertiary, whiteSpace: 'nowrap', flexShrink: 0, cursor: 'default' }}
       >
@@ -82,21 +84,21 @@ function FeedRow({ entry }: { entry: ActivityFeedEntry }) {
       </span>
 
       {/* Separator */}
-      <span style={{ color: colors.border.default, flexShrink: 0 }}>|</span>
+      <span className="feed-sep" style={{ color: colors.border.default, flexShrink: 0 }}>|</span>
 
       {/* Name */}
-      <span style={{ fontWeight: typography.fontWeight.semibold, color: colors.text.primary, flexShrink: 0 }}>
+      <span className="feed-name" style={{ fontWeight: typography.fontWeight.semibold, color: colors.text.primary, flexShrink: 0 }}>
         {name}
       </span>
 
       {/* Action — prefer the specific content from the trigger; fall back to generic label */}
-      <span style={{ color: colors.text.secondary }}>
+      <span className="feed-action" style={{ color: colors.text.secondary }}>
         {entry.content || fallbackLabel}
       </span>
 
       {/* Task title */}
       {entry.task_title && (
-        <span style={{ color: colors.brand.primary, fontWeight: typography.fontWeight.medium }}>
+        <span className="feed-task" style={{ color: colors.brand.primary, fontWeight: typography.fontWeight.medium }}>
           — {entry.task_title}
         </span>
       )}
@@ -156,6 +158,24 @@ export function ActivityFeed() {
         overflow: 'hidden',
       }}
     >
+      <style>{`
+        @media (max-width: 767px) {
+          .feed-row {
+            flex-direction: column !important;
+            align-items: flex-start !important;
+            gap: 4px !important;
+            padding: 12px 4px !important;
+            margin: 0 !important;
+          }
+          .feed-row .feed-meta { display: flex; align-items: center; gap: 6px; }
+          .feed-row .feed-name { font-size: 13px; font-weight: 600; }
+          .feed-row .feed-action { font-size: 12px; }
+          .feed-row .feed-task { font-size: 12px; font-weight: 500; }
+          .feed-row .feed-date { font-size: 11px; order: 3; }
+          .feed-row .feed-sep { display: none !important; }
+          .feed-list { padding: 0 12px !important; }
+        }
+      `}</style>
       {/* Header row */}
       <div
         style={{
@@ -201,7 +221,7 @@ export function ActivityFeed() {
       )}
 
       {/* Entry list — fixed height for 4 rows so layout never jumps */}
-      <div style={{ padding: `0 ${spacing.xl}` }}>
+      <div className="feed-list" style={{ padding: `0 ${spacing.xl}` }}>
         {isLoading && (
           <div style={{ padding: `${spacing.xxxl} 0`, textAlign: 'center', color: colors.text.tertiary, fontSize: typography.fontSize.sm }}>
             טוען פעילות…

@@ -561,23 +561,121 @@ export function ProjectTaskList({ filter }: ProjectTaskListProps) {
                 </div>
               )}
               {!isLoading && visibleTasks.length > 0 && (
-                <div style={{ overflowX: 'auto' }}>
-                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520, fontFamily: typography.fontFamily }}>
-                    <TableHead />
-                    <tbody>
-                      {visibleTasks.map((task) => (
-                        <TaskRow
-                          key={task.id}
-                          task={task}
-                          participantIds={participantsMap.get(task.id) ?? []}
-                          profiles={profiles}
-                          onPreview={setPreviewId}
-                        />
-                      ))}
-                    </tbody>
-                  </table>
+  <>
+    {/* Desktop: table */}
+    <div className="ptl-table-wrap" style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 520, fontFamily: typography.fontFamily }}>
+        <TableHead />
+        <tbody>
+          {visibleTasks.map((task) => (
+            <TaskRow
+              key={task.id}
+              task={task}
+              participantIds={participantsMap.get(task.id) ?? []}
+              profiles={profiles}
+              onPreview={setPreviewId}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    {/* Mobile: cards */}
+    <div className="ptl-card-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px 12px' }}>
+      {visibleTasks.map((task) => {
+        const overdue = task.due_date ? isPast(parseISO(task.due_date)) : false;
+        const pIds = participantsMap.get(task.id) ?? [];
+        const names: string[] = [];
+        if (task.owner_name) names.push(task.owner_name);
+        if (task.assigned_to) {
+          const p = profiles.find(x => x.id === task.assigned_to);
+          const n = p?.full_name || p?.email || null;
+          if (n && n !== task.owner_name) names.push(n);
+        }
+        for (const pid of pIds.slice(0, 2)) {
+          const p = profiles.find(x => x.id === pid);
+          const n = p?.full_name || p?.email || null;
+          if (n && !names.includes(n)) names.push(n);
+        }
+        const clamped = Math.max(0, Math.min(100, task.status_percent));
+        const barColor = clamped >= 75 ? colors.semantic.success : clamped >= 40 ? colors.brand.primary : colors.semantic.warning;
+
+        return (
+          <button
+            key={task.id}
+            onClick={() => setPreviewId(task.id)}
+            style={{
+              width: '100%', textAlign: 'right', cursor: 'pointer',
+              padding: '14px 14px 12px',
+              borderRadius: 14,
+              background: overdue ? `${colors.semantic.dangerLight}66` : colors.surface.elevated,
+              boxShadow: '0 2px 10px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.04)',
+              border: `1px solid ${overdue ? colors.semantic.danger + '44' : colors.border.light}`,
+              fontFamily: 'inherit',
+              display: 'flex', flexDirection: 'column', gap: 8,
+              WebkitTapHighlightColor: 'transparent',
+            } as React.CSSProperties}
+          >
+            {/* Title row */}
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                {task.parent_title && (
+                  <div style={{ fontSize: 11, color: colors.text.disabled, marginBottom: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {task.parent_title}
+                  </div>
+                )}
+                <div style={{ fontSize: 14, fontWeight: 600, color: colors.text.primary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {task.title}
+                  {task.group_name && (
+                    <span style={{ marginRight: 5, fontSize: 11, fontWeight: 400, color: colors.text.tertiary }}>
+                      ({task.group_name})
+                    </span>
+                  )}
                 </div>
+              </div>
+              {overdue && (
+                <span style={{ fontSize: 10, fontWeight: 700, color: colors.semantic.danger, background: colors.semantic.dangerLight, padding: '2px 7px', borderRadius: 20, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  באיחור
+                </span>
               )}
+            </div>
+
+            {/* Progress bar */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ flex: 1, height: 5, borderRadius: 99, background: colors.border.light, overflow: 'hidden' }}>
+                <div style={{ width: `${clamped}%`, height: '100%', borderRadius: 99, background: barColor, transition: 'width 0.4s ease' }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 600, color: colors.text.tertiary, flexShrink: 0, width: 28, textAlign: 'left' }}>
+                {clamped}%
+              </span>
+            </div>
+
+            {/* Meta row: due date + participants */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 4, flexWrap: 'nowrap', overflow: 'hidden' }}>
+                {names.slice(0, 2).map((n, i) => (
+                  <span key={i} style={{ fontSize: 10, fontWeight: 500, color: colors.text.secondary, background: colors.surface.hover, border: `1px solid ${colors.border.light}`, padding: '1px 6px', borderRadius: 99, whiteSpace: 'nowrap' }}>
+                    {n}
+                  </span>
+                ))}
+                {names.length > 2 && <span style={{ fontSize: 10, color: colors.text.tertiary }}>+{names.length - 2}</span>}
+              </div>
+              {task.due_date && (
+                <span style={{ fontSize: 11, color: overdue ? colors.semantic.danger : colors.text.secondary, fontWeight: overdue ? 700 : 400, flexShrink: 0, whiteSpace: 'nowrap' }}>
+                  {(() => { try { return format(parseISO(task.due_date), 'd בMMM', { locale: he }); } catch { return ''; } })()}
+                </span>
+              )}
+            </div>
+          </button>
+        );
+      })}
+    </div>
+    <style>{`
+      @media (min-width: 768px) { .ptl-card-list { display: none !important; } }
+      @media (max-width: 767px) { .ptl-table-wrap { display: none !important; } }
+    `}</style>
+  </>
+)}
             </>
           )}
         </div>
@@ -630,21 +728,52 @@ export function ProjectTaskList({ filter }: ProjectTaskListProps) {
                   </div>
                 )}
                 {!ideasLoading && ideas.length > 0 && (
-                  <div style={{ overflowX: 'auto' }}>
-                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400, fontFamily: typography.fontFamily }}>
-                      <IdeaTableHead />
-                      <tbody>
-                        {ideas.map((idea) => (
-                          <IdeaRowCompact
-                            key={idea.id}
-                            task={idea}
-                            onPreview={setPreviewId}
-                          />
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+  <>
+    <div className="ptl-table-wrap" style={{ overflowX: 'auto' }}>
+      <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 400, fontFamily: typography.fontFamily }}>
+        <IdeaTableHead />
+        <tbody>
+          {ideas.map((idea) => (
+            <IdeaRowCompact
+              key={idea.id}
+              task={idea}
+              onPreview={setPreviewId}
+            />
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div className="ptl-card-list" style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '8px 12px 12px' }}>
+      {ideas.map((idea) => (
+        <button
+          key={idea.id}
+          onClick={() => setPreviewId(idea.id)}
+          style={{
+            width: '100%', textAlign: 'right', cursor: 'pointer',
+            padding: '14px',
+            borderRadius: 14,
+            background: colors.surface.elevated,
+            boxShadow: '0 2px 10px rgba(0,0,0,0.05), 0 0 0 1px rgba(0,0,0,0.04)',
+            border: `1px solid ${colors.border.light}`,
+            fontFamily: 'inherit',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            WebkitTapHighlightColor: 'transparent',
+          } as React.CSSProperties}
+        >
+          <span style={{ fontSize: 13, fontWeight: 500, color: colors.text.secondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {idea.title}
+          </span>
+          {idea.group_name && (
+            <span style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+              <span style={{ width: 7, height: 7, borderRadius: '50%', background: idea.group_color ?? colors.brand.primary, boxShadow: `0 0 0 2px ${(idea.group_color ?? colors.brand.primary)}33`, flexShrink: 0 }} />
+              <span style={{ fontSize: 11, color: colors.text.secondary }}>{idea.group_name}</span>
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  </>
+)}
               </>
             )}
           </div>

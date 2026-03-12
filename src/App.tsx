@@ -18,6 +18,7 @@ import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask 
 import { CommandCenter } from './components/dashboard/CommandCenter';
 import { BigPictureModal } from './components/dashboard/BigPicturePanel';
 import { BottomNav, type MobileTab } from './components/BottomNav';
+import { MobileHeader } from './components/MobileHeader';
 import { MobileMyWorkView } from './components/mobile/MobileMyWorkView';
 import { MobileSettingsView } from './components/mobile/MobileSettingsView';
 
@@ -1602,7 +1603,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       `}</style>
       
       {/* Header */}
-      <header style={{
+      <header className="hidden md:block" style={{
         borderBottom: '1px solid rgba(226,232,240,0.70)',
         background: 'rgba(255,255,255,0.82)',
         backdropFilter: 'blur(18px)',
@@ -1750,26 +1751,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             </span>
           </div>
 
-          {/* Mobile: + quick-add button (only when logged in) */}
-          {user && (
-            <button
-              className="mobile-only"
-              onClick={() => setShowAddCategory(true)}
-              style={{
-                marginInlineStart: 'auto',
-                width: 38, height: 38, borderRadius: 11, flexShrink: 0,
-                background: colors.brand.primary,
-                border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '0 2px 8px rgba(37,99,235,0.35)',
-                WebkitTapHighlightColor: 'transparent',
-              } as React.CSSProperties}
-              title="הוסף משימה"
-            >
-              <Plus size={20} color="#fff" strokeWidth={2.5} />
-            </button>
-          )}
+
           {/* Mobile: hamburger for non-authenticated users */}
           {!user && (
             <button
@@ -1873,7 +1855,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       {/* Body: Sidebar (when logged in) + Main content */}
       {/* direction: rtl puts sidebar on the RIGHT, main content on the LEFT */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', direction: 'rtl' }}>
+      <div className="pt-14 md:pt-0" style={{ display: 'flex', flex: 1, overflow: 'hidden', direction: 'rtl' }}>
 
       {/* Sidebar — visible only when authenticated, desktop only */}
       {user && (
@@ -5357,6 +5339,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           onSignOut={signOut}
         />
       )}
+
+      {/* Mobile header — fixed top bar, hidden on md+ */}
+      <MobileHeader user={user} onAddTask={() => setShowAddCategory(true)} />
 
       {/* Mobile bottom navigation — hidden on md+ */}
       {user && (
