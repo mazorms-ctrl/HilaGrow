@@ -1,42 +1,65 @@
 /**
  * InstallBanner — PWA "Add to Home Screen" prompt for mobile.
- * - Android/Chrome: intercepts beforeinstallprompt, shows one-tap install button.
- * - iOS Safari: shows Share → Add to Home Screen instructions.
- * - Hides if already running in standalone mode (already installed).
- * - Dismissable; persists dismissal in sessionStorage so it doesn't reappear mid-session.
+ *
+ * Android/Chrome: intercepts beforeinstallprompt → one-tap install.
+ * iOS Safari: shows numbered Share instructions.
+ * Already standalone: never renders.
+ * Dismissed: localStorage with 30-day expiry → won't re-appear on refresh.
+ *
+ * Positioned as a floating bar just above the bottom nav (bottom-anchored).
  */
 import { useState, useEffect } from 'react';
 import { Download, X, Share } from 'lucide-react';
 import { colors, typography } from '@/styles/tokens';
 
-// Detect iOS
+const STORAGE_KEY  = 'grow-install-dismissed';
+const DISMISS_DAYS = 30;
+
 function isIOS() {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 }
 
-// Detect standalone (already installed)
 function isStandalone() {
   return window.matchMedia('(display-mode: standalone)').matches
     || (navigator as any).standalone === true;
 }
 
+function isDismissed() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return false;
+    const { until } = JSON.parse(raw);
+    return Date.now() < until;
+  } catch {
+    return false;
+  }
+}
+
+function persistDismiss() {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      until: Date.now() + DISMISS_DAYS * 24 * 60 * 60 * 1000,
+    }));
+  } catch { /* quota issues — ignore */ }
+}
+
+// Bottom nav height (56px icons + ~16px credit strip) + safe-area
+const NAV_HEIGHT = 'calc(env(safe-area-inset-bottom, 0px) + 78px)';
+
 export function InstallBanner() {
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [showAndroid, setShowAndroid]       = useState(false);
   const [showIOS, setShowIOS]               = useState(false);
-  const [iosTooltip, setIosTooltip]         = useState(false);
+  const [iosSteps, setIosSteps]             = useState(false);
 
   useEffect(() => {
-    // Don't show if already installed or dismissed this session
-    if (isStandalone()) return;
-    if (sessionStorage.getItem('install-banner-dismissed')) return;
+    if (isStandalone() || isDismissed()) return;
 
     if (isIOS()) {
       setShowIOS(true);
       return;
     }
 
-    // Android / Chrome: wait for browser install trigger
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e);
@@ -47,95 +70,139 @@ export function InstallBanner() {
   }, []);
 
   function dismiss() {
-    sessionStorage.setItem('install-banner-dismissed', '1');
+    persistDismiss();
     setShowAndroid(false);
     setShowIOS(false);
-    setIosTooltip(false);
+    setIosSteps(false);
   }
 
   async function handleInstall() {
     if (!deferredPrompt) return;
     deferredPrompt.prompt();
     const { outcome } = await deferredPrompt.userChoice;
-    if (outcome === 'accepted') dismiss();
     setDeferredPrompt(null);
     setShowAndroid(false);
+    if (outcome === 'accepted') persistDismiss(); // already installed
   }
 
-  const visible = showAndroid || showIOS;
-  if (!visible) return null;
+  if (!showAndroid && !showIOS) return null;
 
   return (
     <>
-      {/* Banner */}
+      {/* ── iOS step-by-step panel (slides up above banner) ── */}
+      {iosSteps && (
+        <div
+          className="flex md:hidden"
+          style={{
+            position: 'fixed',
+            bottom: `calc(${NAV_HEIGHT} + 62px)`, // above the banner
+            left: 12, right: 12,
+            zIndex: 48,
+            background: '#1e293b',
+            borderRadius: 16,
+            padding: '16px 16px 12px',
+            direction: 'rtl',
+            fontFamily: typography.fontFamily,
+            boxShadow: '0 -4px 32px rgba(0,0,0,0.35)',
+            flexDirection: 'column',
+          }}
+        >
+          {[
+            { n: 1, text: 'פתח את הדף ב-Safari (לא Chrome)' },
+            { n: 2, text: 'לחץ על כפתור השיתוף ⬆ בתחתית הדפדפן' },
+            { n: 3, text: 'גלול ובחר "הוסף למסך הבית" ➕' },
+            { n: 4, text: 'לחץ "הוסף" — GROW+ תופיע כאפליקציה!' },
+          ].map(({ n, text }) => (
+            <div key={n} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginBottom: n < 4 ? 10 : 14 }}>
+              <span style={{
+                width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+                background: colors.brand.primary, color: '#fff',
+                fontSize: 11, fontWeight: 700,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>{n}</span>
+              <span style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.55 }}>{text}</span>
+            </div>
+          ))}
+          <button
+            onClick={() => setIosSteps(false)}
+            style={{
+              width: '100%', padding: '8px', background: 'rgba(255,255,255,0.08)',
+              border: 'none', borderRadius: 8, color: '#94a3b8',
+              fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+            }}
+          >
+            סגור הוראות
+          </button>
+        </div>
+      )}
+
+      {/* ── Main banner — floats above bottom nav ── */}
       <div
         className="flex md:hidden"
         style={{
           position: 'fixed',
-          top: 64, // below MobileHeader (64px)
-          left: 0, right: 0,
-          zIndex: 49,
-          background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 100%)',
-          padding: '10px 14px 10px 10px',
+          bottom: NAV_HEIGHT,
+          left: 10, right: 10,
+          zIndex: 48,
+          background: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 60%, #3b82f6 100%)',
+          borderRadius: 14,
+          padding: '11px 12px 11px 14px',
           display: 'flex',
           alignItems: 'center',
           gap: 10,
           direction: 'rtl',
-          boxShadow: '0 2px 12px rgba(37,99,235,0.35)',
           fontFamily: typography.fontFamily,
+          boxShadow: '0 4px 24px rgba(37,99,235,0.45), 0 1px 4px rgba(0,0,0,0.12)',
         }}
       >
-        {/* Icon */}
+        {/* App icon placeholder */}
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
+          width: 40, height: 40, borderRadius: 10, flexShrink: 0,
           background: 'rgba(255,255,255,0.18)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
         }}>
           {showIOS
-            ? <Share size={18} color="#fff" />
-            : <Download size={18} color="#fff" />}
+            ? <Share size={19} color="#fff" />
+            : <Download size={19} color="#fff" />}
         </div>
 
-        {/* Text */}
+        {/* Copy */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1.3 }}>
-            הורד את האפליקציה
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1.25 }}>
+            GROW+ מוכנה להתקנה
           </div>
-          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.78)', marginTop: 1 }}>
-            {showIOS
-              ? 'לחץ על שיתוף ← "הוסף למסך הבית"'
-              : 'גישה מהירה ישירות מהמסך הראשי'}
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.75)', marginTop: 2 }}>
+            {showIOS ? 'לחץ "איך?" לפירוט' : 'לחץ להוספה למסך הבית'}
           </div>
         </div>
 
-        {/* Action button */}
+        {/* CTA */}
         {showAndroid && (
           <button
             onClick={handleInstall}
             style={{
-              padding: '7px 14px', borderRadius: 8,
+              padding: '8px 16px', borderRadius: 9,
               background: '#fff', color: colors.brand.primary,
               border: 'none', cursor: 'pointer',
-              fontSize: 12.5, fontWeight: 700,
-              fontFamily: 'inherit', flexShrink: 0,
-              WebkitTapHighlightColor: 'transparent',
+              fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+              flexShrink: 0, WebkitTapHighlightColor: 'transparent',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
             }}
           >
-            התקן
+            הוסף
           </button>
         )}
 
         {showIOS && (
           <button
-            onClick={() => setIosTooltip(t => !t)}
+            onClick={() => setIosSteps(s => !s)}
             style={{
-              padding: '7px 14px', borderRadius: 8,
+              padding: '8px 14px', borderRadius: 9,
               background: '#fff', color: colors.brand.primary,
               border: 'none', cursor: 'pointer',
-              fontSize: 12.5, fontWeight: 700,
-              fontFamily: 'inherit', flexShrink: 0,
-              WebkitTapHighlightColor: 'transparent',
+              fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+              flexShrink: 0, WebkitTapHighlightColor: 'transparent',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
             }}
           >
             איך?
@@ -146,66 +213,17 @@ export function InstallBanner() {
         <button
           onClick={dismiss}
           style={{
-            width: 28, height: 28, borderRadius: 6,
+            width: 28, height: 28, borderRadius: 7, flexShrink: 0,
             background: 'rgba(255,255,255,0.15)', border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            cursor: 'pointer', flexShrink: 0, color: '#fff',
+            cursor: 'pointer', color: '#fff',
             WebkitTapHighlightColor: 'transparent',
           }}
+          title="סגור"
         >
-          <X size={14} />
+          <X size={13} />
         </button>
       </div>
-
-      {/* iOS instructions tooltip */}
-      {iosTooltip && (
-        <div
-          className="flex md:hidden"
-          style={{
-            position: 'fixed',
-            top: 64 + 58, // below banner
-            left: 16, right: 16,
-            zIndex: 49,
-            background: '#1e293b',
-            borderRadius: 14,
-            padding: '14px 16px',
-            direction: 'rtl',
-            fontFamily: typography.fontFamily,
-            boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
-          }}
-        >
-          {[
-            { n: 1, text: 'פתח את Safari (חייב להיות Safari)' },
-            { n: 2, text: 'לחץ על כפתור השיתוף 🔗 בתחתית המסך' },
-            { n: 3, text: 'גלול למטה ובחר "הוסף למסך הבית"' },
-            { n: 4, text: 'לחץ "הוסף" — האפליקציה תופיע כאייקון!' },
-          ].map(({ n, text }) => (
-            <div key={n} style={{
-              display: 'flex', gap: 10, alignItems: 'flex-start',
-              marginBottom: n < 4 ? 10 : 0,
-            }}>
-              <span style={{
-                width: 22, height: 22, borderRadius: '50%',
-                background: colors.brand.primary,
-                color: '#fff', fontSize: 11, fontWeight: 700,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                flexShrink: 0,
-              }}>{n}</span>
-              <span style={{ fontSize: 13, color: '#e2e8f0', lineHeight: 1.5 }}>{text}</span>
-            </div>
-          ))}
-          <button
-            onClick={() => setIosTooltip(false)}
-            style={{
-              marginTop: 12, width: '100%', padding: '8px',
-              background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: 8,
-              color: '#94a3b8', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            סגור
-          </button>
-        </div>
-      )}
     </>
   );
 }
