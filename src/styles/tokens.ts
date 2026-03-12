@@ -122,16 +122,16 @@ export const radius = {
 // Typography Scale (Compact)
 export const typography = {
   fontSize: {
-    xs: '12px',
-    sm: '14px',
-    base: '15px',
-    md: '16px',
-    lg: '18px',
-    xl: '20px',
-    h3: '24px',
-    h2: '28px',
-    h1: '32px',
-    display: '40px',
+    xs: '0.75rem',    /* 12px @ base */
+    sm: '0.875rem',   /* 14px @ base */
+    base: '0.9375rem',/* 15px @ base */
+    md: '1rem',       /* 16px @ base */
+    lg: '1.125rem',   /* 18px @ base */
+    xl: '1.25rem',    /* 20px @ base */
+    h3: '1.5rem',     /* 24px @ base */
+    h2: '1.75rem',    /* 28px @ base */
+    h1: '2rem',       /* 32px @ base */
+    display: '2.5rem',/* 40px @ base */
   },
   fontWeight: {
     normal: '400',
