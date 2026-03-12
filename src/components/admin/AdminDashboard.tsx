@@ -259,14 +259,23 @@ export function AdminDashboard() {
   async function deleteUser(user: UserRow) {
     const displayName = user.full_name || user.email;
     const confirmed = window.confirm(
-      `האם אתה בטוח שברצונך למחוק את ${displayName} לצמיתות?`
+      `האם אתה בטוח שברצונך למחוק את ${displayName} לצמיתות?\n\nפעולה זו אינה הפיכה.`
     );
     if (!confirmed) return;
     setBusy(user.id);
-    const { error } = await supabase
-      .from('profiles').delete().eq('id', user.id);
-    if (error) setError(error.message);
-    else setUsers(prev => prev.filter(u => u.id !== user.id));
+
+    // Use the SECURITY DEFINER RPC which deletes from auth.users (cascades to profiles).
+    // Direct table delete is blocked by RLS and wouldn't remove the auth record anyway.
+    const { error } = await supabase.rpc('delete_user_account', {
+      target_user_id: user.id,
+    });
+
+    if (error) {
+      console.error('[deleteUser] RPC error:', error);
+      setError(`שגיאה במחיקה: ${error.message}`);
+    } else {
+      setUsers(prev => prev.filter(u => u.id !== user.id));
+    }
     setBusy(null);
   }
 
