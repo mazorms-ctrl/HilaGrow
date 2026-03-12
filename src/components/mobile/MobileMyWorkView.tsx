@@ -174,10 +174,11 @@ export function MobileMyWorkView({ onClose }: Props) {
   return (
     <div
       dir="rtl"
+      className="flex md:hidden"
       style={{
         position: 'fixed', inset: 0, zIndex: 35,
         background: T.bg,
-        display: 'flex', flexDirection: 'column',
+        flexDirection: 'column',
         fontFamily: 'Rubik, Heebo, sans-serif',
         paddingBottom: 'calc(56px + env(safe-area-inset-bottom, 0px))',
       }}

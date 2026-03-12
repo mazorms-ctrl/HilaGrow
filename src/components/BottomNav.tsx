@@ -20,7 +20,7 @@ const NAV_ITEMS: { tab: MobileTab; icon: React.ElementType; label: string }[] = 
 export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
   return (
     <nav
-      className="md:hidden"
+      className="flex md:hidden"
       style={{
         position: 'fixed',
         bottom: 0,
@@ -31,7 +31,6 @@ export function BottomNav({ activeTab, onTabChange }: BottomNavProps) {
         backdropFilter: 'blur(18px)',
         WebkitBackdropFilter: 'blur(18px)',
         borderTop: '1px solid rgba(226,232,240,0.8)',
-        display: 'flex',
         height: '56px',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
         direction: 'rtl',

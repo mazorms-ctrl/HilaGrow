@@ -1892,7 +1892,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       {/* Content */}
       <main
-        className={taskMatch ? 'task-active' : undefined}
+        className={`${taskMatch ? 'task-active' : ''} pb-16 md:pb-0`}
         style={{
           width: '100%',
           maxWidth: '1920px',
