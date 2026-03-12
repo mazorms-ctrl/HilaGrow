@@ -175,6 +175,67 @@ export function LoginPage() {
         .lp-link { background:none;border:none;cursor:pointer;font-family:Heebo,sans-serif;font-size:13px;color:#2563EB;font-weight:600;padding:0; }
         .lp-link:hover { text-decoration:underline; }
         .lp-check { accent-color:#2563EB; width:14px; height:14px; cursor:pointer; flex-shrink:0; }
+
+        /* ── Fluid scale for large monitors ── */
+        @media (min-width: 1280px) {
+          .lp-card { max-width: 520px !important; padding: 52px !important; }
+          .lp-card h1 { font-size: 42px !important; }
+          .lp-card p  { font-size: 17px !important; }
+          .lp-card input { font-size: 15px !important; padding: 14px 16px 14px 48px !important; }
+          .lp-card .lp-btn { font-size: 17px !important; padding: 17px 32px !important; }
+          .lp-halo-outer { width: 1400px !important; height: 1400px !important; }
+          .lp-halo-inner { width: 820px  !important; height: 820px  !important; }
+        }
+        @media (min-width: 1536px) {
+          .lp-card { max-width: 600px !important; padding: 60px !important; }
+          .lp-card h1 { font-size: 52px !important; letter-spacing: -1.5px !important; }
+          .lp-card p  { font-size: 19px !important; }
+          .lp-card input { font-size: 16px !important; padding: 16px 16px 16px 52px !important; }
+          .lp-card .lp-btn { font-size: 18px !important; padding: 19px 32px !important; }
+          .lp-card .lp-link { font-size: 14px !important; }
+          .lp-halo-outer { width: 1700px !important; height: 1700px !important; }
+          .lp-halo-inner { width: 1000px !important; height: 1000px !important; }
+        }
+        @media (min-width: 1920px) {
+          .lp-card { max-width: 700px !important; padding: 72px !important; }
+          .lp-card h1 { font-size: 64px !important; letter-spacing: -2px !important; }
+          .lp-card p  { font-size: 22px !important; line-height: 1.7 !important; }
+          .lp-card input { font-size: 18px !important; padding: 18px 16px 18px 56px !important; border-radius: 16px !important; }
+          .lp-card .lp-btn { font-size: 20px !important; padding: 22px 40px !important; }
+          .lp-card .lp-link { font-size: 15px !important; }
+          .lp-halo-outer { width: 2000px !important; height: 2000px !important; }
+          .lp-halo-inner { width: 1200px !important; height: 1200px !important; }
+        }
+        @media (min-width: 2560px) {
+          .lp-card { max-width: 860px !important; padding: 88px !important; }
+          .lp-card h1 { font-size: 80px !important; letter-spacing: -3px !important; }
+          .lp-card p  { font-size: 26px !important; }
+          .lp-card input { font-size: 21px !important; padding: 22px 20px 22px 64px !important; }
+          .lp-card .lp-btn { font-size: 24px !important; padding: 26px 48px !important; }
+          .lp-card .lp-link { font-size: 18px !important; }
+          .lp-halo-outer { width: 2600px !important; height: 2600px !important; }
+          .lp-halo-inner { width: 1600px !important; height: 1600px !important; }
+        }
+
+        /* Scale the GROW wordmark and Hila logo inside the card header */
+        @media (min-width: 1536px) {
+          .lp-brand-grow  { font-size: 38px !important; }
+          .lp-brand-tag   { font-size: 15px !important; }
+          .lp-brand-logo  { height: 76px  !important; }
+          .lp-brand-divider { height: 40px !important; }
+        }
+        @media (min-width: 1920px) {
+          .lp-brand-grow  { font-size: 46px !important; }
+          .lp-brand-tag   { font-size: 17px !important; }
+          .lp-brand-logo  { height: 92px  !important; }
+          .lp-brand-divider { height: 50px !important; }
+        }
+        @media (min-width: 2560px) {
+          .lp-brand-grow  { font-size: 56px !important; }
+          .lp-brand-tag   { font-size: 20px !important; }
+          .lp-brand-logo  { height: 110px !important; }
+          .lp-brand-divider { height: 60px !important; }
+        }
       `}</style>
 
       {/* ── Page ── */}
@@ -189,7 +250,7 @@ export function LoginPage() {
       }}>
 
         {/* ── Halo: wide soft cloud of light, two layers ── */}
-        <div aria-hidden style={{
+        <div aria-hidden className="lp-halo-outer" style={{
           position: 'absolute',
           width: '1100px', height: '1100px',
           borderRadius: '50%',
@@ -207,7 +268,7 @@ export function LoginPage() {
           filter: 'blur(72px)',
           pointerEvents: 'none',
         }} />
-        <div aria-hidden style={{
+        <div aria-hidden className="lp-halo-inner" style={{
           position: 'absolute',
           width: '620px', height: '620px',
           borderRadius: '50%',
@@ -225,7 +286,7 @@ export function LoginPage() {
         }} />
 
         {/* ── Card ── */}
-        <div style={{
+        <div className="lp-card" style={{
           position: 'relative', zIndex: 2,
           width: '100%', maxWidth: '420px',
           background: '#FFFFFF',
@@ -245,13 +306,13 @@ export function LoginPage() {
             direction: 'ltr',
           }}>
             <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '2px' }}>
-              <span style={{
+              <span className="lp-brand-grow" style={{
                 fontSize: '32px', fontWeight: 900, letterSpacing: '-0.5px',
                 fontFamily: 'Heebo, sans-serif', color: '#0F172A', lineHeight: 1,
               }}>
                 GROW
               </span>
-              <span style={{
+              <span className="lp-brand-tag" style={{
                 fontSize: '13px', fontWeight: 500, letterSpacing: '0.3px',
                 fontFamily: 'Heebo, sans-serif', color: '#64748B', lineHeight: 1,
                 alignSelf: 'flex-end',
@@ -260,11 +321,12 @@ export function LoginPage() {
               </span>
             </div>
 
-            <div style={{ width: '1.5px', height: '32px', background: '#CBD5E1', borderRadius: '1px', flexShrink: 0 }} />
+            <div className="lp-brand-divider" style={{ width: '1.5px', height: '32px', background: '#CBD5E1', borderRadius: '1px', flexShrink: 0 }} />
 
             <img
               src="/hila-logo.png"
               alt="הילה"
+              className="lp-brand-logo"
               style={{ height: '64px', objectFit: 'contain' }}
             />
           </div>

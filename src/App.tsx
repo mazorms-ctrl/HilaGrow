@@ -17,6 +17,12 @@ import { WorkItemRow } from './components/ui/WorkItemRow';
 import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
 import { CommandCenter } from './components/dashboard/CommandCenter';
 import { BigPictureModal } from './components/dashboard/BigPicturePanel';
+import { BottomNav, type MobileTab } from './components/BottomNav';
+import { MobileHeader } from './components/MobileHeader';
+import { MobileMyWorkView } from './components/mobile/MobileMyWorkView';
+import { MobileSettingsView } from './components/mobile/MobileSettingsView';
+import { MobileBigPictureView } from './components/mobile/MobileBigPictureView';
+import { InstallBanner } from './components/InstallBanner';
 
 // Mock data - Enhanced for Hospital Process Improvement
 const initialTasks = [
@@ -323,6 +329,7 @@ function App() {
     : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
+  const [mobilePage, setMobilePage] = useState<'my-work' | 'settings' | 'big-picture' | null>(null);  // 'tasks' is a viewMode, not a mobilePage
 
   // All users (including participants) land on the command center dashboard.
   // Do NOT auto-redirect to tree view on mount — landing must always be '/'.
@@ -1605,7 +1612,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       `}</style>
       
       {/* Header */}
-      <header style={{
+      <header className="hidden md:block" style={{
         borderBottom: '1px solid rgba(226,232,240,0.70)',
         background: 'rgba(255,255,255,0.82)',
         backdropFilter: 'blur(18px)',
@@ -1753,26 +1760,29 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             </span>
           </div>
 
-          {/* Mobile: logo centered (handled by absolute above), hamburger on the left */}
-          <button
-            className="mobile-only"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            style={{
-              marginInlineStart: 'auto',
-              padding: '10px',
-              background: 'white',
-              border: '2px solid #e5e5e5',
-              borderRadius: '12px',
-              cursor: 'pointer',
-              fontSize: '24px',
-              transition: 'all 0.2s',
-              minHeight: '44px',
-              minWidth: '44px',
-              flexShrink: 0,
-            }}
-          >
-            {isMobileMenuOpen ? '✕' : '☰'}
-          </button>
+
+          {/* Mobile: hamburger for non-authenticated users */}
+          {!user && (
+            <button
+              className="mobile-only"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              style={{
+                marginInlineStart: 'auto',
+                padding: '10px',
+                background: 'white',
+                border: '2px solid #e5e5e5',
+                borderRadius: '12px',
+                cursor: 'pointer',
+                fontSize: '24px',
+                transition: 'all 0.2s',
+                minHeight: '44px',
+                minWidth: '44px',
+                flexShrink: 0,
+              }}
+            >
+              {isMobileMenuOpen ? '✕' : '☰'}
+            </button>
+          )}
 
         </div>
 
@@ -1854,7 +1864,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       {/* Body: Sidebar (when logged in) + Main content */}
       {/* direction: rtl puts sidebar on the RIGHT, main content on the LEFT */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden', direction: 'rtl' }}>
+      <div className="pt-14 md:pt-0" style={{ display: 'flex', flex: 1, overflow: 'hidden', direction: 'rtl' }}>
 
       {/* Sidebar — visible only when authenticated, desktop only */}
       {user && (
@@ -1873,7 +1883,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       {/* Content */}
       <main
-        className={taskMatch ? 'task-active' : undefined}
+        className={`${taskMatch ? 'task-active' : ''} pb-16 md:pb-0`}
         style={{
           width: '100%',
           maxWidth: '1920px',
@@ -1891,7 +1901,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             main:not(.task-active) > div:not(.no-main-padding) { padding: 32px !important; }
           }
           @media (max-width: 767px) {
-            main:not(.task-active) { padding: 12px !important; }
+            main:not(.task-active) { padding: 12px !important; padding-bottom: calc(56px + 12px) !important; }
             main:not(.task-active) > div:not(.no-main-padding) { padding: 16px !important; }
           }
         `}</style>
@@ -5323,6 +5333,60 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       {/* Big Picture Modal — portal, rendered once at app root */}
       <BigPictureModal />
+
+      {/* Mobile overlays (My Work / Settings) */}
+      {user && mobilePage === 'big-picture' && (
+        <MobileBigPictureView onClose={() => setMobilePage(null)} />
+      )}
+      {user && mobilePage === 'my-work' && (
+        <MobileMyWorkView onClose={() => setMobilePage(null)} />
+      )}
+      {user && mobilePage === 'settings' && (
+        <MobileSettingsView
+          user={user}
+          profile={profile}
+          isAdmin={isAdmin ?? false}
+          onClose={() => setMobilePage(null)}
+          onEditProfile={() => setShowProfileEdit(true)}
+          onSignOut={signOut}
+        />
+      )}
+
+      {/* Mobile header — fixed top bar, hidden on md+ */}
+      <MobileHeader user={user} onAddTask={() => setShowAddCategory(true)} />
+
+      {/* PWA install banner — mobile only, hides when installed or dismissed */}
+      <InstallBanner />
+
+      {/* Mobile bottom navigation — hidden on md+ */}
+      {user && (
+        <BottomNav
+          activeTab={
+            mobilePage === 'big-picture' ? 'big-picture' :
+            mobilePage === 'my-work'     ? 'my-work'     :
+            mobilePage === 'settings'    ? 'settings'    :
+            viewMode   === 'rows'        ? 'tasks'       : 'home'
+          }
+          onTabChange={(tab: MobileTab) => {
+            if (tab === 'home') {
+              setMobilePage(null);
+              setViewMode('command');
+              if (taskMatch) navigate('/');
+            } else if (tab === 'tasks') {
+              setMobilePage(null);
+              setViewMode('rows');
+              if (taskMatch) navigate('/');
+            } else if (tab === 'big-picture') {
+              setMobilePage('big-picture');
+              if (taskMatch) navigate('/');
+            } else if (tab === 'my-work') {
+              setMobilePage('my-work');
+            } else if (tab === 'settings') {
+              setMobilePage('settings');
+            }
+          }}
+        />
+      )}
     </div>
   );
 }

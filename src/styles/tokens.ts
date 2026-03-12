@@ -97,16 +97,16 @@ export const colors = {
   },
 } as const;
 
-// Spacing Scale (8pt grid)
+// Spacing Scale (8pt grid — rem so it scales with the fluid html font-size)
 export const spacing = {
-  xs: '4px',
-  sm: '8px',
-  md: '12px',
-  lg: '16px',
-  xl: '20px',
-  xxl: '24px',
-  xxxl: '32px',
-  xxxxl: '48px',
+  xs: '0.25rem',   /* 4px @ base */
+  sm: '0.5rem',    /* 8px @ base */
+  md: '0.75rem',   /* 12px @ base */
+  lg: '1rem',      /* 16px @ base */
+  xl: '1.25rem',   /* 20px @ base */
+  xxl: '1.5rem',   /* 24px @ base */
+  xxxl: '2rem',    /* 32px @ base */
+  xxxxl: '3rem',   /* 48px @ base */
 } as const;
 
 // Border Radius (Rounded for modern feel)

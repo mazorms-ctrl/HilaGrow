@@ -51,6 +51,7 @@ function KpiCard({
         {/* Label + optional info icon */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
           <span
+            className="kpi-label"
             style={{
               fontSize: typography.fontSize.sm,
               fontWeight: typography.fontWeight.medium,
@@ -109,6 +110,7 @@ function KpiCard({
         </div>
 
         <span
+          className="kpi-icon"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -127,6 +129,7 @@ function KpiCard({
 
       {/* Value */}
       <div
+        className="kpi-value"
         style={{
           fontSize: loading ? typography.fontSize.xl : typography.fontSize.display,
           fontWeight: typography.fontWeight.black,
@@ -160,6 +163,25 @@ export function KpiCards({ activeFilter, onFilterChange }: KpiCardsProps) {
         gap: spacing.lg,
       }}
     >
+      <style>{`
+        @media (max-width: 767px) {
+          .kpi-grid > div {
+            padding: 10px 12px !important;
+            gap: 6px !important;
+          }
+          .kpi-grid .kpi-icon {
+            width: 28px !important;
+            height: 28px !important;
+          }
+          .kpi-grid .kpi-value {
+            font-size: 1.75rem !important;
+            letter-spacing: -0.5px !important;
+          }
+          .kpi-grid .kpi-label {
+            font-size: 0.7rem !important;
+          }
+        }
+      `}</style>
       <KpiCard
         label="משימות פעילות"
         value={data?.active_tasks ?? 0}

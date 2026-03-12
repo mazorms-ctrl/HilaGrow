@@ -161,8 +161,8 @@ function Section({ icon: Icon, title, badge, children, style, iconColor }: {
   iconColor?: string;
 }) {
   return (
-    <section style={{ ...cardStyle, ...style }}>
-      <div style={sectionHeadStyle}>
+    <section className="tp-section" style={{ ...cardStyle, ...style }}>
+      <div className="tp-section-head" style={sectionHeadStyle}>
         <Icon size={16} style={{ color: iconColor ?? '#94a3b8', flexShrink: 0 }} />
         {title}
         {badge}
@@ -487,6 +487,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   return (
     <div
       dir="rtl"
+      className="tp-page"
       style={{
         fontFamily: 'inherit',
         width: '100%',
@@ -501,20 +502,22 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         @keyframes tpSpin   { to { transform: rotate(360deg); } }
         @keyframes tpFadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-        /* ── Base grids (mobile-first) ── */
+        /* ── Base grids (mobile-first: single column on all phones) ── */
         .tp-grid, .tp-grid-3, .tp-grid-4 {
           display: grid;
           grid-template-columns: minmax(0, 1fr);
           gap: 12px;
         }
+        /* On mobile: span-2 must not overflow a 1-column grid */
         .tp-span-full  { grid-column: 1 / -1; }
-        .tp-span-2     { grid-column: span 2; }
+        .tp-span-2     { grid-column: 1 / -1; }
 
-        /* ── 520px+: 2 columns for all grids ── */
-        @media (min-width: 520px) {
+        /* ── 768px+: 2 columns for all grids ── */
+        @media (min-width: 768px) {
           .tp-grid   { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .tp-grid-3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
           .tp-grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+          .tp-span-2 { grid-column: span 2; }
         }
         /* ── 860px+: 3-col and 4-col unlock ── */
         @media (min-width: 860px) {
@@ -526,13 +529,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-tabbar {
           display: flex;
           align-items: center;
-          gap: 18px;
-          padding: 0;
+          gap: 4px;
+          padding: 0 0 0 8px;
           margin-bottom: 16px;
           border-bottom: 1px solid #e2e8f0;
           direction: rtl;
-          flex-wrap: wrap;
+          flex-wrap: nowrap;
+          overflow-x: auto;
+          -webkit-overflow-scrolling: touch;
+          scrollbar-width: none;
         }
+        .tp-tabbar::-webkit-scrollbar { display: none; }
         .tp-tab-button {
           display: inline-flex;
           align-items: center;
@@ -1052,6 +1059,48 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           transform: rotate(45deg);
         }
         .tp-check:hover:not(:checked) { border-color: #6366f1; }
+
+        /* ── Desktop: restore tab gap ── */
+        @media (min-width: 768px) {
+          .tp-tabbar { gap: 14px; padding: 0; }
+        }
+
+        /* ── Mobile tweaks — density-first ── */
+        @media (max-width: 767px) {
+          /* Outer page: tight horizontal padding, extra bottom for nav bar */
+          .tp-page { padding: 0 12px 100px 12px !important; }
+
+          /* Section cards: compact padding */
+          .tp-section { padding: 12px 14px !important; }
+
+          /* Tight gaps between section cards */
+          .tp-grid, .tp-grid-3, .tp-grid-4 { gap: 10px; }
+
+          /* Section headers: smaller, tighter, blue tint */
+          .tp-section-head {
+            font-size: 13px !important;
+            font-weight: 700 !important;
+            color: #1e3a5f !important;
+            margin-bottom: 8px !important;
+            padding-bottom: 6px !important;
+          }
+
+          /* Editable boxes: tighter internal padding */
+          .tp-editable { padding: 2px 6px !important; }
+
+          /* Body text: smaller font, readable line-height */
+          .tp-section textarea { font-size: 13px !important; line-height: 1.6 !important; }
+
+          /* Section description text */
+          .tp-section-desc { font-size: 11.5px !important; margin-bottom: 8px !important; }
+
+          /* Lists: proper indentation */
+          .tp-section ul, .tp-section ol {
+            padding-inline-start: 18px;
+            margin: 4px 0;
+          }
+          .tp-section li { line-height: 1.6; margin-bottom: 3px; }
+        }
       `}</style>
 
       {/* ── Compact internal header: breadcrumb + title + actions ────────────── */}
