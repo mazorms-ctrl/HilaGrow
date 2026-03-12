@@ -27,7 +27,7 @@ function DashboardSkeleton() {
         }
       `}</style>
 
-      <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl, padding: spacing.xl, maxWidth: '960px', margin: '0 auto', width: '100%' }}>
+      <div dir="rtl" style={{ display: 'flex', flexDirection: 'column', gap: spacing.xl, padding: spacing.xl, maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
 
         {/* Header */}
         <div>
@@ -95,7 +95,7 @@ function DashboardContent() {
         flexDirection: 'column',
         gap: spacing.xl,
         padding: spacing.xl,
-        maxWidth: '960px',
+        maxWidth: '1200px',
         margin: '0 auto',
         width: '100%',
       }}

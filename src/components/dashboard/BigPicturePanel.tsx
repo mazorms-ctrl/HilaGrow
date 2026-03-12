@@ -539,7 +539,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
           position: 'fixed',
           top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: '96vw', height: '92vh',
+          width: '96vw', maxWidth: '1280px', height: '92vh',
           background: '#ffffff',
           borderRadius: '16px',
           boxShadow: '0 32px 80px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.07)',
