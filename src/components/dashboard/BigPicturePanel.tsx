@@ -1,12 +1,10 @@
 /**
- * BigPictureModal
+ * BigPictureModal — 'Ribbon & Focus' Desktop Cockpit
  * Full-screen modal with zoom/pan tree canvas.
  * Triggered via useUIStore.openBigPicture() — rendered once at app root.
- * Only fetches data when open.
  */
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
@@ -14,14 +12,26 @@ import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
 import { useTasks, useProjects } from '@/lib/supabase-hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUIStore } from '@/store/uiStore';
-import { colors, shadows, spacing, radius, typography } from '@/styles/tokens';
+import { colors, shadows, typography } from '@/styles/tokens';
 import type { MedicalTask } from '@/lib/supabase-hooks';
 
-// ── Shared keyframes (injected once) ─────────────────────────────────────────
+// ── Shared keyframes ──────────────────────────────────────────────────────────
 const KEYFRAMES = `
   @keyframes bpPulse { 0%,100%{opacity:1} 50%{opacity:.55} }
   @keyframes bpSpin  { to{transform:rotate(360deg)} }
 `;
+
+// Card dimensions (desktop cockpit)
+const CARD_W = 210;
+const CARD_GAP = 16; // horizontal gap between category columns
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+/** Convert hex color → pastel background (light tint). */
+function pastel(hex: string) { return hex + '18'; }
+/** Slightly darker tint for borders. */
+function borderTint(hex: string) { return hex + '55'; }
+/** Ribbon color: darken slightly via indigo override unless color is dark already. */
+const RIBBON_COLOR = '#4338ca'; // indigo-700 — universal, readable
 
 // ── Priority badge ────────────────────────────────────────────────────────────
 function PriorityBadge({ priority }: { priority: string }) {
@@ -43,96 +53,131 @@ function PriorityBadge({ priority }: { priority: string }) {
   );
 }
 
+// ── Corner ribbon (diagonal band, top-right) ──────────────────────────────────
+function CornerRibbon() {
+  return (
+    <div style={{
+      position: 'absolute', top: 0, right: 0,
+      width: 44, height: 44,
+      overflow: 'hidden',
+      borderRadius: '0 12px 0 0',
+      pointerEvents: 'none',
+    }}>
+      <div style={{
+        position: 'absolute',
+        top: 10, right: -12,
+        width: 48, height: 11,
+        background: RIBBON_COLOR,
+        transform: 'rotate(45deg)',
+        transformOrigin: 'center',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.25)',
+      }} />
+    </div>
+  );
+}
+
 // ── Single task card ──────────────────────────────────────────────────────────
-function TaskCard({ task, color }: { task: MedicalTask; color: string }) {
-  const [hovered, setHovered] = useState(false);
+function TaskCard({
+  task,
+  color,
+  currentUserName,
+}: {
+  task: MedicalTask;
+  color: string;
+  currentUserName: string | null;
+}) {
   const navigate = useNavigate();
   const closeBigPicture = useUIStore(s => s.closeBigPicture);
 
-  const status    = task.status || 'open';
-  const isDone    = status === 'done';
-  const isActive  = status === 'in_progress';
-  const isPending = status === 'open';
+  const progress  = task.progress ?? 0;
+  const isActive  = progress > 0;
+  const isPersonal = !!currentUserName && task.owner === currentUserName;
 
-  const accent = isDone    ? '#22c55e'
-               : isPending ? '#e2e8f0'
-               : isActive  ? color
-               : '#f59e0b';
+  // ── Visual tokens based on activity ──────────────────────────────────────
+  const bg          = isActive ? pastel(color)         : '#f8fafc';
+  const borderStyle = isActive ? `1px solid ${borderTint(color)}` : '1px dashed #cbd5e1';
+  const titleColor  = isActive ? '#0f172a'             : '#94a3b8';
+  const metaColor   = isActive ? '#475569'             : '#cbd5e1';
+  const barBg       = isActive ? color                 : '#e2e8f0';
+  const topAccent   = isActive ? color                 : '#e2e8f0';
 
-  const doneMilestones = task.milestones.filter(m => m.done).length;
+  const boxShadow = isPersonal
+    ? '0 20px 40px rgba(79,70,229,0.18), 0 6px 16px rgba(0,0,0,0.10)'
+    : '0 1px 4px rgba(0,0,0,0.06)';
+  const transform = isPersonal ? 'translateY(-3px)' : 'none';
+
+  const doneMilestones = task.milestones?.filter(m => m.done).length ?? 0;
+  const totalMilestones = task.milestones?.length ?? 0;
 
   return (
     <div
       onClick={() => { closeBigPicture(); navigate(`/task/${task.id}`); }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
       style={{
-        padding: '13px 15px 0 15px',
-        background: isDone ? '#fafafa' : '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderTop: `4px solid ${accent}`,
+        width: CARD_W,
+        minWidth: CARD_W,
+        maxWidth: CARD_W,
+        padding: '11px 13px 0 13px',
+        background: bg,
+        border: borderStyle,
+        borderTop: `3px solid ${topAccent}`,
         borderRadius: '12px',
-        minWidth: '200px',
-        maxWidth: '220px',
         cursor: 'pointer',
         overflow: 'hidden',
         position: 'relative',
         transition: 'box-shadow 0.2s, transform 0.2s',
-        boxShadow: hovered ? shadows.md : shadows.sm,
-        transform: hovered ? 'translateY(-2px)' : 'translateY(0)',
+        boxShadow,
+        transform,
         fontFamily: typography.fontFamily,
-        ...(isActive ? { animation: 'bpPulse 3s ease-in-out infinite' } : {}),
+        ...(isActive && task.status === 'in_progress'
+          ? { animation: 'bpPulse 3s ease-in-out infinite' }
+          : {}),
       }}
     >
-      {isDone && (
-        <div style={{
-          position: 'absolute', top: 10, left: 11,
-          width: 17, height: 17, borderRadius: '9999px',
-          background: '#dcfce7', border: '1px solid #bbf7d0',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path d="M2 5.2L4.1 7.5L8 3" stroke="#16a34a" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </div>
-      )}
+      {/* Corner ribbon for personal tasks */}
+      {isPersonal && <CornerRibbon />}
 
+      {/* Title */}
       <div style={{
-        fontSize: '13px', fontWeight: 300, lineHeight: '1.4',
-        color: isDone ? '#94a3b8' : '#0f172a', marginBottom: '7px',
+        fontSize: '12.5px', fontWeight: isActive ? 500 : 400, lineHeight: '1.4',
+        color: titleColor, marginBottom: '6px',
+        paddingRight: isPersonal ? '18px' : 0, // avoid ribbon overlap
       }}>
         {task.title}
       </div>
 
-      {!isDone && <div style={{ marginBottom: '8px' }}><PriorityBadge priority={task.priority || 'P2'} /></div>}
-
-      {!isPending && (
-        <div style={{ background: '#f1f5f9', height: '3px', borderRadius: '2px', overflow: 'hidden', marginBottom: '7px' }}>
-          <div style={{ background: isDone ? '#22c55e' : color, height: '100%', width: `${task.progress}%`, transition: 'width 0.4s' }} />
+      {/* Priority badge — only for active tasks */}
+      {isActive && task.priority && (
+        <div style={{ marginBottom: '7px' }}>
+          <PriorityBadge priority={task.priority} />
         </div>
       )}
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingBottom: '11px' }}>
-        <span style={{ fontSize: '11px', fontWeight: 300, color: '#94a3b8' }}>
-          {task.progress}% · {doneMilestones}/{task.milestones.length}
+      {/* Progress bar */}
+      {isActive && (
+        <div style={{ background: '#f1f5f9', height: '3px', borderRadius: '2px', overflow: 'hidden', marginBottom: '7px' }}>
+          <div style={{ background: barBg, height: '100%', width: `${progress}%`, transition: 'width 0.4s' }} />
+        </div>
+      )}
+
+      {/* Footer: progress % + milestones + owner full name */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        paddingBottom: '10px', flexWrap: 'wrap', gap: '4px',
+      }}>
+        <span style={{ fontSize: '10.5px', color: metaColor }}>
+          {progress}%{totalMilestones > 0 ? ` · ${doneMilestones}/${totalMilestones}` : ''}
         </span>
         {task.owner && (
-          <div title={task.owner} style={{
-            width: 24, height: 24, borderRadius: '9999px',
-            background: isDone ? '#dcfce733' : color + '22',
-            border: `1.5px solid ${isDone ? '#bbf7d0' : color + '55'}`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: '10px', fontWeight: 400,
-            color: isDone ? '#86efac' : color, flexShrink: 0,
-          }}>
-            {task.owner.charAt(0)}
-          </div>
+          <span style={{ fontSize: '10.5px', color: metaColor, maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            👤 {task.owner}
+          </span>
         )}
       </div>
 
+      {/* Active progress underline */}
       {isActive && (
         <div style={{ position: 'absolute', bottom: 0, left: 0, height: '2px', width: '100%', background: '#f1f5f9', overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${task.progress}%`, background: color, borderRadius: '0 2px 2px 0', transition: 'width 0.4s' }} />
+          <div style={{ height: '100%', width: `${progress}%`, background: color, borderRadius: '0 2px 2px 0', transition: 'width 0.4s' }} />
         </div>
       )}
     </div>
@@ -143,15 +188,17 @@ function TaskCard({ task, color }: { task: MedicalTask; color: string }) {
 function TreeCanvas({
   tasks,
   treeRef,
+  currentUserName,
 }: {
   tasks: MedicalTask[];
-  treeRef: React.MutableRefObject<HTMLDivElement | null>;
+  treeRef: React.RefObject<HTMLDivElement | null>;
+  currentUserName: string | null;
 }) {
   const categories = [...new Set(tasks.map(t => t.category))];
   const N = categories.length;
 
   if (N === 0) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontWeight: 300 }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: colors.text.tertiary, fontFamily: typography.fontFamily }}>
       אין נתונים להצגה
     </div>
   );
@@ -163,56 +210,94 @@ function TreeCanvas({
         display: 'inline-flex',
         flexDirection: 'column',
         alignItems: 'center',
-        padding: '24px',
-        // No width/height — shrinks to fit the cards
+        padding: '32px 24px 48px',
       }}
     >
-      {/* Project root */}
+      {/* ── GROW root ────────────────────────────────────────── */}
       <div style={{
-        padding: `${spacing.lg} ${spacing.xxxxl}`,
-        background: '#ffffff', border: '1px solid #e2e8f0', borderTop: '4px solid #4f46e5',
-        borderRadius: radius.lg, fontFamily: typography.fontFamily,
-        fontSize: '18px', fontWeight: 300, color: colors.text.primary,
-        boxShadow: shadows.md, letterSpacing: '-0.5px', minWidth: '220px', textAlign: 'center',
+        padding: '14px 48px',
+        background: '#ffffff',
+        border: '1px solid #e2e8f0',
+        borderTop: '4px solid #4f46e5',
+        borderRadius: '12px',
+        fontFamily: typography.fontFamily,
+        fontSize: '17px', fontWeight: 600, color: '#1e1b4b',
+        boxShadow: shadows.md,
+        letterSpacing: '-0.4px',
+        minWidth: '180px', textAlign: 'center',
       }}>
         GROW
       </div>
 
-      {/* Bezier connectors root → categories */}
-      <svg width="100%" height={64} viewBox={`0 0 100 64`} preserveAspectRatio="none" style={{ display: 'block', overflow: 'visible' }}>
+      {/* ── Bezier connectors: root → categories ─────────────── */}
+      <svg
+        width="100%"
+        height={72}
+        viewBox={`0 0 100 72`}
+        preserveAspectRatio="none"
+        style={{ display: 'block', overflow: 'visible' }}
+      >
         {categories.map((_c, i) => {
           const cx = ((i + 0.5) / N) * 100;
           return (
-            <path key={i} d={`M 50 0 C 50 ${64 * 0.6}, ${cx} ${64 * 0.4}, ${cx} 64`}
-              stroke="#cbd5e1" strokeWidth="0.4" fill="none" />
+            <path
+              key={i}
+              d={`M 50 0 C 50 ${72 * 0.55}, ${cx} ${72 * 0.45}, ${cx} 72`}
+              stroke="#cbd5e1"
+              strokeWidth="0.5"
+              fill="none"
+            />
           );
         })}
       </svg>
 
-      {/* Categories */}
-      <div style={{ display: 'flex', gap: '56px', alignItems: 'flex-start', justifyContent: 'center' }}>
+      {/* ── Category columns ─────────────────────────────────── */}
+      <div style={{
+        display: 'flex',
+        gap: CARD_GAP,
+        alignItems: 'flex-start',
+        justifyContent: 'center',
+        flexWrap: 'nowrap', // one row, no wrapping
+      }}>
         {categories.map(cat => {
           const catTasks = tasks.filter(t => t.category === cat);
-          const color = catTasks[0]?.color ?? '#94a3b8';
-          const avg = catTasks.length ? Math.round(catTasks.reduce((s, t) => s + t.progress, 0) / catTasks.length) : 0;
+          const color    = catTasks[0]?.color ?? '#94a3b8';
+          const avg      = catTasks.length
+            ? Math.round(catTasks.reduce((s, t) => s + (t.progress ?? 0), 0) / catTasks.length)
+            : 0;
+
           return (
-            <div key={cat} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.xl }}>
+            <div key={cat} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+              {/* Category header */}
               <div style={{
-                padding: `${spacing.md} ${spacing.xl}`, background: '#ffffff',
-                border: '1px solid #e2e8f0', borderTop: `4px solid ${color}`,
-                borderRadius: radius.lg, minWidth: '200px', textAlign: 'center', boxShadow: shadows.sm,
+                width: CARD_W,
+                padding: '10px 14px',
+                background: '#ffffff',
+                border: '1px solid #e2e8f0',
+                borderTop: `4px solid ${color}`,
+                borderRadius: '12px',
+                textAlign: 'center',
+                boxShadow: shadows.sm,
               }}>
-                <div style={{ fontSize: '15px', fontWeight: 300, color: '#171717', marginBottom: '4px', fontFamily: typography.fontFamily }}>{cat}</div>
-                <div style={{ fontSize: '12px', fontWeight: 300, color: '#94a3b8', fontFamily: typography.fontFamily }}>{catTasks.length} משימות · {avg}%</div>
+                <div style={{ fontSize: '13px', fontWeight: 600, color: '#171717', fontFamily: typography.fontFamily }}>{cat}</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily, marginTop: '2px' }}>{catTasks.length} משימות · {avg}%</div>
               </div>
 
-              <div style={{ width: '1px', height: '20px', background: '#e2e8f0' }} />
+              {/* Bezier connector: category → first task */}
+              <svg width="2" height="24" viewBox="0 0 2 24" style={{ overflow: 'visible' }}>
+                <path d="M 1 0 C 1 12, 1 12, 1 24" stroke="#cbd5e1" strokeWidth="1.5" fill="none" />
+              </svg>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '9px', alignItems: 'center' }}>
+              {/* Task cards column */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 0, alignItems: 'center' }}>
                 {catTasks.map((task, idx) => (
                   <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    {idx > 0 && <div style={{ width: '1px', height: '9px', background: '#e2e8f0' }} />}
-                    <TaskCard task={task} color={color} />
+                    {idx > 0 && (
+                      <svg width="2" height="10" viewBox="0 0 2 10" style={{ overflow: 'visible' }}>
+                        <path d="M 1 0 C 1 5, 1 5, 1 10" stroke="#e2e8f0" strokeWidth="1" fill="none" />
+                      </svg>
+                    )}
+                    <TaskCard task={task} color={color} currentUserName={currentUserName} />
                   </div>
                 ))}
               </div>
@@ -224,9 +309,9 @@ function TreeCanvas({
   );
 }
 
-// ── Zoom the tree to fit, then center it ──────────────────────────────────────
-// Uses setTransform so it works correctly regardless of limitToBounds.
-function doFitAndCenter(
+// ── Fit-to-width zoom ─────────────────────────────────────────────────────────
+// Scales so the full horizontal width of the tree fits in the viewport.
+function doFitWidth(
   api: ReactZoomPanPinchRef,
   treeEl: HTMLDivElement | null,
   animTime = 0,
@@ -241,58 +326,64 @@ function doFitAndCenter(
 
   const ww = wrapper.clientWidth;
   const wh = wrapper.clientHeight;
-  const scale = Math.min(Math.min(ww / w, wh / h) * 0.88, 1);
+
+  // Fit to width (priority), cap at 1× to avoid blurry upscale
+  const scale = Math.min((ww / w) * 0.94, 1);
   const x = (ww - w * scale) / 2;
-  const y = (wh - h * scale) / 2;
+  // Center vertically if tree fits; otherwise leave some top padding
+  const y = Math.max((wh - h * scale) / 2, 32);
 
   api.setTransform(x, y, scale, animTime);
   return true;
 }
 
-// ── Canvas — owns TransformWrapper + retry centering ─────────────────────────
+// ── Canvas wrapper ────────────────────────────────────────────────────────────
 function TreeCanvas_Wrapper({
   tasks,
   treeRef,
   transformRef,
+  currentUserName,
+  animDone,
 }: {
   tasks: MedicalTask[];
-  treeRef: React.MutableRefObject<HTMLDivElement | null>;
-  transformRef: React.MutableRefObject<ReactZoomPanPinchRef | null>;
+  treeRef: React.RefObject<HTMLDivElement | null>;
+  transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
+  currentUserName: string | null;
+  animDone: boolean;
 }) {
-  // Retry centering up to 3 times once tasks + API are available
   const centered = useRef(false);
 
   const tryCenter = useCallback(() => {
     if (centered.current) return;
     if (!transformRef.current || !treeRef.current) return;
-    const ok = doFitAndCenter(transformRef.current, treeRef.current, 0);
+    const ok = doFitWidth(transformRef.current, treeRef.current, 0);
     if (ok) centered.current = true;
   }, [transformRef, treeRef]);
 
+  // Only start centering after the modal open animation has finished —
+  // prevents fitView from measuring a partially-sized container.
   useEffect(() => {
-    if (!tasks.length) return;
+    if (!animDone || !tasks.length) return;
     centered.current = false;
-    // Retry at 150ms, 400ms, 800ms to handle slow paint
-    const t1 = setTimeout(tryCenter, 150);
-    const t2 = setTimeout(tryCenter, 400);
-    const t3 = setTimeout(tryCenter, 800);
+    const t1 = setTimeout(tryCenter, 50);
+    const t2 = setTimeout(tryCenter, 250);
+    const t3 = setTimeout(tryCenter, 600);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
-  }, [tasks, tryCenter]);
+  }, [tasks, tryCenter, animDone]);
 
   return (
     <TransformWrapper
       initialScale={1}
-      minScale={0.15}
+      minScale={0.12}
       maxScale={3}
-      limitToBounds={true}
-      centerZoomedOut={true}
+      limitToBounds={false}
+      centerZoomedOut={false}
       wheel={{ step: 0.06 }}
       panning={{ velocityDisabled: true }}
       doubleClick={{ disabled: true }}
       onInit={(ref) => {
         transformRef.current = ref;
-        // Also try once on init (for re-opens)
-        setTimeout(() => tryCenter(), 200);
+        // Centering is deferred to the animDone effect; no action needed here.
       }}
     >
       {({ zoomIn, zoomOut }) => (
@@ -301,30 +392,60 @@ function TreeCanvas_Wrapper({
             wrapperStyle={{ width: '100%', height: '100%', overflow: 'hidden', background: '#f8fafc' }}
             contentStyle={{ display: 'inline-flex' }}
           >
-            <TreeCanvas tasks={tasks} treeRef={treeRef} />
+            <TreeCanvas tasks={tasks} treeRef={treeRef} currentUserName={currentUserName} />
           </TransformComponent>
 
-          {/* Controls */}
-          <div style={{ position: 'absolute', top: 14, left: 14, display: 'flex', flexDirection: 'column', gap: 6, zIndex: 10 }}>
+          {/* Zoom controls — glass panel, bottom-right */}
+          <div style={{
+            position: 'absolute', bottom: 14, right: 14, zIndex: 10,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+            background: 'rgba(255,255,255,0.88)',
+            backdropFilter: 'blur(12px)',
+            WebkitBackdropFilter: 'blur(12px)',
+            borderRadius: '14px',
+            border: '1px solid rgba(226,232,240,0.8)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
+            padding: '6px',
+          }}>
             {[
-              { icon: <ZoomIn size={14} />,    fn: () => zoomIn(),     tip: 'הגדל' },
-              { icon: <ZoomOut size={14} />,   fn: () => zoomOut(),    tip: 'הקטן' },
-              { icon: <Maximize2 size={13} />, fn: () => { centered.current = false; tryCenter(); }, tip: 'מרכז' },
+              { icon: <ZoomIn size={16} />,    fn: () => zoomIn(),                                   tip: 'הגדל' },
+              { icon: <ZoomOut size={16} />,   fn: () => zoomOut(),                                  tip: 'הקטן' },
+              { icon: <Maximize2 size={16} />, fn: () => { centered.current = false; tryCenter(); }, tip: 'התאם רוחב' },
             ].map(({ icon, fn, tip }) => (
-              <button key={tip} onClick={fn} title={tip} style={{
-                width: 32, height: 32, background: '#ffffff', border: '1px solid #e2e8f0',
-                borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', color: colors.text.secondary, boxShadow: shadows.sm, padding: 0,
-              }}>{icon}</button>
+              <button key={tip} onClick={fn} title={tip}
+                style={{
+                  width: 36, height: 36, border: 'none', borderRadius: '10px',
+                  background: 'transparent', color: '#475569',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', padding: 0, transition: 'background 0.15s, color 0.15s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }}
+              >{icon}</button>
             ))}
           </div>
 
+          {/* Legend */}
           <div style={{
             position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
-            fontSize: '11px', fontWeight: 300, color: '#94a3b8',
-            fontFamily: typography.fontFamily, pointerEvents: 'none', whiteSpace: 'nowrap',
+            display: 'flex', alignItems: 'center', gap: '16px',
+            background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
+            border: '1px solid #e2e8f0', borderRadius: '8px',
+            padding: '5px 14px', pointerEvents: 'none',
           }}>
-            גלול לזום · גרור לניווט
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748b', fontFamily: typography.fontFamily }}>
+              <span style={{ width: 10, height: 10, borderRadius: '2px', background: '#f8fafc', border: '1px dashed #cbd5e1', display: 'inline-block' }} />
+              לא החל
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748b', fontFamily: typography.fontFamily }}>
+              <span style={{ width: 10, height: 10, borderRadius: '2px', background: '#4f46e518', border: '1px solid #4f46e555', display: 'inline-block' }} />
+              פעיל
+            </span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748b', fontFamily: typography.fontFamily }}>
+              <span style={{ width: 10, height: 10, borderRadius: '2px', background: RIBBON_COLOR, display: 'inline-block' }} />
+              משימות שלי
+            </span>
+            <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily }}>גלול לזום · גרור לניווט</span>
           </div>
         </div>
       )}
@@ -332,14 +453,17 @@ function TreeCanvas_Wrapper({
   );
 }
 
-// ── Data loader — fetches only when mounted ───────────────────────────────────
+// ── Data loader ───────────────────────────────────────────────────────────────
 interface LoaderProps {
-  transformRef: React.MutableRefObject<ReactZoomPanPinchRef | null>;
-  treeRef: React.MutableRefObject<HTMLDivElement | null>;
+  transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
+  treeRef: React.RefObject<HTMLDivElement | null>;
+  animDone: boolean;
 }
 
-function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
-  const { user } = useAuth();
+function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
+  const { user, profile } = useAuth();
+  const currentUserName = profile?.full_name ?? null;
+
   const { projects, loading: projectsLoading } = useProjects(user?.id);
   const projectId = projects[0]?.id ?? null;
   const { tasks, loading: tasksLoading } = useTasks(projectId);
@@ -347,14 +471,14 @@ function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
   const isLoading = projectsLoading || (!!projectId && tasksLoading);
 
   if (isLoading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontWeight: 300, fontSize: '14px', gap: '10px', background: '#f8fafc' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontSize: '14px', gap: '10px', background: '#f8fafc' }}>
       <div style={{ width: 20, height: 20, border: '2px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '9999px', animation: 'bpSpin 0.7s linear infinite' }} />
       טוען...
     </div>
   );
 
   if (!projectId) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontWeight: 300, fontSize: '14px', background: '#f8fafc' }}>
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontSize: '14px', background: '#f8fafc' }}>
       לא נמצאו נתונים לפרויקט זה
     </div>
   );
@@ -364,6 +488,8 @@ function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
       tasks={tasks}
       treeRef={treeRef}
       transformRef={transformRef}
+      currentUserName={currentUserName}
+      animDone={animDone}
     />
   );
 }
@@ -372,6 +498,7 @@ function TreeDataLoader({ transformRef, treeRef }: LoaderProps) {
 function ModalShell({ onClose }: { onClose: () => void }) {
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const treeRef = useRef<HTMLDivElement | null>(null);
+  const [animDone, setAnimDone] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -383,8 +510,13 @@ function ModalShell({ onClose }: { onClose: () => void }) {
     <>
       <style>{KEYFRAMES}</style>
 
-      {/* Solid backdrop — blocks all interaction with dashboard below */}
-      <div
+      {/* Backdrop — fades in with the modal */}
+      <motion.div
+        key="bp-backdrop"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.28, ease: 'easeOut' }}
         onClick={onClose}
         style={{
           position: 'fixed', inset: 0,
@@ -395,18 +527,19 @@ function ModalShell({ onClose }: { onClose: () => void }) {
         }}
       />
 
-      {/* Modal */}
+      {/* Modal — subtle scale + fade with ease-out spring feel */}
       <motion.div
         key="bp-modal"
-        initial={{ opacity: 0, scale: 0.97, y: 10 }}
+        initial={{ opacity: 0, scale: 0.98, y: 8 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.97, y: 10 }}
-        transition={{ duration: 0.22, ease: [0.4, 0, 0.2, 1] }}
+        exit={{ opacity: 0, scale: 0.98, y: 8 }}
+        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+        onAnimationComplete={() => setAnimDone(true)}
         style={{
           position: 'fixed',
           top: '50%', left: '50%',
           transform: 'translate(-50%, -50%)',
-          width: '95vw', height: '90vh',
+          width: '96vw', height: '92vh',
           background: '#ffffff',
           borderRadius: '16px',
           boxShadow: '0 32px 80px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.07)',
@@ -419,20 +552,20 @@ function ModalShell({ onClose }: { onClose: () => void }) {
         {/* Header */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '16px 20px',
+          padding: '14px 20px',
           background: '#ffffff',
           borderBottom: '1px solid #e2e8f0',
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
             <div style={{ width: 4, height: 20, background: '#4f46e5', borderRadius: '2px' }} />
-            <span style={{ fontSize: '15px', fontWeight: 300, color: colors.text.primary, fontFamily: typography.fontFamily, letterSpacing: '-0.3px' }}>
-              GROW — מחזור ב מובילים שינוי
+            <span style={{ fontSize: '14px', fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily, letterSpacing: '-0.3px' }}>
+              GROW — תמונה מלאה
             </span>
           </div>
           <button
             onClick={onClose}
-            title="סגור"
+            title="סגור (Esc)"
             style={{
               width: 32, height: 32, borderRadius: '8px',
               background: 'none', border: '1px solid #e2e8f0',
@@ -449,14 +582,14 @@ function ModalShell({ onClose }: { onClose: () => void }) {
 
         {/* Canvas */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          <TreeDataLoader transformRef={transformRef} treeRef={treeRef} />
+          <TreeDataLoader transformRef={transformRef} treeRef={treeRef} animDone={animDone} />
         </div>
       </motion.div>
     </>
   );
 }
 
-// ── Public export — rendered once at app root ─────────────────────────────────
+// ── Public export ─────────────────────────────────────────────────────────────
 export function BigPictureModal() {
   const bigPictureOpen  = useUIStore(s => s.bigPictureOpen);
   const closeBigPicture = useUIStore(s => s.closeBigPicture);

@@ -13,6 +13,7 @@ export interface MedicalTask {
   color: string;
   owner: string;
   assignedTo: string | null;   // UUID of assigned profile
+  createdBy: string | null;    // UUID of the user who created the task
   participants: string[];      // Array of profile UUIDs
   priority: 'P1' | 'P2' | 'P3';
   progress: number;
@@ -100,6 +101,8 @@ export interface ProfileSummary {
   id: string;
   full_name: string | null;
   email: string;
+  department: string | null;
+  position: string | null;
 }
 
 // Database row types
@@ -110,6 +113,7 @@ interface TaskRow {
   description: string | null;
   owner_name: string | null;
   assigned_to: string | null;
+  created_by: string | null;
   priority: 'P1' | 'P2' | 'P3' | null;
   progress_mode: 'auto' | 'manual';
   progress_manual: number | null;
@@ -166,6 +170,7 @@ function dbRowToMedicalTask(
     color: groupRow.color || '#7dd3fc',
     owner: taskRow.owner_name || '',
     assignedTo: taskRow.assigned_to || null,
+    createdBy: taskRow.created_by || null,
     participants: participantIds,
     priority: taskRow.priority || 'P2',
     progress,
@@ -363,10 +368,19 @@ export function useProfiles() {
       console.log('[useProfiles] fetching profiles from Supabase...');
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, email')
+        .select('id, full_name, email, department, position')
         .order('full_name', { ascending: true });
-      console.log('[useProfiles] result:', { count: data?.length ?? 0, error: error ?? null });
-      if (error) throw error;
+      if (error) {
+        // Fallback: columns may not exist yet (migration pending)
+        console.warn('[useProfiles] full select failed, falling back:', error.message);
+        const { data: fallback, error: fallbackError } = await supabase
+          .from('profiles')
+          .select('id, full_name, email')
+          .order('full_name', { ascending: true });
+        if (fallbackError) throw fallbackError;
+        return (fallback || []).map(p => ({ ...p, department: null, position: null })) as ProfileSummary[];
+      }
+      console.log('[useProfiles] result:', { count: data?.length ?? 0 });
       return (data || []) as ProfileSummary[];
     },
   });
@@ -991,7 +1005,7 @@ export function useTaskComments(taskId: string | null) {
         .in('id', authorIds);
 
       const profileMap = new Map<string, ProfileSummary>();
-      (profiles || []).forEach(p => profileMap.set(p.id, p));
+      (profiles || []).forEach(p => profileMap.set(p.id, { ...p, department: null, position: null }));
 
       return (data || []).map(c => ({
         ...c,

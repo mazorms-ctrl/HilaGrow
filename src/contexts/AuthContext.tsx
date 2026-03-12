@@ -10,17 +10,28 @@ export interface Profile {
   email: string;
   full_name: string | null;
   avatar_url: string | null;
-  role: 'admin' | 'user';
+  role: 'admin' | 'assignee' | 'participant' | 'user';
+  department: string | null;
+  position: string | null;
 }
 
 interface AuthContextValue {
   user: User | null;
   profile: Profile | null;
   isAdmin: boolean;
+  isAssignee: boolean;
+  isParticipant: boolean;
   loading: boolean;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  signUpWithEmail: (email: string, password: string, fullName?: string) => Promise<void>;
+  signUpWithEmail: (
+    email: string,
+    password: string,
+    fullName?: string,
+    department?: string,
+    position?: string
+  ) => Promise<void>;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 // ── Context ──────────────────────────────────────────────────
@@ -37,21 +48,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function fetchProfile(userId: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('id, email, full_name, avatar_url, role')
+      .select('id, email, full_name, avatar_url, role, department, position')
       .eq('id', userId)
       .maybeSingle();
     setProfile(data ?? null);
   }
 
   useEffect(() => {
-    // Load existing session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
       if (session?.user) fetchProfile(session.user.id);
       setLoading(false);
     });
 
-    // Keep state in sync with Supabase Auth events
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setUser(session?.user ?? null);
@@ -72,15 +81,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }
 
-  async function signUpWithEmail(email: string, password: string, fullName?: string) {
-    const { error } = await supabase.auth.signUp({
+  async function signUpWithEmail(
+    email: string,
+    password: string,
+    fullName?: string,
+    department?: string,
+    position?: string
+  ) {
+    const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        data: { full_name: fullName ?? '' },
-      },
+      options: { data: { full_name: fullName ?? '' } },
     });
     if (error) throw error;
+
+    // Save department + position to the profile row the trigger just created
+    if (data.user && (department || position)) {
+      await supabase
+        .from('profiles')
+        .update({
+          ...(department ? { department } : {}),
+          ...(position   ? { position }   : {}),
+        })
+        .eq('id', data.user.id);
+    }
   }
 
   async function signOut() {
@@ -88,11 +112,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (error) throw error;
   }
 
-  const isAdmin = profile?.role === 'admin';
+  async function refreshProfile() {
+    if (user) await fetchProfile(user.id);
+  }
+
+  const isAdmin       = profile?.role === 'admin';
+  const isAssignee    = profile?.role === 'assignee';
+  const isParticipant = profile?.role === 'participant' || profile?.role === 'user';
 
   return (
     <AuthContext.Provider
-      value={{ user, profile, isAdmin, loading, signInWithEmail, signUpWithEmail, signOut }}
+      value={{ user, profile, isAdmin, isAssignee, isParticipant, loading, signInWithEmail, signUpWithEmail, signOut, refreshProfile }}
     >
       {children}
     </AuthContext.Provider>

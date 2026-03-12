@@ -1,12 +1,15 @@
-import { useState, useEffect, useRef, type CSSProperties } from 'react';
+import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useMatch } from 'react-router-dom';
-import { TreePine, X, LogOut, LogIn } from 'lucide-react';
+import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
+import { ProfileEditModal } from './components/auth/ProfileEditModal';
 import { Sidebar } from './components/Sidebar';
 import { ToastContainer, type ToastMessage } from './components/Toast';
 import { Button } from './components/ui';
 import { colors, typography, spacing, radius, shadows } from './styles/tokens';
+import { useBodyScrollLock } from './hooks/useBodyScrollLock';
 import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { TaskPageContent } from './components/tasks/TaskPage';
 import { QuickViewModal } from './components/tasks/QuickViewModal';
@@ -281,7 +284,7 @@ const initialTasks = [
 // Type for medical task to match TasksDashboard expectations
 
 function App() {
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, isAdmin, isParticipant, signOut } = useAuth();
   const navigate = useNavigate();
   // Detect task page route — renders TaskPageContent inside the normal layout
   const taskMatch = useMatch('/task/:taskId');
@@ -290,9 +293,11 @@ function App() {
 
   // ── Project workspace state ────────────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showProfileEdit, setShowProfileEdit] = useState(false);
 
   // Load all profiles for assignment dropdowns (only when logged in)
   const { profiles } = useProfiles();
+  const profileMap = useMemo(() => new Map(profiles.map(p => [p.id, p])), [profiles]);
   // Load projects — must be before useTasks so we can derive effectiveProjectId first
   const { projects, loading: projectsLoading } = useProjects(user?.id);
 
@@ -311,7 +316,21 @@ function App() {
     : (initialTasks as MedicalTask[]);
   
   const [viewMode, setViewMode] = useState<'rows' | 'tree' | 'command'>('command');
+
+  // Participants land on the Big Picture view rather than the command center
+  useEffect(() => {
+    if (isParticipant && viewMode === 'command') {
+      setViewMode('tree');
+      setTreeFullscreen(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isParticipant]);
+
   const [selectedTask, setSelectedTask] = useState<MedicalTask | null>(null);
+
+  // canEdit: admin can edit any task; everyone else only edits tasks they created
+  const canEdit = isAdmin || (!!selectedTask && selectedTask.createdBy === user?.id);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [editingTask, setEditingTask] = useState<MedicalTask | null>(null);
   const [showNewTaskModal, setShowNewTaskModal] = useState(false);
@@ -322,6 +341,7 @@ function App() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [hoveredTaskInTree, setHoveredTaskInTree] = useState<typeof tasks[0] | null>(null);
+  const [hoveredAssigneeTaskId, setHoveredAssigneeTaskId] = useState<string | null>(null);
   const [treeZoom, setTreeZoom] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 0.5 : 1.0);
   const [treeFullscreen, setTreeFullscreen] = useState(false);
   const [showTreeZoomHint, setShowTreeZoomHint] = useState(() => {
@@ -346,7 +366,7 @@ function App() {
   // Project name state with localStorage persistence
   const [projectName, setProjectName] = useState(() => {
     const saved = localStorage.getItem('grow.projectName');
-    if (!saved || saved === 'GROW - מחזור ב מובילים שינוי') return 'GROW - מובילים שינוי';
+    if (!saved || saved === 'GROW - מחזור ב מובילים שינוי' || saved === 'GROW - מובילים שינוי') return 'GROW';
     return saved;
   });
   const [isEditingProjectName, setIsEditingProjectName] = useState(false);
@@ -391,14 +411,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   }, [viewMode]);
 
   // Lock body scroll when tree view is active (prevents double scrollbar)
-  useEffect(() => {
-    if (viewMode === 'tree') {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => { document.body.style.overflow = ''; };
-  }, [viewMode]);
+  useBodyScrollLock(viewMode === 'tree');
 
   // Keyboard shortcuts for tree zoom
   useEffect(() => {
@@ -682,15 +695,15 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
 
       // 1-3 - Switch views
       if (e.key === '1') {
-        setViewMode('command');
+        setViewMode('command'); setTreeFullscreen(false);
         e.preventDefault();
       }
       if (e.key === '2') {
-        setViewMode('rows');
+        setViewMode('rows'); setTreeFullscreen(false);
         e.preventDefault();
       }
       if (e.key === '3') {
-        setViewMode('tree');
+        setViewMode('tree'); setTreeFullscreen(true);
         e.preventDefault();
       }
 
@@ -713,11 +726,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     return () => window.removeEventListener('keydown', handleKeyPress);
   }, [isCategoryModalOpen, showNewTaskModal, editingTask, showKeyboardShortcuts, treeFullscreen]);
 
-  // Auto-fullscreen when switching to tree view
-  useEffect(() => {
-    if (viewMode === 'tree') setTreeFullscreen(true);
-    else setTreeFullscreen(false);
-  }, [viewMode]);
+  // treeFullscreen is now set synchronously alongside setViewMode — no useEffect needed.
 
   const filteredTasks = tasks.filter(task => {
     // Search filter
@@ -935,6 +944,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         milestones: [{ text: 'שלב ראשון', done: false }],
         status: 'open',
         currentState: '',
+        createdBy: null,
       };
       await createTask(newTask, effectiveProjectId);
       setExpandedCategories([...expandedCategories, name]);
@@ -1230,13 +1240,18 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       const isActive    = taskStatus === 'in_progress';
                       const hasProgress = task.progress > 0;
 
+                      // Assignee profile lookup for department / tooltip
+                      const assigneeProfile = task.assignedTo ? profileMap.get(task.assignedTo) : null;
+                      const assigneeDept = assigneeProfile?.department ?? null;
+                      const assigneePosition = assigneeProfile?.position ?? null;
+
                       // Personal: ID match (primary) → live full_name match (fallback)
-                      const myId      = user?.id;
-                      const myNameRaw = (profile?.full_name ?? '').trim().toLowerCase();
-                      const ownerNorm = (task.owner ?? '').trim().toLowerCase();
+                      // user?.id and profile?.full_name come from outer component scope
+                      const ownerNorm  = (task.owner ?? '').trim().toLowerCase();
+                      const myNameNorm = (profile?.full_name ?? '').trim().toLowerCase();
                       const isPersonal = !!(
-                        (myId && task.assignedTo === myId) ||
-                        (myNameRaw && ownerNorm && ownerNorm === myNameRaw)
+                        (user?.id && task.assignedTo === user.id) ||
+                        (myNameNorm && ownerNorm && ownerNorm === myNameNorm)
                       );
 
                       // Top-border: none for inactive, status-driven for active
@@ -1262,24 +1277,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                         : hoveredTaskInTree?.id === task.id ? 'translateY(-2px)' : 'translateY(0)';
 
                       return (
-                      <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+                      <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', zIndex: hoveredAssigneeTaskId === task.id ? 100 : 'auto' }}>
                         {idx > 0 && <div style={{ width: '1px', height: '6px', background: '#e2e8f0' }} />}
-
-                        {/* Inject keyframes + scrollbar styles once per render */}
-                        <style>{`
-                          @keyframes fadeInTree {
-                            from { opacity: 0; transform: translateX(50%) translateY(-4px); }
-                            to   { opacity: 1; transform: translateX(50%) translateY(0);    }
-                          }
-                          @keyframes treePulse {
-                            0%, 100% { opacity: 1; }
-                            50%       { opacity: 0.55; }
-                          }
-                          .tree-pan-container::-webkit-scrollbar { width: 6px; height: 6px; }
-                          .tree-pan-container::-webkit-scrollbar-track { background: transparent; }
-                          .tree-pan-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-                          .tree-pan-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-                        `}</style>
 
                         <div
                           onClick={() => navigate(`/task/${task.id}`)}
@@ -1378,17 +1377,22 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                               {task.milestones.filter(m => m.done).length}/{task.milestones.length}
                             </span>
                             {task.owner && task.owner !== 'ללא אחראי' && task.owner.trim() !== '' && (
-                              <span style={{
-                                fontSize: '9px',
-                                fontWeight: isPersonal ? 700 : hasProgress ? 500 : 300,
-                                color: isPersonal ? '#92400e' : ownerColor,
-                                maxWidth: '100px',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                whiteSpace: 'nowrap',
-                                flexShrink: 0,
-                              }}>
-                                👤 {task.owner}
+                              <span
+                                onMouseEnter={() => setHoveredAssigneeTaskId(task.id)}
+                                onMouseLeave={() => setHoveredAssigneeTaskId(null)}
+                                style={{
+                                  fontSize: '9px',
+                                  fontWeight: isPersonal ? 700 : hasProgress ? 500 : 300,
+                                  color: isPersonal ? '#92400e' : ownerColor,
+                                  maxWidth: '110px',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  flexShrink: 0,
+                                  cursor: 'default',
+                                  position: 'relative',
+                                }}>
+                                👤 {task.owner}{assigneeDept ? ` | ${assigneeDept}` : ''}
                               </span>
                             )}
                           </div>
@@ -1475,6 +1479,41 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                             </div>
                           )}
                         </div>
+
+                        {/* Assignee profile tooltip */}
+                        {hoveredAssigneeTaskId === task.id && assigneeProfile && (
+                          <div style={{
+                            position: 'absolute',
+                            bottom: '-4px',
+                            left: '50%',
+                            transform: 'translateX(-50%) translateY(100%)',
+                            background: 'white',
+                            border: '1px solid #e2e8f0',
+                            borderRadius: '10px',
+                            padding: '10px 14px',
+                            boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                            zIndex: 200,
+                            minWidth: '160px',
+                            textAlign: 'right',
+                            pointerEvents: 'none',
+                            fontSize: '12px',
+                            lineHeight: '1.6',
+                          }}>
+                            <div style={{ fontWeight: 600, color: '#0f172a', marginBottom: '4px' }}>
+                              {assigneeProfile.full_name || assigneeProfile.email}
+                            </div>
+                            {assigneePosition && (
+                              <div style={{ color: '#64748b', fontWeight: 300 }}>
+                                <span style={{ color: '#94a3b8' }}>תפקיד: </span>{assigneePosition}
+                              </div>
+                            )}
+                            {assigneeDept && (
+                              <div style={{ color: '#64748b', fontWeight: 300 }}>
+                                <span style={{ color: '#94a3b8' }}>מחלקה: </span>{assigneeDept}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                       );
                     })}
@@ -1533,10 +1572,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
   };
 
   return (
-    <div className="app-container" style={{ 
-      minHeight: '100vh', 
+    <div className="app-container" style={{
+      minHeight: '100vh',
       background: colors.background.primary,
-      direction: 'rtl', 
+      direction: 'rtl',
       fontFamily: typography.fontFamily,
       position: 'relative',
       display: 'flex',
@@ -1577,7 +1616,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             position: 'relative',
             backgroundColor: 'transparent',
           }}
-          className="px-4 md:!px-8 h-[80px] md:h-[80px] lg:h-[88px]"
+          className="px-4 md:!px-8 h-[72px]"
         >
           {/* Nav buttons — desktop, stuck to the right (flex-start in RTL) */}
           <div
@@ -1587,7 +1626,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             {(['command', 'rows', 'tree'] as const).map(mode => (
               <button
                 key={mode}
-                onClick={() => { setViewMode(mode); if (taskMatch) navigate('/'); }}
+                onClick={() => { setViewMode(mode); setTreeFullscreen(mode === 'tree'); if (taskMatch) navigate('/'); }}
                 aria-pressed={!taskMatch && viewMode === mode}
                 style={getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'desktop')}
                 title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
@@ -1630,38 +1669,47 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 className="header-logo-img h-[44px] md:h-[52px] lg:h-[60px] w-auto object-contain shrink-0"
               />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', textAlign: 'right', pointerEvents: 'auto' }}>
-              <h1
+            {/* Brand text: GROW · יוצרים שינוי */}
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: '8px',
+              direction: 'ltr', pointerEvents: 'auto',
+            }}>
+              <span
                 style={{
-                  fontWeight: typography.fontWeight.black,
-                  color: '#000000',
+                  fontWeight: 900,
+                  color: '#0a0f1e',
                   letterSpacing: '-0.5px',
                   fontFamily: typography.fontFamily,
-                  margin: 0, padding: 0, whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap', lineHeight: 1,
                 }}
-                className="leading-none text-[19px] md:text-2xl lg:text-3xl"
+                className="text-[22px] md:text-[28px] lg:text-[34px]"
               >
                 GROW
-              </h1>
-              <p
+              </span>
+              {/* Thin vertical separator */}
+              <span style={{
+                width: '1.5px', background: '#d1d5db',
+                borderRadius: '1px', flexShrink: 0, alignSelf: 'stretch',
+              }} />
+              <span
                 style={{
-                  color: '#1a1a1a',
-                  margin: 0, marginTop: '2px', padding: 0,
-                  fontWeight: typography.fontWeight.medium,
+                  fontWeight: 300,
+                  color: '#4b5563',
+                  letterSpacing: '0.2px',
                   fontFamily: typography.fontFamily,
-                  whiteSpace: 'nowrap',
+                  whiteSpace: 'nowrap', lineHeight: 1,
                 }}
-                className="leading-tight text-[9px] md:text-xs lg:text-sm"
+                className="text-[13px] md:text-[16px] lg:text-[19px]"
               >
-                פיתוח וחיזוק מחוברות ארגונית
-              </p>
+                יוצרים שינוי
+              </span>
             </div>
           </div>
 
-          {/* Left side — sign-in for guests (pushes to the left via margin-inline-start auto) */}
+          {/* Left side — credits + sign-in */}
           <div
             className="desktop-only"
-            style={{ marginInlineStart: 'auto', flexShrink: 0 }}
+            style={{ marginInlineStart: 'auto', flexShrink: 0, display: 'flex', alignItems: 'center', gap: '16px' }}
           >
             {!user && (
               <button
@@ -1674,6 +1722,26 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 <span>כניסה</span>
               </button>
             )}
+          </div>
+
+          {/* Credits — absolute, bottom-left, single line, desktop only */}
+          <div
+            className="hidden md:block"
+            style={{
+              position: 'absolute',
+              bottom: '3px',
+              left: '20px',
+              direction: 'rtl',
+              pointerEvents: 'none',
+            }}
+          >
+            <span style={{
+              fontSize: '8px', color: '#D1D5DB',
+              fontFamily: 'Heebo, sans-serif',
+              whiteSpace: 'nowrap', lineHeight: 1,
+            }}>
+              פיתוח: ד&quot;ר שי שבו &nbsp;|&nbsp; אפיון: ד&quot;ר שי שבו, ד&quot;ר ליבי מדר, ד&quot;ר אדם פולמן
+            </span>
           </div>
 
           {/* Mobile: logo centered (handled by absolute above), hamburger on the left */}
@@ -1725,7 +1793,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               {(['command', 'rows', 'tree'] as const).map(mode => (
                 <button
                   key={mode}
-                  onClick={() => { setViewMode(mode); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
+                  onClick={() => { setViewMode(mode); setTreeFullscreen(mode === 'tree'); setIsMobileMenuOpen(false); if (taskMatch) navigate('/'); }}
                   aria-pressed={!taskMatch && viewMode === mode}
                   style={{...getHeaderModeButtonStyle(mode, !taskMatch && viewMode === mode, 'mobile'), minHeight: '44px'}}
                   title={mode === 'tree' ? 'מפת העץ (מפת הפרויקט)' : mode === 'command' ? 'עמוד הבית' : undefined}
@@ -1755,6 +1823,21 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   יציאה
                 </button>
               )}
+
+              {/* Credits — bottom of mobile menu */}
+              <div style={{
+                marginTop: '4px', paddingTop: '12px',
+                borderTop: '1px solid #F1F5F9',
+                display: 'flex', flexDirection: 'column', gap: '3px',
+                direction: 'rtl',
+              }}>
+                <span style={{ fontSize: '10px', color: '#9CA3AF', lineHeight: 1.4, fontFamily: 'Heebo, sans-serif' }}>
+                  פיתוח: ד&quot;ר שי שבו
+                </span>
+                <span style={{ fontSize: '10px', color: '#9CA3AF', lineHeight: 1.4, fontFamily: 'Heebo, sans-serif' }}>
+                  אפיון: ד&quot;ר שי שבו, ד&quot;ר ליבי מדר, ד&quot;ר אדם פולמן
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -1772,6 +1855,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             profile={profile}
             isAdmin={isAdmin}
             onSignOut={signOut}
+            onEditProfile={() => setShowProfileEdit(true)}
             collapsed={sidebarCollapsed}
             onToggleCollapse={() => setSidebarCollapsed(v => !v)}
           />
@@ -2806,160 +2890,90 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             }}>
               {renderTreeDiagram('full')}
               
-              {/* Zoom Controls */}
+              {/* Zoom Controls — floating glass panel, bottom-right */}
               <div style={{
                 position: 'fixed',
                 bottom: '24px',
-                left: '24px',
+                right: '24px',
                 zIndex: 50,
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '8px',
-                pointerEvents: 'auto'
+                alignItems: 'center',
+                gap: '2px',
+                background: 'rgba(255,255,255,0.88)',
+                backdropFilter: 'blur(12px)',
+                WebkitBackdropFilter: 'blur(12px)',
+                borderRadius: '14px',
+                border: '1px solid rgba(226,232,240,0.8)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
+                padding: '6px',
+                pointerEvents: 'auto',
               }}>
-                <button
-                  onClick={zoomIn}
-                  style={{
-                    minWidth: '48px',
-                    minHeight: '48px',
-                    width: '48px',
-                    height: '48px',
-                    fontSize: '24px',
-                    fontWeight: 'bold',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #22c55e, #16a34a)',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(34, 197, 94, 0.4)',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(34, 197, 94, 0.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(34, 197, 94, 0.4)';
-                  }}
-                  aria-label="הגדל"
-                  title="הגדל (Zoom In)"
-                >
-                  +
-                </button>
-                
-                <button
-                  onClick={zoomOut}
-                  style={{
-                    minWidth: '48px',
-                    minHeight: '48px',
-                    width: '48px',
-                    height: '48px',
-                    fontSize: '24px',
-                    fontWeight: 'bold',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #ef4444, #dc2626)',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(239, 68, 68, 0.4)',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(239, 68, 68, 0.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(239, 68, 68, 0.4)';
-                  }}
-                  aria-label="הקטן"
-                  title="הקטן (Zoom Out)"
-                >
-                  −
-                </button>
-                
-                <button
-                  onClick={resetZoom}
-                  style={{
-                    minWidth: '48px',
-                    minHeight: '48px',
-                    width: '48px',
-                    height: '48px',
-                    fontSize: '20px',
-                    fontWeight: 'bold',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: 'linear-gradient(135deg, #0ea5e9, #0284c7)',
-                    color: 'white',
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(14, 165, 233, 0.4)',
-                    transition: 'all 0.2s',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.transform = 'translateY(-2px)';
-                    e.currentTarget.style.boxShadow = '0 6px 16px rgba(14, 165, 233, 0.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.transform = 'translateY(0)';
-                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(14, 165, 233, 0.4)';
-                  }}
-                  aria-label="התאם למסך"
-                  title="התאם למסך (Reset)"
-                >
-                  ⊡
-                </button>
-                
-                {/* Zoom indicator */}
+                {/* Zoom In */}
+                {([
+                  { icon: <Plus size={16} />, onClick: zoomIn, title: 'הגדל (Zoom In)', label: 'הגדל' },
+                  { icon: <Minus size={16} />, onClick: zoomOut, title: 'הקטן (Zoom Out)', label: 'הקטן' },
+                  { icon: <Maximize2 size={16} />, onClick: resetZoom, title: 'התאם למסך', label: 'Reset' },
+                  { icon: <Expand size={16} />, onClick: () => setTreeFullscreen(true), title: 'מסך מלא', label: 'Fullscreen' },
+                ] as { icon: React.ReactNode; onClick: () => void; title: string; label: string }[]).map(({ icon, onClick, title, label }, i) => (
+                  <button
+                    key={label}
+                    onClick={onClick}
+                    title={title}
+                    aria-label={label}
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      border: 'none',
+                      borderRadius: '10px',
+                      background: 'transparent',
+                      color: '#475569',
+                      cursor: 'pointer',
+                      transition: 'background 0.15s, color 0.15s',
+                      marginBottom: i === 1 ? '4px' : 0, // gap between zoom pair and util pair
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#f1f5f9';
+                      e.currentTarget.style.color = '#1e293b';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = '#475569';
+                    }}
+                  >
+                    {icon}
+                  </button>
+                ))}
+
+                {/* Divider */}
+                <div style={{ width: '24px', height: '1px', background: '#e2e8f0', margin: '2px 0' }} />
+
+                {/* Zoom % badge */}
                 <div style={{
-                  minWidth: '48px',
-                  height: '32px',
-                  fontSize: '12px',
-                  fontWeight: '600',
-                  borderRadius: '8px',
-                  background: 'rgba(255, 255, 255, 0.95)',
-                  color: '#171717',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)',
-                  border: '1px solid #e5e5e5'
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  color: '#64748b',
+                  letterSpacing: '0.02em',
+                  padding: '4px 0 2px',
+                  lineHeight: 1,
                 }}>
                   {Math.round(treeZoom * 100)}%
                 </div>
-
-                {/* Fullscreen button */}
-                <button
-                  onClick={() => setTreeFullscreen(true)}
-                  title="מסך מלא"
-                  style={{
-                    minWidth: '48px', minHeight: '48px', width: '48px', height: '48px',
-                    fontSize: '18px', borderRadius: '12px', border: 'none',
-                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                    color: 'white', cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(99,102,241,0.4)',
-                    transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-2px)'; e.currentTarget.style.boxShadow = '0 6px 16px rgba(99,102,241,0.5)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)';    e.currentTarget.style.boxShadow = '0 4px 12px rgba(99,102,241,0.4)'; }}
-                  aria-label="מסך מלא"
-                >
-                  ⛶
-                </button>
               </div>
 
               {/* Fullscreen overlay */}
+              <AnimatePresence>
               {treeFullscreen && (
-                <div style={{
+                <motion.div
+                  key="tree-fullscreen"
+                  initial={{ opacity: 0, scale: 0.98 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                  style={{
                   position: 'fixed', inset: 0, zIndex: 9000,
                   background: '#ffffff',
                   display: 'flex', flexDirection: 'column',
@@ -2975,41 +2989,6 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       <span style={{ fontSize: '15px', fontWeight: 500, color: '#0f172a', fontFamily: 'Rubik' }}>
                         {projectName}
                       </span>
-                    </div>
-
-                    {/* Zoom controls */}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                      {[
-                        { label: '+', title: 'הגדל', fn: zoomIn,    color: '#22c55e', shadow: 'rgba(34,197,94,0.3)' },
-                        { label: '−', title: 'הקטן', fn: zoomOut,   color: '#ef4444', shadow: 'rgba(239,68,68,0.3)'  },
-                        { label: '⊡', title: 'אפס',  fn: resetZoom, color: '#0ea5e9', shadow: 'rgba(14,165,233,0.3)' },
-                      ].map(({ label, title, fn, color: c, shadow }) => (
-                        <button
-                          key={title}
-                          onClick={fn}
-                          title={title}
-                          style={{
-                            width: 32, height: 32, borderRadius: 8, border: 'none',
-                            background: c, color: '#fff',
-                            fontSize: label === '⊡' ? '14px' : '18px', fontWeight: 700,
-                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            boxShadow: `0 2px 8px ${shadow}`, transition: 'all 0.15s',
-                          }}
-                          onMouseEnter={(e) => { e.currentTarget.style.transform = 'translateY(-1px)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.transform = 'translateY(0)'; }}
-                        >
-                          {label}
-                        </button>
-                      ))}
-                      <div style={{
-                        height: 28, padding: '0 8px', borderRadius: 6,
-                        background: '#f1f5f9', border: '1px solid #e2e8f0',
-                        display: 'flex', alignItems: 'center',
-                        fontSize: '12px', fontWeight: 600, color: '#475569',
-                        minWidth: 44, justifyContent: 'center',
-                      }}>
-                        {Math.round(treeZoom * 100)}%
-                      </div>
                     </div>
 
                     <button
@@ -3031,10 +3010,42 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   {/* Tree canvas */}
                   <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
                     {renderTreeDiagram('fullscreen')}
+                    {/* Floating zoom panel — bottom-right */}
+                    <div style={{
+                      position: 'absolute', bottom: 20, right: 20, zIndex: 10,
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
+                      background: 'rgba(255,255,255,0.88)', backdropFilter: 'blur(12px)',
+                      borderRadius: '14px', border: '1px solid rgba(226,232,240,0.8)',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 1.5px 6px rgba(0,0,0,0.06)',
+                      padding: '6px',
+                    }}>
+                      {([
+                        { icon: <Plus size={15} />,      fn: zoomIn,    title: 'הגדל' },
+                        { icon: <Minus size={15} />,     fn: zoomOut,   title: 'הקטן' },
+                        { icon: <Maximize2 size={14} />, fn: resetZoom, title: 'התאם למסך' },
+                      ] as { icon: React.ReactNode; fn: () => void; title: string }[]).map(({ icon, fn, title }) => (
+                        <button key={title} onClick={fn} title={title} style={{
+                          width: 32, height: 32, border: 'none', borderRadius: 9,
+                          background: 'transparent', color: '#475569',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', transition: 'background 0.15s, color 0.15s',
+                        }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#e2e8f0'; e.currentTarget.style.color = '#0f172a'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }}
+                        >{icon}</button>
+                      ))}
+                      <div style={{
+                        fontSize: '11px', fontWeight: 600, color: '#64748b',
+                        padding: '2px 0 0', minWidth: 32, textAlign: 'center', lineHeight: 1,
+                      }}>
+                        {Math.round(treeZoom * 100)}%
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </motion.div>
               )}
-              
+              </AnimatePresence>
+
               {/* Zoom Hint - shows on first view */}
               {showTreeZoomHint && (
                 <div style={{
@@ -3614,14 +3625,24 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               </button>
             </div>
 
-            <div style={{ 
-              padding: '24px', 
+            <div style={{
+              padding: '24px',
               display: 'flex',
               flexDirection: 'column',
               fontFamily: 'Rubik',
               fontWeight: '500',
               color: 'rgba(10, 10, 10, 1)',
             }}>
+              {/* Read-only notice for non-owners */}
+              {user && !canEdit && (
+                <div style={{
+                  background: '#fefce8', border: '1px solid #fde68a',
+                  borderRadius: '8px', padding: '10px 16px',
+                  fontSize: '13px', color: '#92400e', marginBottom: '16px',
+                }}>
+                  אתה צופה בפרויקט זה במצב קריאה בלבד
+                </div>
+              )}
               {/* Stepper Progress Bar */}
               <div style={{ marginBottom: '32px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -4407,7 +4428,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   ← הקודם
                 </button>
 
-                {user && (
+                {user && canEdit && (
                   <button
                     onClick={handleSaveTask}
                     style={{
@@ -4603,6 +4624,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   milestones: milestonesText.length > 0 ? milestonesText.map(text => ({ text, done: false })) : [{ text: 'שלב ראשון', done: false }],
                   status: 'open' as const,
                   currentState: '',
+                  createdBy: null,
                 };
 
                 addNewTask(newTask);
@@ -5279,6 +5301,10 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
       {/* Login Modal */}
       {showLoginModal && (
         <LoginModal onClose={() => setShowLoginModal(false)} />
+      )}
+
+      {showProfileEdit && (
+        <ProfileEditModal onClose={() => setShowProfileEdit(false)} />
       )}
 
       {/* Quick View Modal — Work Queue section */}

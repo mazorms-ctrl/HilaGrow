@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "./Button";
@@ -11,16 +12,7 @@ interface DrawerProps {
 }
 
 export function Drawer({ open, onClose, children, title }: DrawerProps) {
-  React.useEffect(() => {
-    if (open) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-    };
-  }, [open]);
+  useBodyScrollLock(open);
 
   if (!open) return null;
 
