@@ -115,7 +115,7 @@ type Mode = 'login' | 'register' | 'forgot';
 
 // ── LoginPage ─────────────────────────────────────────────────
 export function LoginPage() {
-  const { signInWithEmail, signUpWithEmail } = useAuth();
+  const { signInWithEmail, signUpWithEmail, user } = useAuth();
 
   const [mode, setMode]             = useState<Mode>('login');
   const [email, setEmail]           = useState('');
@@ -143,13 +143,18 @@ export function LoginPage() {
     setMode('register');
     setInviteLoading(true);
 
-    getInvitationByToken(token).then(inv => {
-      if (inv) {
-        setInvitation(inv);
-        setEmail(inv.email);      // pre-fill email from invitation
+    getInvitationByToken(token).then(async inv => {
+      if (!inv) return;
+      setInvitation(inv);
+      setEmail(inv.email);
+
+      // Already logged in — auto-accept and redirect to home
+      if (user) {
+        await acceptInvitation(token, inv.email, user.id).catch(console.error);
+        window.location.replace('/');
       }
     }).finally(() => setInviteLoading(false));
-  }, []);
+  }, [user]);
 
   useEffect(() => { window.scrollTo(0, 0); }, []);
 

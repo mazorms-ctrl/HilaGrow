@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import { useAuth } from './contexts/AuthContext';
 import App from './App';
 import { LoginPage } from './components/auth/LoginPage';
@@ -7,6 +7,7 @@ import { AdminDashboard } from './components/admin/AdminDashboard';
 
 export function AppRouter() {
   const { loading, user } = useAuth();
+  const location = useLocation();
 
   // Spinner while session resolves — matches the login page background
   if (loading) {
@@ -31,7 +32,13 @@ export function AppRouter() {
     );
   }
 
-  // Unauthenticated → halo login page
+  // /signup always renders LoginPage — handles invitation tokens for both
+  // authenticated and unauthenticated users
+  if (location.pathname === '/signup') {
+    return <LoginPage />;
+  }
+
+  // Unauthenticated → login page
   if (!user) {
     return <LoginPage />;
   }
