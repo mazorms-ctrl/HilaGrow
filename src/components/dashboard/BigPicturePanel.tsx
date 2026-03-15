@@ -404,6 +404,7 @@ function TreeCanvas_Wrapper({
   currentUserName,
   animDone,
   editMode,
+  onToggleEdit,
   dragTaskId,
   onDragStart,
   onTaskMove,
@@ -414,6 +415,7 @@ function TreeCanvas_Wrapper({
   currentUserName: string | null;
   animDone: boolean;
   editMode: boolean;
+  onToggleEdit: () => void;
   dragTaskId: string | null;
   onDragStart: (taskId: string) => void;
   onTaskMove: (taskId: string, newGroupId: string, newCategory: string) => void;
@@ -469,11 +471,11 @@ function TreeCanvas_Wrapper({
             />
           </TransformComponent>
 
-          {/* Zoom controls — glass panel, bottom-right */}
+          {/* Controls panel — glass pill, bottom-right */}
           <div style={{
             position: 'absolute', bottom: 14, right: 14, zIndex: 10,
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-            background: 'rgba(255,255,255,0.88)',
+            background: 'rgba(255,255,255,0.92)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             borderRadius: '14px',
@@ -481,6 +483,31 @@ function TreeCanvas_Wrapper({
             boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
             padding: '6px',
           }}>
+            {/* Edit mode button — top of panel */}
+            <button
+              onClick={onToggleEdit}
+              title={editMode ? 'סיום עריכה' : 'מצב עריכה — גרור משימות'}
+              style={{
+                width: 36, height: 36, border: 'none', borderRadius: '10px',
+                background: editMode ? '#7c3aed' : 'transparent',
+                color: editMode ? '#ffffff' : '#475569',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', padding: 0, transition: 'background 0.15s, color 0.15s',
+              }}
+              onMouseEnter={(e) => {
+                if (!editMode) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }
+              }}
+              onMouseLeave={(e) => {
+                if (!editMode) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }
+              }}
+            >
+              {editMode ? <Check size={16} /> : <Pencil size={16} />}
+            </button>
+
+            {/* Divider */}
+            <div style={{ width: 24, height: 1, background: '#e2e8f0', margin: '2px 0' }} />
+
+            {/* Zoom buttons */}
             {[
               { icon: <ZoomIn size={16} />,    fn: () => zoomIn(),                                   tip: 'הגדל' },
               { icon: <ZoomOut size={16} />,   fn: () => zoomOut(),                                  tip: 'הקטן' },
@@ -533,12 +560,13 @@ interface LoaderProps {
   treeRef: React.RefObject<HTMLDivElement | null>;
   animDone: boolean;
   editMode: boolean;
+  onToggleEdit: () => void;
   onDragStart: (taskId: string) => void;
   dragTaskId: string | null;
   onTaskMove: (taskId: string, newGroupId: string, newCategory: string) => void;
 }
 
-function TreeDataLoader({ transformRef, treeRef, animDone, editMode, onDragStart, dragTaskId, onTaskMove }: LoaderProps) {
+function TreeDataLoader({ transformRef, treeRef, animDone, editMode, onToggleEdit, onDragStart, dragTaskId, onTaskMove }: LoaderProps) {
   const { user, profile } = useAuth();
   const currentUserName = profile?.full_name ?? null;
 
@@ -614,6 +642,7 @@ function TreeDataLoader({ transformRef, treeRef, animDone, editMode, onDragStart
       currentUserName={currentUserName}
       animDone={animDone}
       editMode={editMode}
+      onToggleEdit={onToggleEdit}
       dragTaskId={dragTaskId}
       onDragStart={onDragStart}
       onTaskMove={handleTaskMove}
@@ -680,48 +709,19 @@ function ModalShell({ onClose }: { onClose: () => void }) {
           zIndex: 9001,
         }}
       >
-        {/* Header */}
+        {/* Header — minimal: just title + close */}
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 20px',
-          background: editMode ? '#faf5ff' : '#ffffff',
-          borderBottom: editMode ? '1px solid #ddd6fe' : '1px solid #e2e8f0',
+          background: '#ffffff',
+          borderBottom: '1px solid #e2e8f0',
           flexShrink: 0,
-          transition: 'background 0.2s',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: 4, height: 20, background: editMode ? '#7c3aed' : '#4f46e5', borderRadius: '2px' }} />
+            <div style={{ width: 4, height: 20, background: '#4f46e5', borderRadius: '2px' }} />
             <span style={{ fontSize: '14px', fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily, letterSpacing: '-0.3px' }}>
               GROW — תמונה מלאה
             </span>
-            {editMode && (
-              <span style={{
-                fontSize: '11px', fontWeight: 600, color: '#7c3aed',
-                background: '#ede9fe', padding: '3px 10px', borderRadius: '20px',
-                fontFamily: typography.fontFamily,
-              }}>
-                מצב עריכה — גרור כרטיסים בין עמודות
-              </span>
-            )}
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            {/* Edit mode toggle */}
-            <button
-              onClick={() => setEditMode(m => !m)}
-              title={editMode ? 'סיום עריכה' : 'מצב עריכה — גרור משימות'}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '6px',
-                padding: '6px 12px', borderRadius: '8px', border: 'none',
-                background: editMode ? '#7c3aed' : '#f1f5f9',
-                color: editMode ? '#ffffff' : '#475569',
-                cursor: 'pointer', fontSize: '12px', fontWeight: 600,
-                fontFamily: typography.fontFamily,
-                transition: 'background 0.15s, color 0.15s',
-              }}
-            >
-              {editMode ? <Check size={14} /> : <Pencil size={14} />}
-              {editMode ? 'סיום' : 'עריכה'}
-            </button>
           </div>
           <button
             onClick={onClose}
@@ -750,6 +750,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
             treeRef={treeRef}
             animDone={animDone}
             editMode={editMode}
+            onToggleEdit={() => setEditMode(m => !m)}
             dragTaskId={dragTaskId}
             onDragStart={setDragTaskId}
             onTaskMove={() => setDragTaskId(null)}
