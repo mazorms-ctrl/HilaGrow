@@ -1,8 +1,11 @@
+import { useState } from 'react';
 import type { TaskWithRelations } from '@/types';
 import { Card } from '@/components/ui/Card';
 import { Progress } from '@/components/ui/Progress';
-import { CheckCircle2, Circle, User } from 'lucide-react';
+import { CheckCircle2, Circle, User, DatabaseBackup } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/contexts/AuthContext';
+import { generateTaskBackup, downloadTaskBackupAsJson } from '@/services/backupService';
 
 interface TaskCardProps {
   task: TaskWithRelations;
@@ -11,7 +14,23 @@ interface TaskCardProps {
 
 export function TaskCard({ task, onClick }: TaskCardProps) {
   const { group, milestones, progress } = task;
-  
+  const { user } = useAuth();
+  const [backupLoading, setBackupLoading] = useState(false);
+
+  async function handleTaskBackup(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (backupLoading) return;
+    setBackupLoading(true);
+    try {
+      const backup = await generateTaskBackup(task.id, user?.id ?? '');
+      downloadTaskBackupAsJson(backup);
+    } catch (err) {
+      console.error('[Task Backup] failed:', err);
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
   // Show only first 3 milestones
   const displayedMilestones = milestones.slice(0, 3);
   const remainingCount = Math.max(0, milestones.length - 3);
@@ -39,8 +58,8 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
       />
 
       <div className="p-5">
-        {/* Category badge */}
-        <div className="mb-3 flex items-center gap-2">
+        {/* Category badge + backup button */}
+        <div className="mb-3 flex items-center justify-between gap-2">
           <span
             className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium"
             style={{
@@ -50,6 +69,15 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
           >
             {group?.name || 'ללא קטגוריה'}
           </span>
+          <button
+            onClick={handleTaskBackup}
+            disabled={backupLoading}
+            title="גיבוי משימה"
+            className="flex items-center justify-center rounded p-1 transition-colors hover:bg-amber-50 disabled:opacity-40"
+            style={{ color: '#d97706', flexShrink: 0 }}
+          >
+            <DatabaseBackup size={13} />
+          </button>
         </div>
 
         {/* Task title */}

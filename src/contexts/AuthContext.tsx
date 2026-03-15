@@ -29,7 +29,7 @@ interface AuthContextValue {
     fullName?: string,
     department?: string,
     position?: string
-  ) => Promise<void>;
+  ) => Promise<string | null>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -62,10 +62,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (_event, session) => {
+      (event, session) => {
         setUser(session?.user ?? null);
         if (session?.user) {
           fetchProfile(session.user.id);
+
+          // Accept pending invitation stored before email confirmation
+          if (event === 'SIGNED_IN') {
+            const token = sessionStorage.getItem('pendingInviteToken');
+            const email = sessionStorage.getItem('pendingInviteEmail');
+            if (token && email) {
+              sessionStorage.removeItem('pendingInviteToken');
+              sessionStorage.removeItem('pendingInviteEmail');
+              import('@/services/inviteService').then(({ acceptInvitation }) => {
+                acceptInvitation(token, email, session.user.id).catch(console.error);
+              });
+            }
+          }
         } else {
           setProfile(null);
         }
@@ -87,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     fullName?: string,
     department?: string,
     position?: string
-  ) {
+  ): Promise<string | null> {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
@@ -105,6 +118,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         })
         .eq('id', data.user.id);
     }
+
+    return data.user?.id ?? null;
   }
 
   async function signOut() {

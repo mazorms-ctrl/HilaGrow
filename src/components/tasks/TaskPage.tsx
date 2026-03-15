@@ -2,10 +2,12 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
-  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays,
+  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup,
 } from 'lucide-react';
 import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment } from '@/lib/supabase-hooks';
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { exportSingleTask, exportSingleTaskAsPdf } from '@/services/backupService';
+import { sendTaskInvite } from '@/services/inviteService';
 import { createPortal } from 'react-dom';
 import { Toast } from '../Toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -201,11 +203,72 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const { comments, loading: commentsLoading } = useTaskComments(taskId);
 
   const [localTask, setLocalTask] = useState<MedicalTask | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [deleting, setDeleting] = useState(false);
+  const [saving, setSaving]                 = useState(false);
+  const [deleting, setDeleting]             = useState(false);
+  const [backupMenuOpen, setBackupMenuOpen] = useState(false);
+  const [backingUp, setBackingUp]           = useState(false);
+  const backupBtnRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!backupMenuOpen) return;
+    function onOutside(e: MouseEvent) {
+      if (backupBtnRef.current && !backupBtnRef.current.contains(e.target as Node))
+        setBackupMenuOpen(false);
+    }
+    document.addEventListener('mousedown', onOutside);
+    return () => document.removeEventListener('mousedown', onOutside);
+  }, [backupMenuOpen]);
+
+  async function handleJsonBackup() {
+    if (!task || backingUp) return;
+    setBackupMenuOpen(false);
+    setBackingUp(true);
+    try { await exportSingleTask(task.id, user?.id ?? ''); }
+    catch (err) { console.error('[Task JSON Backup]', err); }
+    finally { setBackingUp(false); }
+  }
+
+  async function handlePdfBackup() {
+    if (!task || backingUp) return;
+    setBackupMenuOpen(false);
+    setBackingUp(true);
+    try { await exportSingleTaskAsPdf(task.id, user?.id ?? ''); }
+    catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Task PDF Backup]', err);
+      alert(`הפקת דוח נכשלה:\n${msg}`);
+    }
+    finally { setBackingUp(false); }
+  }
+  async function handleSendInvite() {
+    if (!task || !inviteEmail.trim() || inviteSending) return;
+    setInviteSending(true);
+    setInviteStatus('idle');
+    setInviteError(null);
+    try {
+      await sendTaskInvite({
+        taskId:        task.id,
+        taskTitle:     task.title,
+        email:         inviteEmail.trim(),
+        invitedByName: profile?.full_name || 'ד"ר שי שבו',
+      });
+      setInviteStatus('success');
+      setInviteEmail('');
+    } catch (err) {
+      setInviteStatus('error');
+      setInviteError(err instanceof Error ? err.message : 'שגיאה בשליחת ההזמנה');
+    } finally {
+      setInviteSending(false);
+    }
+  }
+
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
   const [activeSection, setActiveSection] = useState<string>('foundations');
   const [participantSearch, setParticipantSearch] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteSending, setInviteSending] = useState(false);
+  const [inviteStatus, setInviteStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [inviteError, setInviteError] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<number>>(new Set());
@@ -1141,6 +1204,82 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         {/* Action buttons — far left */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '2px', flexShrink: 0 }}>
+
+          {/* ── Backup dropdown ── */}
+          <div ref={backupBtnRef} style={{ position: 'relative' }}>
+            <button
+              onClick={() => { if (!backingUp) setBackupMenuOpen(v => !v); }}
+              disabled={backingUp}
+              title="גיבוי משימה"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '5px',
+                height: '32px', padding: '0 10px', borderRadius: '8px',
+                background: backupMenuOpen ? '#fef3c7' : 'transparent',
+                border: '1px solid',
+                borderColor: backupMenuOpen ? '#fcd34d' : '#e2e8f0',
+                cursor: backingUp ? 'wait' : 'pointer',
+                color: backingUp ? '#94a3b8' : '#d97706',
+                fontSize: '12px', fontWeight: 500,
+                fontFamily: 'inherit',
+                transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+                opacity: backingUp ? 0.5 : 1,
+              }}
+              onMouseEnter={e => { if (!backingUp && !backupMenuOpen) { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.borderColor = '#fcd34d'; } }}
+              onMouseLeave={e => { if (!backupMenuOpen) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#e2e8f0'; } }}
+            >
+              <DatabaseBackup size={14} />
+              <span>{backingUp ? 'מגבה...' : 'גיבוי משימה'}</span>
+              <ChevronDown size={11} style={{ opacity: 0.55, transform: backupMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+            </button>
+
+            {backupMenuOpen && (
+              <div style={{
+                position: 'absolute', top: '36px', left: 0,
+                background: '#fff', border: '1px solid #e2e8f0',
+                borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                zIndex: 300, overflow: 'hidden', minWidth: '175px',
+              }}>
+                <button
+                  onClick={handlePdfBackup}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: '9px',
+                    padding: '10px 14px', background: 'none', border: 'none',
+                    borderBottom: '1px solid #f1f5f9',
+                    cursor: 'pointer', fontSize: '12px', color: '#1e293b',
+                    fontFamily: 'inherit', direction: 'rtl', textAlign: 'right',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#fff7ed'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <FileText size={13} style={{ color: '#dc2626', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 500 }}>גיבוי PDF</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px' }}>דוח מפורט להדפסה</div>
+                  </div>
+                </button>
+                <button
+                  onClick={handleJsonBackup}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: '9px',
+                    padding: '10px 14px', background: 'none', border: 'none',
+                    cursor: 'pointer', fontSize: '12px', color: '#1e293b',
+                    fontFamily: 'inherit', direction: 'rtl', textAlign: 'right',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <DatabaseBackup size={13} style={{ color: '#d97706', flexShrink: 0 }} />
+                  <div>
+                    <div style={{ fontWeight: 500 }}>גיבוי JSON</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px' }}>נתונים גולמיים לשחזור</div>
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
+
           <button
             onClick={handleDelete}
             disabled={deleting}
@@ -2214,6 +2353,69 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   </div>
                 );
               })()}
+              </div>
+            </Field>
+
+            {/* Invite by Email */}
+            <Field label="הזמן לפי אימייל" className="tp-span-full">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'flex', gap: '8px', direction: 'rtl' }}>
+                  <input
+                    type="email"
+                    dir="ltr"
+                    value={inviteEmail}
+                    onChange={e => { setInviteEmail(e.target.value); setInviteStatus('idle'); }}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSendInvite(); } }}
+                    placeholder="כתובת אימייל להזמנה..."
+                    style={{
+                      flex: 1, boxSizing: 'border-box',
+                      padding: '10px 14px', borderRadius: '14px',
+                      border: '1px solid #e2e8f0', outline: 'none',
+                      fontSize: '13px', color: '#1e293b',
+                      fontFamily: 'inherit', background: '#f8fafc',
+                      direction: 'ltr', textAlign: 'left',
+                    }}
+                    onFocus={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }}
+                    onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }}
+                  />
+                  <button
+                    onClick={handleSendInvite}
+                    disabled={inviteSending || !inviteEmail.trim()}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '6px',
+                      padding: '10px 16px', borderRadius: '14px',
+                      background: inviteSending || !inviteEmail.trim()
+                        ? '#e2e8f0' : 'linear-gradient(135deg,#2563eb,#6366f1)',
+                      color: inviteSending || !inviteEmail.trim() ? '#94a3b8' : '#fff',
+                      border: 'none', cursor: inviteSending || !inviteEmail.trim() ? 'not-allowed' : 'pointer',
+                      fontSize: '13px', fontWeight: '600', fontFamily: 'inherit',
+                      whiteSpace: 'nowrap', flexShrink: 0,
+                      transition: 'background 0.15s',
+                    }}
+                  >
+                    {inviteSending ? (
+                      <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'tpSpin 0.7s linear infinite' }} />
+                    ) : (
+                      <Send size={14} />
+                    )}
+                    שלח הזמנה
+                  </button>
+                </div>
+                {inviteStatus === 'success' && (
+                  <div style={{ fontSize: '12px', color: '#059669', background: '#d1fae5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '7px 12px' }}>
+                    ✅ ההזמנה נשלחה בהצלחה! המוזמן יקבל אימייל עם קישור להרשמה.
+                  </div>
+                )}
+                {inviteStatus === 'error' && (
+                  <div style={{ fontSize: '12px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '7px 12px' }}>
+                    ❌ {inviteError || 'שגיאה בשליחת ההזמנה — נסה שנית.'}
+                  </div>
+                )}
+                {inviteStatus === 'idle' && (
+                  <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                    המוזמן יקבל אימייל עם קישור להרשמה ל-GROW+ ויתווסף אוטומטית למשימה זו.
+                  </div>
+                )}
               </div>
             </Field>
 

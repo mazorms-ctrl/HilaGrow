@@ -1,4 +1,4 @@
-import { LogOut, ChevronRight, AlertCircle, Target, CheckSquare, ShieldAlert, UserCog } from 'lucide-react';
+import { LogOut, ChevronRight, AlertCircle, Target, CheckSquare, ShieldAlert, UserCog, DatabaseBackup, FileSpreadsheet, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import {
   useMyLeadInitiatives,
@@ -8,6 +8,7 @@ import {
 } from '@/lib/supabase-hooks';
 // QuickViewModalById intentionally removed — sidebar is now a pure navigation hub
 import { useState } from 'react';
+import { generateMasterBackup, downloadBackupAsJson, exportMasterBackupAsCsv, exportMasterBackupAsPdf } from '@/services/backupService';
 import type { User } from '@supabase/supabase-js';
 import type { Profile } from '@/contexts/AuthContext';
 
@@ -295,6 +296,54 @@ export function Sidebar({ user, profile, isAdmin = false, onSignOut, onEditProfi
   const { milestones: myMilestones, loading: milestonesLoading } = useMyAssignedMilestones();
   const navigate = useNavigate();
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [backupLoading, setBackupLoading] = useState(false);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+
+  async function handleEmergencyBackup() {
+    if (backupLoading) return;
+    setExportMenuOpen(false);
+    setBackupLoading(true);
+    try {
+      const backup = await generateMasterBackup(user.id);
+      downloadBackupAsJson(backup);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Emergency Backup] failed:', msg, err);
+      alert(`גיבוי נכשל:\n${msg}`);
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
+  async function handleCsvExport() {
+    if (backupLoading) return;
+    setExportMenuOpen(false);
+    setBackupLoading(true);
+    try {
+      await exportMasterBackupAsCsv(user.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[CSV Export] failed:', msg, err);
+      alert(`ייצוא נכשל:\n${msg}`);
+    } finally {
+      setBackupLoading(false);
+    }
+  }
+
+  async function handlePdfExport() {
+    if (backupLoading) return;
+    setExportMenuOpen(false);
+    setBackupLoading(true);
+    try {
+      await exportMasterBackupAsPdf(user.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[PDF Export] failed:', msg, err);
+      alert(`הפקת דוח נכשלה:\n${msg}`);
+    } finally {
+      setBackupLoading(false);
+    }
+  }
   const initials = (profile?.full_name || user.email || '?')
     .split(' ')
     .map(w => w[0])
@@ -405,6 +454,119 @@ export function Sidebar({ user, profile, isAdmin = false, onSignOut, onEditProfi
             <LogOut size={12} />
             יציאה
           </button>
+        </div>
+      )}
+
+      {/* ── Export dropdown — always visible below email ── */}
+      {!collapsed && (
+        <div style={{ position: 'relative', flexShrink: 0, borderBottom: `1px solid ${T.border}` }}>
+          {/* Toggle button */}
+          <button
+            onClick={() => { if (!backupLoading) setExportMenuOpen(v => !v); }}
+            disabled={backupLoading}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '7px',
+              padding: '7px 16px',
+              background: exportMenuOpen ? 'rgba(217,119,6,0.06)' : 'none',
+              border: 'none',
+              cursor: backupLoading ? 'default' : 'pointer',
+              fontSize: '11.5px', fontWeight: 300,
+              color: backupLoading ? T.textDim : '#d97706',
+              fontFamily: 'inherit', direction: 'rtl',
+              transition: 'background 0.1s, color 0.1s',
+              opacity: backupLoading ? 0.6 : 1,
+            }}
+            onMouseEnter={e => { if (!backupLoading && !exportMenuOpen) { e.currentTarget.style.background = 'rgba(217,119,6,0.06)'; e.currentTarget.style.color = '#b45309'; } }}
+            onMouseLeave={e => { if (!exportMenuOpen) { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = backupLoading ? T.textDim : '#d97706'; } }}
+          >
+            <DatabaseBackup size={11} style={{ flexShrink: 0 }} />
+            <span style={{ flex: 1, textAlign: 'right' }}>{backupLoading ? 'מעבד...' : 'גיבוי וייצוא'}</span>
+            <ChevronRight
+              size={10}
+              style={{
+                flexShrink: 0, color: T.textDim,
+                transform: exportMenuOpen ? 'rotate(270deg)' : 'rotate(90deg)',
+                transition: 'transform 0.2s',
+              }}
+            />
+          </button>
+
+          {/* Dropdown menu */}
+          {exportMenuOpen && (
+            <>
+              {/* Click-away backdrop */}
+              <div
+                onClick={() => setExportMenuOpen(false)}
+                style={{ position: 'fixed', inset: 0, zIndex: 99 }}
+              />
+              <div style={{
+                position: 'absolute', top: '100%', right: 0, left: 0,
+                background: '#fff',
+                border: `1px solid ${T.border}`,
+                borderRadius: '0 0 8px 8px',
+                boxShadow: '0 6px 20px rgba(0,0,0,0.10)',
+                zIndex: 100,
+                overflow: 'hidden',
+              }}>
+                <button
+                  onClick={handleEmergencyBackup}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '9px 16px', background: 'none', border: 'none',
+                    cursor: 'pointer', fontSize: '11.5px', fontWeight: 300,
+                    color: T.title, fontFamily: 'inherit', direction: 'rtl',
+                    transition: 'background 0.1s',
+                    borderBottom: `1px solid ${T.border}`,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = T.surfaceHover; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <DatabaseBackup size={11} style={{ color: '#d97706', flexShrink: 0 }} />
+                  <div style={{ textAlign: 'right' }}>
+                    <div>גיבוי מערכת (JSON)</div>
+                    <div style={{ fontSize: '9.5px', color: T.textSub, marginTop: '1px' }}>לשחזור טכני מלא</div>
+                  </div>
+                </button>
+                <button
+                  onClick={handleCsvExport}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '9px 16px', background: 'none', border: 'none',
+                    cursor: 'pointer', fontSize: '11.5px', fontWeight: 300,
+                    color: T.title, fontFamily: 'inherit', direction: 'rtl',
+                    transition: 'background 0.1s',
+                    borderBottom: `1px solid ${T.border}`,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = T.surfaceHover; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <FileSpreadsheet size={11} style={{ color: '#16a34a', flexShrink: 0 }} />
+                  <div style={{ textAlign: 'right' }}>
+                    <div>ייצוא לאקסל (CSV)</div>
+                    <div style={{ fontSize: '9.5px', color: T.textSub, marginTop: '1px' }}>לקריאה וניתוח נתונים</div>
+                  </div>
+                </button>
+                <button
+                  onClick={handlePdfExport}
+                  style={{
+                    width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                    padding: '9px 16px', background: 'none', border: 'none',
+                    cursor: 'pointer', fontSize: '11.5px', fontWeight: 300,
+                    color: T.title, fontFamily: 'inherit', direction: 'rtl',
+                    transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.background = T.surfaceHover; }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                >
+                  <FileText size={11} style={{ color: '#dc2626', flexShrink: 0 }} />
+                  <div style={{ textAlign: 'right' }}>
+                    <div>הפקת דוח PDF</div>
+                    <div style={{ fontSize: '9.5px', color: T.textSub, marginTop: '1px' }}>דוח מודפס — הילל יפה</div>
+                  </div>
+                </button>
+              </div>
+            </>
+          )}
         </div>
       )}
 

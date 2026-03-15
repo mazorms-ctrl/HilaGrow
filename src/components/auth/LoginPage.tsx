@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { getInvitationByToken, acceptInvitation } from '@/services/inviteService';
 
 // ── Field icons ───────────────────────────────────────────────
 function IconMail() {
@@ -128,6 +129,28 @@ export function LoginPage() {
   const [info, setInfo]             = useState<string | null>(null);
   const [busy, setBusy]             = useState(false);
 
+  // ── Invitation token handling ──────────────────────────────────────────────
+  const [inviteToken, setInviteToken]       = useState<string | null>(null);
+  const [invitation, setInvitation]         = useState<Awaited<ReturnType<typeof getInvitationByToken>>>(null);
+  const [inviteLoading, setInviteLoading]   = useState(false);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token  = params.get('token');
+    if (!token) return;
+
+    setInviteToken(token);
+    setMode('register');
+    setInviteLoading(true);
+
+    getInvitationByToken(token).then(inv => {
+      if (inv) {
+        setInvitation(inv);
+        setEmail(inv.email);      // pre-fill email from invitation
+      }
+    }).finally(() => setInviteLoading(false));
+  }, []);
+
   useEffect(() => { window.scrollTo(0, 0); }, []);
 
   function clearMessages() { setError(null); setInfo(null); }
@@ -145,8 +168,23 @@ export function LoginPage() {
       if (mode === 'login') {
         await signInWithEmail(email, password);
       } else if (mode === 'register') {
-        await signUpWithEmail(email, password, fullName, department.trim(), position.trim());
-        setInfo('נשלח אימייל אימות — בדוק את תיבת הדואר שלך.');
+        // signUpWithEmail returns the new user's ID
+        const newUserId = await signUpWithEmail(email, password, fullName, department.trim(), position.trim());
+
+        if (inviteToken) {
+          if (newUserId) {
+            // User is confirmed immediately (e.g. email confirmation disabled) — accept now
+            await acceptInvitation(inviteToken, email, newUserId).catch(console.error);
+          } else {
+            // Email confirmation required — store token so AuthContext picks it up after redirect
+            sessionStorage.setItem('pendingInviteToken', inviteToken);
+            sessionStorage.setItem('pendingInviteEmail', email.toLowerCase().trim());
+          }
+        }
+
+        setInfo(inviteToken
+          ? 'החשבון נוצר בהצלחה! תצורף אוטומטית למשימה לאחר אישור האימייל.'
+          : 'נשלח אימייל אימות — בדוק את תיבת הדואר שלך.');
       } else {
         const { error: e2 } = await supabase.auth.resetPasswordForEmail(email, {
           redirectTo: `${window.location.origin}/reset-password`,
@@ -369,6 +407,37 @@ export function LoginPage() {
               </>
             )}
           </div>
+
+          {/* ══ INVITATION BANNER ══ */}
+          {inviteToken && (
+            <div style={{
+              marginBottom: '16px',
+              padding: '12px 16px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg,#eff6ff,#f5f3ff)',
+              border: '1px solid #c7d2fe',
+              borderRight: '4px solid #6366f1',
+              fontSize: '13px',
+              color: '#3730a3',
+              fontFamily: 'Heebo, sans-serif',
+              lineHeight: 1.6,
+            }}>
+              {inviteLoading ? (
+                <span style={{ color: '#818cf8' }}>טוען פרטי הזמנה...</span>
+              ) : invitation ? (
+                <>
+                  <strong>{invitation.invited_by_name}</strong> הזמין אותך להצטרף ל-GROW+<br />
+                  {invitation.task_title && (
+                    <span style={{ fontSize: '12px', opacity: 0.85 }}>
+                      משימה: <strong>{invitation.task_title}</strong>
+                    </span>
+                  )}
+                </>
+              ) : (
+                <span style={{ color: '#b91c1c' }}>ההזמנה לא נמצאה או פגה תוקפה.</span>
+              )}
+            </div>
+          )}
 
           {/* ══ FORM ══ */}
           <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>

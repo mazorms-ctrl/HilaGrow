@@ -1,8 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { X, ExternalLink, AlertCircle, Trash2 } from 'lucide-react';
+import { X, ExternalLink, AlertCircle, Trash2, DatabaseBackup, FileText, ChevronDown } from 'lucide-react';
 import { type MedicalTask, useTaskById, useProfiles, deleteTask } from '@/lib/supabase-hooks';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
+import { useAuth } from '@/contexts/AuthContext';
+import { exportSingleTask, exportSingleTaskAsPdf } from '@/services/backupService';
 
 // ── Config ─────────────────────────────────────────────────────────────────────
 
@@ -24,7 +26,51 @@ const PRIORITY_CONFIG = {
 function ModalContent({ task, onClose }: { task: MedicalTask; onClose: () => void }) {
   const navigate = useNavigate();
   const { profiles } = useProfiles();
-  const [deleting, setDeleting] = useState(false);
+  const { user } = useAuth();
+  const [deleting, setDeleting]         = useState(false);
+  const [backupMenuOpen, setBackupMenuOpen] = useState(false);
+  const [backingUp, setBackingUp]       = useState(false);
+  const backupBtnRef = useRef<HTMLDivElement>(null);
+
+  async function handleJsonBackup() {
+    setBackupMenuOpen(false);
+    if (backingUp) return;
+    setBackingUp(true);
+    try {
+      await exportSingleTask(task.id, user?.id ?? '');
+    } catch (err) {
+      console.error('[Task JSON Backup] failed:', err);
+    } finally {
+      setBackingUp(false);
+    }
+  }
+
+  async function handlePdfBackup() {
+    setBackupMenuOpen(false);
+    if (backingUp) return;
+    setBackingUp(true);
+    try {
+      await exportSingleTaskAsPdf(task.id, user?.id ?? '');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[Task PDF Backup] failed:', err);
+      alert(`הפקת דוח נכשלה:\n${msg}`);
+    } finally {
+      setBackingUp(false);
+    }
+  }
+
+  // Close backup menu on outside click
+  useEffect(() => {
+    if (!backupMenuOpen) return;
+    function handler(e: MouseEvent) {
+      if (backupBtnRef.current && !backupBtnRef.current.contains(e.target as Node)) {
+        setBackupMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [backupMenuOpen]);
 
   const handleDelete = async () => {
     const confirmed = window.confirm('האם אתה בטוח שברצונך למחוק את המשימה? פעולה זו אינה ניתנת לביטול.');
@@ -111,13 +157,84 @@ function ModalContent({ task, onClose }: { task: MedicalTask; onClose: () => voi
               <span style={{ fontSize: '12px', color: '#94a3b8', fontWeight: '500' }}>
                 {task.category}
               </span>
+              {/* Backup dropdown */}
+              <div ref={backupBtnRef} style={{ marginRight: 'auto', position: 'relative', flexShrink: 0 }}>
+                <button
+                  onClick={() => { if (!backingUp) setBackupMenuOpen(v => !v); }}
+                  disabled={backingUp}
+                  title="גיבוי משימה"
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    height: '30px', padding: '0 10px', borderRadius: '8px',
+                    background: backupMenuOpen ? '#fef3c7' : 'none', border: 'none',
+                    cursor: backingUp ? 'wait' : 'pointer',
+                    color: backingUp ? '#94a3b8' : '#d97706',
+                    fontSize: '12px', fontWeight: 400,
+                    transition: 'background 0.12s, color 0.12s',
+                    opacity: backingUp ? 0.5 : 1,
+                    fontFamily: 'inherit',
+                  }}
+                  onMouseEnter={e => { if (!backingUp && !backupMenuOpen) { e.currentTarget.style.background = '#fef3c7'; e.currentTarget.style.color = '#b45309'; } }}
+                  onMouseLeave={e => { if (!backupMenuOpen) { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = backingUp ? '#94a3b8' : '#d97706'; } }}
+                >
+                  <DatabaseBackup size={13} />
+                  <span>{backingUp ? 'מגבה...' : 'גיבוי משימה'}</span>
+                  <ChevronDown size={11} style={{ opacity: 0.6, transform: backupMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }} />
+                </button>
+
+                {backupMenuOpen && (
+                  <div style={{
+                    position: 'absolute', top: '34px', right: 0,
+                    background: '#fff', border: '1px solid #e2e8f0',
+                    borderRadius: '10px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+                    zIndex: 200, overflow: 'hidden', minWidth: '170px',
+                  }}>
+                    <button
+                      onClick={handlePdfBackup}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '10px 14px', background: 'none', border: 'none',
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'pointer', fontSize: '12px', color: '#1e293b',
+                        fontFamily: 'inherit', direction: 'rtl',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#fef3c7'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                    >
+                      <FileText size={13} style={{ color: '#dc2626', flexShrink: 0 }} />
+                      <div style={{ textAlign: 'right' }}>
+                        <div>גיבוי PDF</div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px' }}>דוח מפורט להדפסה</div>
+                      </div>
+                    </button>
+                    <button
+                      onClick={handleJsonBackup}
+                      style={{
+                        width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+                        padding: '10px 14px', background: 'none', border: 'none',
+                        cursor: 'pointer', fontSize: '12px', color: '#1e293b',
+                        fontFamily: 'inherit', direction: 'rtl',
+                        transition: 'background 0.1s',
+                      }}
+                      onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}
+                    >
+                      <DatabaseBackup size={13} style={{ color: '#d97706', flexShrink: 0 }} />
+                      <div style={{ textAlign: 'right' }}>
+                        <div>גיבוי JSON</div>
+                        <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '1px' }}>נתונים גולמיים לשחזור</div>
+                      </div>
+                    </button>
+                  </div>
+                )}
+              </div>
               {/* Delete button */}
               <button
                 onClick={handleDelete}
                 disabled={deleting}
                 title="מחק משימה"
                 style={{
-                  marginRight: 'auto',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   width: '30px', height: '30px', borderRadius: '8px',
                   background: 'none', border: 'none',
