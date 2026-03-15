@@ -483,29 +483,27 @@ function TreeCanvas_Wrapper({
             boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
             padding: '6px',
           }}>
-            {/* Edit mode button — top of panel */}
+            {/* Edit mode toggle */}
             <button
               onClick={onToggleEdit}
-              title={editMode ? 'סיום עריכה' : 'מצב עריכה — גרור משימות'}
+              title={editMode ? 'סיום עריכה (Esc)' : 'מצב עריכה — גרור משימות'}
               style={{
                 width: 36, height: 36, border: 'none', borderRadius: '10px',
                 background: editMode ? '#7c3aed' : 'transparent',
-                color: editMode ? '#ffffff' : '#475569',
+                color: editMode ? '#ffffff' : '#4f46e5',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer', padding: 0, transition: 'background 0.15s, color 0.15s',
+                cursor: 'pointer', padding: 0,
+                transition: 'background 0.15s, color 0.15s',
+                boxShadow: editMode ? '0 2px 8px rgba(124,58,237,0.35)' : 'none',
               }}
-              onMouseEnter={(e) => {
-                if (!editMode) { e.currentTarget.style.background = '#f1f5f9'; e.currentTarget.style.color = '#1e293b'; }
-              }}
-              onMouseLeave={(e) => {
-                if (!editMode) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#475569'; }
-              }}
+              onMouseEnter={(e) => { if (!editMode) { e.currentTarget.style.background = '#f1f5f9'; } }}
+              onMouseLeave={(e) => { if (!editMode) { e.currentTarget.style.background = 'transparent'; } }}
             >
               {editMode ? <Check size={16} /> : <Pencil size={16} />}
             </button>
 
             {/* Divider */}
-            <div style={{ width: 24, height: 1, background: '#e2e8f0', margin: '2px 0' }} />
+            <div style={{ width: 22, height: 1, background: 'rgba(226,232,240,0.8)', margin: '2px 0' }} />
 
             {/* Zoom buttons */}
             {[
@@ -559,14 +557,9 @@ interface LoaderProps {
   transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
   treeRef: React.RefObject<HTMLDivElement | null>;
   animDone: boolean;
-  editMode: boolean;
-  onToggleEdit: () => void;
-  onDragStart: (taskId: string) => void;
-  dragTaskId: string | null;
-  onTaskMove: (taskId: string, newGroupId: string, newCategory: string) => void;
 }
 
-function TreeDataLoader({ transformRef, treeRef, animDone, editMode, onToggleEdit, onDragStart, dragTaskId, onTaskMove }: LoaderProps) {
+function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
   const { user, profile } = useAuth();
   const currentUserName = profile?.full_name ?? null;
 
@@ -574,22 +567,30 @@ function TreeDataLoader({ transformRef, treeRef, animDone, editMode, onToggleEdi
   const projectId = projects[0]?.id ?? null;
   const { tasks: rawTasks, loading: tasksLoading } = useTasks(projectId);
 
+  // ── Edit mode + drag state live here — closest to where they're used ──
+  const [editMode,  setEditMode]  = useState(false);
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+
+  // Escape exits edit mode
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && editMode) setEditMode(false); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editMode]);
+
   // Optimistic overrides: taskId → { group_id, category, color }
   const [overrides, setOverrides] = useState<Record<string, { group_id: string; category: string; color: string }>>({});
 
   const handleTaskMove = useCallback(async (taskId: string, newGroupId: string, newCategory: string) => {
     const newColor = rawTasks.find(t => t.category === newCategory)?.color ?? '#94a3b8';
-    // Optimistic update
     setOverrides(prev => ({ ...prev, [taskId]: { group_id: newGroupId, category: newCategory, color: newColor } }));
-    // Persist to DB
+    setDragTaskId(null);
     const { error } = await supabase.from('tasks').update({ group_id: newGroupId }).eq('id', taskId);
     if (error) {
       console.error('[BigPicture] move failed:', error.message);
-      // Rollback
       setOverrides(prev => { const n = { ...prev }; delete n[taskId]; return n; });
     }
-    onTaskMove(taskId, newGroupId, newCategory);
-  }, [rawTasks, onTaskMove]);
+  }, [rawTasks]);
 
   // Sort within each category: higher activity score → top.
   const tasks = useMemo(() => {
@@ -635,18 +636,20 @@ function TreeDataLoader({ transformRef, treeRef, animDone, editMode, onToggleEdi
   );
 
   return (
-    <TreeCanvas_Wrapper
-      tasks={tasks}
-      treeRef={treeRef}
-      transformRef={transformRef}
-      currentUserName={currentUserName}
-      animDone={animDone}
-      editMode={editMode}
-      onToggleEdit={onToggleEdit}
-      dragTaskId={dragTaskId}
-      onDragStart={onDragStart}
-      onTaskMove={handleTaskMove}
-    />
+    <div style={{ width: '100%', height: '100%' }} onDragEnd={() => setDragTaskId(null)}>
+      <TreeCanvas_Wrapper
+        tasks={tasks}
+        treeRef={treeRef}
+        transformRef={transformRef}
+        currentUserName={currentUserName}
+        animDone={animDone}
+        editMode={editMode}
+        onToggleEdit={() => setEditMode(m => !m)}
+        dragTaskId={dragTaskId}
+        onDragStart={setDragTaskId}
+        onTaskMove={handleTaskMove}
+      />
+    </div>
   );
 }
 
@@ -655,16 +658,12 @@ function ModalShell({ onClose }: { onClose: () => void }) {
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const treeRef = useRef<HTMLDivElement | null>(null);
   const [animDone, setAnimDone] = useState(false);
-  const [editMode, setEditMode] = useState(false);
-  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { if (editMode) setEditMode(false); else onClose(); }
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onClose, editMode]);
+  }, [onClose]);
 
   return (
     <>
@@ -741,19 +740,11 @@ function ModalShell({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Canvas */}
-        <div
-          style={{ flex: 1, overflow: 'hidden', position: 'relative' }}
-          onDragEnd={() => setDragTaskId(null)}
-        >
+        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
           <TreeDataLoader
             transformRef={transformRef}
             treeRef={treeRef}
             animDone={animDone}
-            editMode={editMode}
-            onToggleEdit={() => setEditMode(m => !m)}
-            dragTaskId={dragTaskId}
-            onDragStart={setDragTaskId}
-            onTaskMove={() => setDragTaskId(null)}
           />
         </div>
       </motion.div>
