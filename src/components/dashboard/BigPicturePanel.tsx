@@ -8,12 +8,13 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize2, Pencil, Check } from 'lucide-react';
 import { useTasks, useProjects } from '@/lib/supabase-hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUIStore } from '@/store/uiStore';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { colors, shadows, typography } from '@/styles/tokens';
+import { supabase } from '@/lib/supabase';
 import type { MedicalTask } from '@/lib/supabase-hooks';
 
 // ── Shared keyframes ──────────────────────────────────────────────────────────
@@ -82,10 +83,16 @@ function TaskCard({
   task,
   color,
   currentUserName,
+  editMode,
+  onDragStart,
+  isDragging,
 }: {
   task: MedicalTask;
   color: string;
   currentUserName: string | null;
+  editMode: boolean;
+  onDragStart: (taskId: string) => void;
+  isDragging: boolean;
 }) {
   const navigate = useNavigate();
   const closeBigPicture = useUIStore(s => s.closeBigPicture);
@@ -112,24 +119,32 @@ function TaskCard({
 
   return (
     <div
-      onClick={() => { closeBigPicture(); navigate(`/task/${task.id}`); }}
+      draggable={editMode}
+      onDragStart={editMode ? (e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', task.id);
+        onDragStart(task.id);
+      } : undefined}
+      onClick={editMode ? undefined : () => { closeBigPicture(); navigate(`/task/${task.id}`); }}
       style={{
         width: CARD_W,
         minWidth: CARD_W,
         maxWidth: CARD_W,
         padding: '11px 13px 0 13px',
         background: bg,
-        border: borderStyle,
+        border: editMode ? `2px dashed ${color}88` : borderStyle,
         borderTop: `3px solid ${topAccent}`,
         borderRadius: '12px',
-        cursor: 'pointer',
+        cursor: editMode ? 'grab' : 'pointer',
         overflow: 'hidden',
         position: 'relative',
-        transition: 'box-shadow 0.2s, transform 0.2s',
-        boxShadow,
-        transform,
+        transition: 'box-shadow 0.2s, transform 0.2s, opacity 0.2s',
+        boxShadow: isDragging ? 'none' : boxShadow,
+        transform: isDragging ? 'none' : transform,
+        opacity: isDragging ? 0.35 : 1,
         fontFamily: typography.fontFamily,
-        ...(isActive && task.status === 'in_progress'
+        ...(isActive && task.status === 'in_progress' && !editMode
           ? { animation: 'bpPulse 3s ease-in-out infinite' }
           : {}),
       }}
@@ -190,13 +205,29 @@ function TreeCanvas({
   tasks,
   treeRef,
   currentUserName,
+  editMode,
+  dragTaskId,
+  onDragStart,
+  onTaskMove,
 }: {
   tasks: MedicalTask[];
   treeRef: React.RefObject<HTMLDivElement | null>;
   currentUserName: string | null;
+  editMode: boolean;
+  dragTaskId: string | null;
+  onDragStart: (taskId: string) => void;
+  onTaskMove: (taskId: string, newGroupId: string, newCategory: string) => void;
 }) {
+  const [dragOverCategory, setDragOverCategory] = useState<string | null>(null);
   const categories = [...new Set(tasks.map(t => t.category))];
   const N = categories.length;
+
+  // Map category name → group_id (read from any task in that category)
+  const categoryGroupId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of tasks) { if (t.group_id && !map[t.category]) map[t.category] = t.group_id; }
+    return map;
+  }, [tasks]);
 
   if (N === 0) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: colors.text.tertiary, fontFamily: typography.fontFamily }}>
@@ -267,21 +298,41 @@ function TreeCanvas({
             ? Math.round(catTasks.reduce((s, t) => s + (t.progress ?? 0), 0) / catTasks.length)
             : 0;
 
+          const isDropTarget = editMode && dragOverCategory === cat && dragTaskId !== null;
+          const draggedTaskCat = dragTaskId ? tasks.find(t => t.id === dragTaskId)?.category : null;
+          const isOwnCategory  = draggedTaskCat === cat;
+
           return (
-            <div key={cat} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+            <div
+              key={cat}
+              style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}
+              onDragOver={editMode ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (!isOwnCategory) setDragOverCategory(cat); } : undefined}
+              onDragLeave={editMode ? () => setDragOverCategory(null) : undefined}
+              onDrop={editMode ? (e) => {
+                e.preventDefault();
+                setDragOverCategory(null);
+                const tId = e.dataTransfer.getData('text/plain');
+                const gId = categoryGroupId[cat];
+                if (tId && gId && !isOwnCategory) onTaskMove(tId, gId, cat);
+              } : undefined}
+            >
               {/* Category header */}
               <div style={{
                 width: CARD_W,
                 padding: '10px 14px',
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
+                background: isDropTarget ? `${color}18` : '#ffffff',
+                border: isDropTarget ? `2px solid ${color}` : '1px solid #e2e8f0',
                 borderTop: `4px solid ${color}`,
                 borderRadius: '12px',
                 textAlign: 'center',
-                boxShadow: shadows.sm,
+                boxShadow: isDropTarget ? `0 0 0 3px ${color}33` : shadows.sm,
+                transition: 'background 0.15s, box-shadow 0.15s, border 0.15s',
               }}>
                 <div style={{ fontSize: '13px', fontWeight: 600, color: '#171717', fontFamily: typography.fontFamily }}>{cat}</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily, marginTop: '2px' }}>{catTasks.length} משימות · {avg}%</div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily, marginTop: '2px' }}>
+                  {catTasks.length} משימות · {avg}%
+                  {isDropTarget && <span style={{ marginRight: '6px', color, fontWeight: 700 }}> ← שחרר כאן</span>}
+                </div>
               </div>
 
               {/* Bezier connector: category → first task */}
@@ -298,7 +349,14 @@ function TreeCanvas({
                         <path d="M 1 0 C 1 5, 1 5, 1 10" stroke="#e2e8f0" strokeWidth="1" fill="none" />
                       </svg>
                     )}
-                    <TaskCard task={task} color={color} currentUserName={currentUserName} />
+                    <TaskCard
+                      task={task}
+                      color={color}
+                      currentUserName={currentUserName}
+                      editMode={editMode}
+                      onDragStart={onDragStart}
+                      isDragging={dragTaskId === task.id}
+                    />
                   </div>
                 ))}
               </div>
@@ -345,12 +403,20 @@ function TreeCanvas_Wrapper({
   transformRef,
   currentUserName,
   animDone,
+  editMode,
+  dragTaskId,
+  onDragStart,
+  onTaskMove,
 }: {
   tasks: MedicalTask[];
   treeRef: React.RefObject<HTMLDivElement | null>;
   transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
   currentUserName: string | null;
   animDone: boolean;
+  editMode: boolean;
+  dragTaskId: string | null;
+  onDragStart: (taskId: string) => void;
+  onTaskMove: (taskId: string, newGroupId: string, newCategory: string) => void;
 }) {
   const centered = useRef(false);
 
@@ -380,11 +446,10 @@ function TreeCanvas_Wrapper({
       limitToBounds={false}
       centerZoomedOut={false}
       wheel={{ step: 0.06 }}
-      panning={{ velocityDisabled: true }}
+      panning={{ velocityDisabled: true, disabled: editMode }}
       doubleClick={{ disabled: true }}
       onInit={(ref) => {
         transformRef.current = ref;
-        // Centering is deferred to the animDone effect; no action needed here.
       }}
     >
       {({ zoomIn, zoomOut }) => (
@@ -393,7 +458,15 @@ function TreeCanvas_Wrapper({
             wrapperStyle={{ width: '100%', height: '100%', overflow: 'hidden', background: '#f8fafc' }}
             contentStyle={{ display: 'inline-flex' }}
           >
-            <TreeCanvas tasks={tasks} treeRef={treeRef} currentUserName={currentUserName} />
+            <TreeCanvas
+              tasks={tasks}
+              treeRef={treeRef}
+              currentUserName={currentUserName}
+              editMode={editMode}
+              dragTaskId={dragTaskId}
+              onDragStart={onDragStart}
+              onTaskMove={onTaskMove}
+            />
           </TransformComponent>
 
           {/* Zoom controls — glass panel, bottom-right */}
@@ -459,9 +532,13 @@ interface LoaderProps {
   transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
   treeRef: React.RefObject<HTMLDivElement | null>;
   animDone: boolean;
+  editMode: boolean;
+  onDragStart: (taskId: string) => void;
+  dragTaskId: string | null;
+  onTaskMove: (taskId: string, newGroupId: string, newCategory: string) => void;
 }
 
-function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
+function TreeDataLoader({ transformRef, treeRef, animDone, editMode, onDragStart, dragTaskId, onTaskMove }: LoaderProps) {
   const { user, profile } = useAuth();
   const currentUserName = profile?.full_name ?? null;
 
@@ -469,33 +546,50 @@ function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
   const projectId = projects[0]?.id ?? null;
   const { tasks: rawTasks, loading: tasksLoading } = useTasks(projectId);
 
+  // Optimistic overrides: taskId → { group_id, category, color }
+  const [overrides, setOverrides] = useState<Record<string, { group_id: string; category: string; color: string }>>({});
+
+  const handleTaskMove = useCallback(async (taskId: string, newGroupId: string, newCategory: string) => {
+    const newColor = rawTasks.find(t => t.category === newCategory)?.color ?? '#94a3b8';
+    // Optimistic update
+    setOverrides(prev => ({ ...prev, [taskId]: { group_id: newGroupId, category: newCategory, color: newColor } }));
+    // Persist to DB
+    const { error } = await supabase.from('tasks').update({ group_id: newGroupId }).eq('id', taskId);
+    if (error) {
+      console.error('[BigPicture] move failed:', error.message);
+      // Rollback
+      setOverrides(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+    }
+    onTaskMove(taskId, newGroupId, newCategory);
+  }, [rawTasks, onTaskMove]);
+
   // Sort within each category: higher activity score → top.
-  // Groups are sorted independently so the comparator is always a valid
-  // total order — mixing categories in one sort() call with return 0 for
-  // cross-category pairs produces non-transitive comparisons and unpredictable results.
   const tasks = useMemo(() => {
+    // Apply overrides
+    const merged = rawTasks.map(t => overrides[t.id] ? { ...t, ...overrides[t.id] } : t);
+
     // 1. Collect unique category order from the raw array
-    const categoryOrder = [...new Set(rawTasks.map(t => t.category))];
+    const categoryOrder = [...new Set(merged.map(t => t.category))];
 
     // 2. Bucket tasks by category
     const buckets = new Map<string, MedicalTask[]>();
-    for (const t of rawTasks) {
+    for (const t of merged) {
       if (!buckets.has(t.category)) buckets.set(t.category, []);
       buckets.get(t.category)!.push(t);
     }
 
-    // 3. Sort each bucket independently (valid total order within bucket)
+    // 3. Sort each bucket independently
     for (const bucket of buckets.values()) {
       bucket.sort((a, b) => {
         const sa = Number(a.progress) * 10 + (a.assignedTo ? 1 : 0);
         const sb = Number(b.progress) * 10 + (b.assignedTo ? 1 : 0);
-        return sb - sa; // descending — 50% → top, 0%/no-assignee → bottom
+        return sb - sa;
       });
     }
 
     // 4. Flatten preserving original category order
     return categoryOrder.flatMap(cat => buckets.get(cat) ?? []);
-  }, [rawTasks]);
+  }, [rawTasks, overrides]);
 
   const isLoading = projectsLoading || (!!projectId && tasksLoading);
 
@@ -519,6 +613,10 @@ function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
       transformRef={transformRef}
       currentUserName={currentUserName}
       animDone={animDone}
+      editMode={editMode}
+      dragTaskId={dragTaskId}
+      onDragStart={onDragStart}
+      onTaskMove={handleTaskMove}
     />
   );
 }
@@ -528,12 +626,16 @@ function ModalShell({ onClose }: { onClose: () => void }) {
   const transformRef = useRef<ReactZoomPanPinchRef | null>(null);
   const treeRef = useRef<HTMLDivElement | null>(null);
   const [animDone, setAnimDone] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { if (editMode) setEditMode(false); else onClose(); }
+    };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [onClose]);
+  }, [onClose, editMode]);
 
   return (
     <>
@@ -582,15 +684,44 @@ function ModalShell({ onClose }: { onClose: () => void }) {
         <div style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 20px',
-          background: '#ffffff',
-          borderBottom: '1px solid #e2e8f0',
+          background: editMode ? '#faf5ff' : '#ffffff',
+          borderBottom: editMode ? '1px solid #ddd6fe' : '1px solid #e2e8f0',
           flexShrink: 0,
+          transition: 'background 0.2s',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ width: 4, height: 20, background: '#4f46e5', borderRadius: '2px' }} />
+            <div style={{ width: 4, height: 20, background: editMode ? '#7c3aed' : '#4f46e5', borderRadius: '2px' }} />
             <span style={{ fontSize: '14px', fontWeight: 600, color: colors.text.primary, fontFamily: typography.fontFamily, letterSpacing: '-0.3px' }}>
               GROW — תמונה מלאה
             </span>
+            {editMode && (
+              <span style={{
+                fontSize: '11px', fontWeight: 600, color: '#7c3aed',
+                background: '#ede9fe', padding: '3px 10px', borderRadius: '20px',
+                fontFamily: typography.fontFamily,
+              }}>
+                מצב עריכה — גרור כרטיסים בין עמודות
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Edit mode toggle */}
+            <button
+              onClick={() => setEditMode(m => !m)}
+              title={editMode ? 'סיום עריכה' : 'מצב עריכה — גרור משימות'}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '6px',
+                padding: '6px 12px', borderRadius: '8px', border: 'none',
+                background: editMode ? '#7c3aed' : '#f1f5f9',
+                color: editMode ? '#ffffff' : '#475569',
+                cursor: 'pointer', fontSize: '12px', fontWeight: 600,
+                fontFamily: typography.fontFamily,
+                transition: 'background 0.15s, color 0.15s',
+              }}
+            >
+              {editMode ? <Check size={14} /> : <Pencil size={14} />}
+              {editMode ? 'סיום' : 'עריכה'}
+            </button>
           </div>
           <button
             onClick={onClose}
@@ -610,8 +741,19 @@ function ModalShell({ onClose }: { onClose: () => void }) {
         </div>
 
         {/* Canvas */}
-        <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          <TreeDataLoader transformRef={transformRef} treeRef={treeRef} animDone={animDone} />
+        <div
+          style={{ flex: 1, overflow: 'hidden', position: 'relative' }}
+          onDragEnd={() => setDragTaskId(null)}
+        >
+          <TreeDataLoader
+            transformRef={transformRef}
+            treeRef={treeRef}
+            animDone={animDone}
+            editMode={editMode}
+            dragTaskId={dragTaskId}
+            onDragStart={setDragTaskId}
+            onTaskMove={() => setDragTaskId(null)}
+          />
         </div>
       </motion.div>
     </>
