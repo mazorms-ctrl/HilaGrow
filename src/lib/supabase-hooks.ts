@@ -10,6 +10,7 @@ export interface MedicalTask {
   title: string;
   description: string;
   category: string;
+  groupId?: string;  // Supabase groups.id — used for drag-and-drop moves
   color: string;
   owner: string;
   assignedTo: string | null;   // UUID of assigned profile
@@ -167,6 +168,7 @@ function dbRowToMedicalTask(
     title: taskRow.title,
     description: taskRow.description || '',
     category: groupRow.name,
+    groupId: groupRow.id,
     color: groupRow.color || '#7dd3fc',
     owner: taskRow.owner_name || '',
     assignedTo: taskRow.assigned_to || null,
@@ -652,6 +654,29 @@ export function useTasks(projectId: string | null) {
   const refetch = () => queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
 
   return { tasks, loading, error, refetch };
+}
+
+// ── moveTaskToCategory ────────────────────────────────────────────────────────
+// Moves a task to a different category (group) by looking up the group by name
+// and updating only the group_id field.
+export async function moveTaskToCategory(taskId: string, categoryName: string, projectId: string): Promise<void> {
+  const { data: group, error: groupError } = await supabase
+    .from('groups')
+    .select('id')
+    .eq('project_id', projectId)
+    .eq('name', categoryName)
+    .single();
+
+  if (groupError || !group) {
+    throw new Error(`Group not found for category "${categoryName}": ${groupError?.message}`);
+  }
+
+  const { error } = await supabase
+    .from('tasks')
+    .update({ group_id: group.id })
+    .eq('id', taskId);
+
+  if (error) throw error;
 }
 
 // ── updateTask ────────────────────────────────────────────────────────────────
