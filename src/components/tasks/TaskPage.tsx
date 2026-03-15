@@ -197,7 +197,7 @@ function Field({
 
 export function TaskPageContent({ taskId }: { taskId: string }) {
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const { task: fetchedTask, projectId, loading, refetch } = useTaskById(taskId);
   const { profiles } = useProfiles();
   const { comments, loading: commentsLoading } = useTaskComments(taskId);
@@ -254,6 +254,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       });
       setInviteStatus('success');
       setInviteEmail('');
+      setToast({ message: `ההזמנה נשלחה בהצלחה אל ${inviteEmail.trim()}`, type: 'success' });
     } catch (err) {
       setInviteStatus('error');
       setInviteError(err instanceof Error ? err.message : 'שגיאה בשליחת ההזמנה');
@@ -2380,13 +2381,13 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   />
                   <button
                     onClick={handleSendInvite}
-                    disabled={inviteSending || !inviteEmail.trim()}
+                    disabled={inviteSending || !inviteEmail.trim() || !profile}
                     style={{
                       display: 'flex', alignItems: 'center', gap: '6px',
                       padding: '10px 16px', borderRadius: '14px',
-                      background: inviteSending || !inviteEmail.trim()
+                      background: inviteSending || !inviteEmail.trim() || !profile
                         ? '#e2e8f0' : 'linear-gradient(135deg,#2563eb,#6366f1)',
-                      color: inviteSending || !inviteEmail.trim() ? '#94a3b8' : '#fff',
+                      color: inviteSending || !inviteEmail.trim() || !profile ? '#94a3b8' : '#fff',
                       border: 'none', cursor: inviteSending || !inviteEmail.trim() ? 'not-allowed' : 'pointer',
                       fontSize: '13px', fontWeight: '600', fontFamily: 'inherit',
                       whiteSpace: 'nowrap', flexShrink: 0,

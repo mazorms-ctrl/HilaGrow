@@ -134,7 +134,7 @@ export async function generateMasterBackup(userId: string): Promise<MasterBackup
       description: t.description ?? null,
       status,
       progress_percentage: rawPct,
-      category: (t.groups as { name: string } | null)?.name ?? null,
+      category: (t.groups as { name: string }[] | null)?.[0]?.name ?? null,
       created_at: t.created_at,
       due_date: dueDate,
       owner_id: t.assigned_to ?? null,
