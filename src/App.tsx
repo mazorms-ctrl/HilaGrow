@@ -14,7 +14,7 @@ import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { TaskPageContent } from './components/tasks/TaskPage';
 import { QuickViewModal } from './components/tasks/QuickViewModal';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, moveTaskToCategory, type MedicalTask } from './lib/supabase-hooks';
+import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, moveTaskToCategory, createSuperCategoryGroup, setGroupParent, renameGroup, deleteSuperCategoryGroup, type MedicalTask, type GroupInfo } from './lib/supabase-hooks';
 import { CommandCenter } from './components/dashboard/CommandCenter';
 import { BigPictureModal } from './components/dashboard/BigPicturePanel';
 import { BottomNav, type MobileTab } from './components/BottomNav';
@@ -320,7 +320,7 @@ function App() {
   const effectiveProjectId = user && projects.length > 0 ? projects[0].id : null;
 
   // Load tasks from Supabase for the effective project (null = no fetch)
-  const { tasks: supabaseTasks } = useTasks(user ? effectiveProjectId : null);
+  const { tasks: supabaseTasks, groups: dbGroups } = useTasks(user ? effectiveProjectId : null);
 
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
@@ -358,9 +358,36 @@ function App() {
   const [treeDraggedCategory, setTreeDraggedCategory] = useState<string | null>(null);
   const [treeDragOverSuperCat, setTreeDragOverSuperCat] = useState<string | null>(null);
   const [treeDragOverCatHeader, setTreeDragOverCatHeader] = useState<string | null>(null);
-  const [superCategoryMap, setSuperCategoryMap] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem('grow.superCategories') || '{}'); } catch { return {}; }
-  });
+  // superCategoryMap is derived from DB groups (parent_id relationships) — not localStorage
+  const superCatGroupMap = useMemo<Map<string, GroupInfo>>(() => {
+    const parentIds = new Set(dbGroups.filter(g => g.parent_id).map(g => g.parent_id!));
+    const result = new Map<string, GroupInfo>();
+    for (const g of dbGroups) {
+      if (parentIds.has(g.id)) result.set(g.name, g);
+    }
+    return result;
+  }, [dbGroups]);
+
+  const categoryGroupMap = useMemo<Map<string, GroupInfo>>(() => {
+    // Category groups are those that tasks actually reference (by groupId)
+    const groupIdSet = new Set(supabaseTasks.map(t => t.groupId).filter(Boolean) as string[]);
+    const result = new Map<string, GroupInfo>();
+    for (const g of dbGroups) {
+      if (groupIdSet.has(g.id)) result.set(g.name, g);
+    }
+    return result;
+  }, [dbGroups, supabaseTasks]);
+
+  const superCategoryMap = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const g of dbGroups) {
+      if (g.parent_id) {
+        const parent = dbGroups.find(p => p.id === g.parent_id);
+        if (parent) map[g.name] = parent.name;
+      }
+    }
+    return map;
+  }, [dbGroups]);
   const [showAddSuperCategory, setShowAddSuperCategory] = useState(false);
   const [newSuperCatName, setNewSuperCatName] = useState('');
   const [showTreeZoomHint, setShowTreeZoomHint] = useState(() => {
@@ -457,6 +484,33 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
   }, [viewMode]);
+
+  // One-time migration: move super-category grouping from localStorage into DB (parent_id on groups)
+  useEffect(() => {
+    if (!effectiveProjectId || dbGroups.length === 0) return;
+    const stored = localStorage.getItem('grow.superCategories');
+    if (!stored) return;
+    try {
+      const localMap: Record<string, string> = JSON.parse(stored);
+      if (Object.keys(localMap).length === 0) { localStorage.removeItem('grow.superCategories'); return; }
+      // If the DB already has parent relationships, migration is done
+      if (dbGroups.some(g => g.parent_id)) { localStorage.removeItem('grow.superCategories'); return; }
+      const localCategoryGroupMap = new Map(dbGroups.map(g => [g.name, g]));
+      const superCatNames = [...new Set(Object.values(localMap))];
+      (async () => {
+        for (const superCatName of superCatNames) {
+          const superCatId = await createSuperCategoryGroup(effectiveProjectId, superCatName);
+          const catsInGroup = Object.entries(localMap).filter(([, v]) => v === superCatName).map(([k]) => k);
+          await Promise.all(catsInGroup.map(catName => {
+            const catGroup = localCategoryGroupMap.get(catName);
+            return catGroup ? setGroupParent(catGroup.id, superCatId) : Promise.resolve();
+          }));
+        }
+        localStorage.removeItem('grow.superCategories');
+      })().catch(console.error);
+    } catch { /* ignore parse errors */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProjectId, dbGroups.length > 0]);
 
   // Computed values
   const categories = [...new Set(tasks.map(t => t.category))];
@@ -1247,12 +1301,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                               const newName = window.prompt('שנה שם קבוצה:', group.label!);
                               if (!newName || !newName.trim() || newName.trim() === group.label) return;
                               const trimmed = newName.trim();
-                              const updated: Record<string, string> = {};
-                              for (const [k, v] of Object.entries(superCategoryMap)) {
-                                updated[k] = v === group.label ? trimmed : v;
-                              }
-                              setSuperCategoryMap(updated);
-                              localStorage.setItem('grow.superCategories', JSON.stringify(updated));
+                              const superCatGroup = superCatGroupMap.get(group.label!);
+                              if (superCatGroup) renameGroup(superCatGroup.id, trimmed).catch(console.error);
                             }}
                             title="שנה שם"
                             style={{
@@ -1279,9 +1329,9 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                             setTreeDragOverSuperCat(null);
                             const catName = e.dataTransfer.getData('categoryName');
                             if (!catName || !group.label) return;
-                            const updated = { ...superCategoryMap, [catName]: group.label };
-                            setSuperCategoryMap(updated);
-                            localStorage.setItem('grow.superCategories', JSON.stringify(updated));
+                            const catGroup = categoryGroupMap.get(catName);
+                            const superCatGroup = superCatGroupMap.get(group.label);
+                            if (catGroup && superCatGroup) setGroupParent(catGroup.id, superCatGroup.id).catch(console.error);
                           } : undefined}
                           style={{
                             padding: '5px 14px',
@@ -1306,12 +1356,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                           <button
                             onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
                             onClick={() => {
-                              const updated: Record<string, string> = {};
-                              for (const [k, v] of Object.entries(superCategoryMap)) {
-                                if (v !== group.label) updated[k] = v;
-                              }
-                              setSuperCategoryMap(updated);
-                              localStorage.setItem('grow.superCategories', JSON.stringify(updated));
+                              const superCatGroup = superCatGroupMap.get(group.label!);
+                              if (superCatGroup) deleteSuperCategoryGroup(superCatGroup.id).catch(console.error);
                             }}
                             title="מחק קבוצה"
                             style={{
@@ -1374,16 +1420,19 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       setTreeDragOverCatHeader(null);
                       const childCat = e.dataTransfer.getData('categoryName');
                       if (!childCat || childCat === category) return;
-                      // Both the dragged category AND the target become children of a group
-                      // named after the target category (the parent).
-                      const updated = {
-                        ...superCategoryMap,
-                        [childCat]: category,   // dragged cat → under this category
-                        [category]: category,   // target cat → also under itself (as the group header)
-                      };
-                      setSuperCategoryMap(updated);
-                      localStorage.setItem('grow.superCategories', JSON.stringify(updated));
                       setTreeDraggedCategory(null);
+                      // Both the dragged category AND the target become children of a new super-cat
+                      // named after the target category. Create the super-cat group in DB first.
+                      if (effectiveProjectId) {
+                        const childGroup = categoryGroupMap.get(childCat);
+                        const targetGroup = categoryGroupMap.get(category);
+                        createSuperCategoryGroup(effectiveProjectId, category).then(superCatId => {
+                          return Promise.all([
+                            childGroup ? setGroupParent(childGroup.id, superCatId) : Promise.resolve(),
+                            targetGroup ? setGroupParent(targetGroup.id, superCatId) : Promise.resolve(),
+                          ]);
+                        }).catch(console.error);
+                      }
                     } : undefined}
                     style={{
                     padding: '6px 10px',
@@ -1420,10 +1469,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          const updated = { ...superCategoryMap };
-                          delete updated[category];
-                          setSuperCategoryMap(updated);
-                          localStorage.setItem('grow.superCategories', JSON.stringify(updated));
+                          const catGroup = categoryGroupMap.get(category);
+                          if (catGroup) setGroupParent(catGroup.id, null).catch(console.error);
                         }}
                         title="הוצא מהקבוצה"
                         style={{
@@ -5700,11 +5747,15 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               value={newSuperCatName}
               onChange={(e) => setNewSuperCatName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' && newSuperCatName.trim()) {
-                  const updated = { ...superCategoryMap };
-                  categories.forEach(c => { if (!updated[c]) updated[c] = newSuperCatName.trim(); });
-                  setSuperCategoryMap(updated);
-                  localStorage.setItem('grow.superCategories', JSON.stringify(updated));
+                if (e.key === 'Enter' && newSuperCatName.trim() && effectiveProjectId) {
+                  const name = newSuperCatName.trim();
+                  const ungrouped = categories.filter(c => !superCategoryMap[c]);
+                  createSuperCategoryGroup(effectiveProjectId, name).then(superCatId => {
+                    return Promise.all(ungrouped.map(catName => {
+                      const catGroup = categoryGroupMap.get(catName);
+                      return catGroup ? setGroupParent(catGroup.id, superCatId) : Promise.resolve();
+                    }));
+                  }).catch(console.error);
                   setNewSuperCatName('');
                   setShowAddSuperCategory(false);
                 }
@@ -5723,11 +5774,15 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
               <button onClick={() => setShowAddSuperCategory(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'none', cursor: 'pointer', fontSize: 13 }}>ביטול</button>
               <button
                 onClick={() => {
-                  if (!newSuperCatName.trim()) return;
-                  const updated = { ...superCategoryMap };
-                  categories.forEach(c => { if (!updated[c]) updated[c] = newSuperCatName.trim(); });
-                  setSuperCategoryMap(updated);
-                  localStorage.setItem('grow.superCategories', JSON.stringify(updated));
+                  if (!newSuperCatName.trim() || !effectiveProjectId) return;
+                  const name = newSuperCatName.trim();
+                  const ungrouped = categories.filter(c => !superCategoryMap[c]);
+                  createSuperCategoryGroup(effectiveProjectId, name).then(superCatId => {
+                    return Promise.all(ungrouped.map(catName => {
+                      const catGroup = categoryGroupMap.get(catName);
+                      return catGroup ? setGroupParent(catGroup.id, superCatId) : Promise.resolve();
+                    }));
+                  }).catch(console.error);
                   setNewSuperCatName('');
                   setShowAddSuperCategory(false);
                 }}

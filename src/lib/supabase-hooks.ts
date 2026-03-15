@@ -127,6 +127,15 @@ interface GroupRow {
   name: string;
   color: string | null;
   order: number;
+  parent_id: string | null;
+}
+
+export interface GroupInfo {
+  id: string;
+  name: string;
+  color: string | null;
+  order: number;
+  parent_id: string | null;
 }
 
 interface MilestoneRow {
@@ -540,7 +549,7 @@ export function useTasks(projectId: string | null) {
   const queryClient = useQueryClient();
 
   const {
-    data: tasks = [],
+    data = { tasks: [] as MedicalTask[], groups: [] as GroupInfo[] },
     isLoading: loading,
     error: queryError,
   } = useQuery({
@@ -561,15 +570,17 @@ export function useTasks(projectId: string | null) {
       type GroupWithTasks = GroupRow & { tasks: TaskRow[] };
       const allTaskRows: TaskRow[] = [];
       const groupMap = new Map<string, GroupRow>();
+      const allGroups: GroupInfo[] = [];
 
       (groupsWithTasks as GroupWithTasks[] || []).forEach(g => {
         const { tasks: groupTasks, ...groupRow } = g;
         groupMap.set(g.id, groupRow as GroupRow);
+        allGroups.push({ id: g.id, name: g.name, color: g.color, order: g.order, parent_id: g.parent_id ?? null });
         (groupTasks || []).forEach(t => allTaskRows.push(t));
       });
 
       const taskIds = allTaskRows.map(t => t.id);
-      if (taskIds.length === 0) return [] as MedicalTask[];
+      if (taskIds.length === 0) return { tasks: [] as MedicalTask[], groups: allGroups };
 
       // Collect assigned_to UUIDs to resolve live full_names from profiles
       const assignedIds = [...new Set(allTaskRows.map(t => t.assigned_to).filter(Boolean) as string[])];
@@ -603,7 +614,7 @@ export function useTasks(projectId: string | null) {
         participantsByTask.get(p.task_id)!.push(p.profile_id);
       });
 
-      return allTaskRows
+      const tasks = allTaskRows
         .map(task => {
           const group = groupMap.get(task.group_id);
           if (!group) return null;
@@ -616,6 +627,8 @@ export function useTasks(projectId: string | null) {
           return dbRowToMedicalTask({ ...task, owner_name: liveOwnerName }, group, milestonesByTask.get(task.id) || [], participantsByTask.get(task.id) || []);
         })
         .filter(Boolean) as MedicalTask[];
+
+      return { tasks, groups: allGroups };
     },
   });
 
@@ -653,7 +666,47 @@ export function useTasks(projectId: string | null) {
   const error = queryError instanceof Error ? queryError.message : null;
   const refetch = () => queryClient.invalidateQueries({ queryKey: ['tasks', projectId] });
 
-  return { tasks, loading, error, refetch };
+  return { tasks: data.tasks, groups: data.groups, loading, error, refetch };
+}
+
+// ── Super-category (group parent) helpers ─────────────────────────────────────
+
+/** Creates a new super-category group row (no tasks) and returns its id. */
+export async function createSuperCategoryGroup(projectId: string, name: string): Promise<string> {
+  const { data, error } = await supabase
+    .from('groups')
+    .insert({ name, project_id: projectId, color: '#6366f1', order: 0, parent_id: null })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
+}
+
+/** Sets (or clears) a group's parent_id to assign it to a super-category. */
+export async function setGroupParent(groupId: string, parentId: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('groups')
+    .update({ parent_id: parentId })
+    .eq('id', groupId);
+  if (error) throw error;
+}
+
+/** Renames a group (used for renaming super-category containers). */
+export async function renameGroup(groupId: string, newName: string): Promise<void> {
+  const { error } = await supabase
+    .from('groups')
+    .update({ name: newName })
+    .eq('id', groupId);
+  if (error) throw error;
+}
+
+/** Deletes a super-category group. Children get parent_id = null via ON DELETE SET NULL. */
+export async function deleteSuperCategoryGroup(groupId: string): Promise<void> {
+  const { error } = await supabase
+    .from('groups')
+    .delete()
+    .eq('id', groupId);
+  if (error) throw error;
 }
 
 // ── moveTaskToCategory ────────────────────────────────────────────────────────
