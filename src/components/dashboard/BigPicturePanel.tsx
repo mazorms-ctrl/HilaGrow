@@ -8,12 +8,13 @@ import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
-import { X, ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, Maximize2, Pencil, Check } from 'lucide-react';
 import { useTasks, useProjects } from '@/lib/supabase-hooks';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUIStore } from '@/store/uiStore';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { colors, shadows, typography } from '@/styles/tokens';
+import { supabase } from '@/lib/supabase';
 import type { MedicalTask } from '@/lib/supabase-hooks';
 
 // ── Shared keyframes ──────────────────────────────────────────────────────────
@@ -82,10 +83,16 @@ function TaskCard({
   task,
   color,
   currentUserName,
+  editMode,
+  onDragStart,
+  isDragging,
 }: {
   task: MedicalTask;
   color: string;
   currentUserName: string | null;
+  editMode: boolean;
+  onDragStart: (taskId: string) => void;
+  isDragging: boolean;
 }) {
   const navigate = useNavigate();
   const closeBigPicture = useUIStore(s => s.closeBigPicture);
@@ -96,7 +103,6 @@ function TaskCard({
 
   // ── Visual tokens based on activity ──────────────────────────────────────
   const bg          = isActive ? pastel(color)         : '#f8fafc';
-  const borderStyle = isActive ? `1px solid ${borderTint(color)}` : '1px dashed #cbd5e1';
   const titleColor  = isActive ? '#0f172a'             : '#94a3b8';
   const metaColor   = isActive ? '#475569'             : '#cbd5e1';
   const barBg       = isActive ? color                 : '#e2e8f0';
@@ -110,26 +116,50 @@ function TaskCard({
   const doneMilestones = task.milestones?.filter(m => m.done).length ?? 0;
   const totalMilestones = task.milestones?.length ?? 0;
 
+  // Use side-specific border properties to avoid React shorthand conflict warnings
+  const editBorderWidth  = '2px';
+  const editBorderStyle  = 'dashed';
+  const editBorderColor  = `${color}88`;
+
   return (
     <div
-      onClick={() => { closeBigPicture(); navigate(`/task/${task.id}`); }}
+      draggable={editMode}
+      onDragStart={editMode ? (e) => {
+        e.stopPropagation();
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', task.id);
+        e.dataTransfer.setData('text/x-drag-type', 'task');
+        onDragStart(task.id);
+      } : undefined}
+      onClick={editMode ? undefined : () => { closeBigPicture(); navigate(`/task/${task.id}`); }}
       style={{
         width: CARD_W,
         minWidth: CARD_W,
         maxWidth: CARD_W,
         padding: '11px 13px 0 13px',
         background: bg,
-        border: borderStyle,
-        borderTop: `3px solid ${topAccent}`,
+        borderTopWidth:    '3px',
+        borderTopStyle:    'solid',
+        borderTopColor:    topAccent,
+        borderRightWidth:  editMode ? editBorderWidth  : '1px',
+        borderRightStyle:  editMode ? editBorderStyle  : (isActive ? 'solid' : 'dashed'),
+        borderRightColor:  editMode ? editBorderColor  : borderTint(color),
+        borderBottomWidth: editMode ? editBorderWidth  : '1px',
+        borderBottomStyle: editMode ? editBorderStyle  : (isActive ? 'solid' : 'dashed'),
+        borderBottomColor: editMode ? editBorderColor  : borderTint(color),
+        borderLeftWidth:   editMode ? editBorderWidth  : '1px',
+        borderLeftStyle:   editMode ? editBorderStyle  : (isActive ? 'solid' : 'dashed'),
+        borderLeftColor:   editMode ? editBorderColor  : borderTint(color),
         borderRadius: '12px',
-        cursor: 'pointer',
+        cursor: editMode ? 'grab' : 'pointer',
         overflow: 'hidden',
         position: 'relative',
-        transition: 'box-shadow 0.2s, transform 0.2s',
-        boxShadow,
-        transform,
+        transition: 'box-shadow 0.2s, transform 0.2s, opacity 0.2s',
+        boxShadow: isDragging ? 'none' : boxShadow,
+        transform: isDragging ? 'none' : transform,
+        opacity: isDragging ? 0.35 : 1,
         fontFamily: typography.fontFamily,
-        ...(isActive && task.status === 'in_progress'
+        ...(isActive && task.status === 'in_progress' && !editMode
           ? { animation: 'bpPulse 3s ease-in-out infinite' }
           : {}),
       }}
@@ -185,24 +215,229 @@ function TaskCard({
   );
 }
 
+// ── Category column (renders header + tasks, used at both levels) ──────────────
+function CategoryColumn({
+  cat,
+  catTasks,
+  color,
+  tasks,
+  currentUserName,
+  editMode,
+  dragTaskId,
+  dragCatName,
+  isNestTarget,        // this header is highlighted as a nesting target
+  isTaskDropTarget,    // this column is highlighted for task-move drop
+  onTaskDragStart,
+  onTaskMove,
+  onCatDragStart,
+  onCatNest,
+  onTaskDragOver,
+  onTaskDragLeave,
+  isChild,             // render at sub-column scale (slightly smaller header)
+}: {
+  cat: string;
+  catTasks: MedicalTask[];
+  color: string;
+  tasks: MedicalTask[];
+  currentUserName: string | null;
+  editMode: boolean;
+  dragTaskId: string | null;
+  dragCatName: string | null;
+  isNestTarget: boolean;
+  isTaskDropTarget: boolean;
+  onTaskDragStart: (taskId: string) => void;
+  onTaskMove: (taskId: string, newCategory: string) => void;
+  onCatDragStart: (catName: string) => void;
+  onCatNest: (childCat: string, parentCat: string) => void;
+  onTaskDragOver: (cat: string) => void;
+  onTaskDragLeave: () => void;
+  isChild?: boolean;
+}) {
+  const avg = catTasks.length
+    ? Math.round(catTasks.reduce((s, t) => s + (t.progress ?? 0), 0) / catTasks.length)
+    : 0;
+
+  const draggedTaskCat = dragTaskId ? tasks.find(t => t.id === dragTaskId)?.category : null;
+  const isOwnCategory  = draggedTaskCat === cat;
+
+  return (
+    <div
+      style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}
+      onDragOver={editMode ? (e) => {
+        e.preventDefault();
+        const dtype = e.dataTransfer.types.includes('text/x-drag-type')
+          ? e.dataTransfer.getData('text/x-drag-type') // only works in drop, not dragOver
+          : null;
+        // Heuristic: if dragCatName is set → category drag; else task drag
+        if (dragCatName) {
+          e.dataTransfer.dropEffect = 'move';
+        } else if (!isOwnCategory) {
+          e.dataTransfer.dropEffect = 'move';
+          onTaskDragOver(cat);
+        }
+        void dtype;
+      } : undefined}
+      onDragLeave={editMode ? () => onTaskDragLeave() : undefined}
+      onDrop={editMode ? (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onTaskDragLeave();
+        const dragType = e.dataTransfer.getData('text/x-drag-type');
+        if (dragType === 'task') {
+          const tId = e.dataTransfer.getData('text/plain');
+          if (tId && !isOwnCategory) onTaskMove(tId, cat);
+        }
+        // category drops are handled on the header directly
+      } : undefined}
+    >
+      {/* Category header — draggable in edit mode */}
+      <div
+        draggable={editMode}
+        onDragStart={editMode ? (e) => {
+          e.stopPropagation();
+          e.dataTransfer.effectAllowed = 'move';
+          e.dataTransfer.setData('text/plain', cat);
+          e.dataTransfer.setData('text/x-drag-type', 'category');
+          e.dataTransfer.setData('text/x-category-name', cat);
+          onCatDragStart(cat);
+        } : undefined}
+        onDragOver={editMode && dragCatName && dragCatName !== cat ? (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = 'move';
+        } : undefined}
+        onDrop={editMode && dragCatName && dragCatName !== cat ? (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          const childName = e.dataTransfer.getData('text/x-category-name');
+          if (childName && childName !== cat) onCatNest(childName, cat);
+        } : undefined}
+        style={{
+          width: isChild ? CARD_W : CARD_W,
+          padding: '10px 14px',
+          background: isNestTarget ? '#ede9fe' : (isTaskDropTarget ? `${color}18` : '#ffffff'),
+          // Side-specific border properties — avoids React shorthand conflict warnings
+          borderTopWidth:    isChild ? '3px' : '4px',
+          borderTopStyle:    'solid',
+          borderTopColor:    isNestTarget ? '#7c3aed' : color,
+          borderRightWidth:  isNestTarget ? '2px' : (isTaskDropTarget ? '2px' : '1px'),
+          borderRightStyle:  'solid',
+          borderRightColor:  isNestTarget ? '#7c3aed' : (isTaskDropTarget ? color : '#e2e8f0'),
+          borderBottomWidth: isNestTarget ? '2px' : (isTaskDropTarget ? '2px' : '1px'),
+          borderBottomStyle: 'solid',
+          borderBottomColor: isNestTarget ? '#7c3aed' : (isTaskDropTarget ? color : '#e2e8f0'),
+          borderLeftWidth:   isNestTarget ? '2px' : (isTaskDropTarget ? '2px' : '1px'),
+          borderLeftStyle:   'solid',
+          borderLeftColor:   isNestTarget ? '#7c3aed' : (isTaskDropTarget ? color : '#e2e8f0'),
+          borderRadius: '12px',
+          textAlign: 'center',
+          boxShadow: isNestTarget
+            ? '0 0 0 3px rgba(124,58,237,0.25)'
+            : isTaskDropTarget
+              ? `0 0 0 3px ${color}33`
+              : shadows.sm,
+          transition: 'background 0.15s, box-shadow 0.15s',
+          cursor: editMode ? 'grab' : 'default',
+        }}
+      >
+        <div style={{ fontSize: isChild ? '12px' : '13px', fontWeight: 600, color: isNestTarget ? '#5b21b6' : '#171717', fontFamily: typography.fontFamily }}>
+          {editMode && <span style={{ marginLeft: '4px', opacity: 0.5, fontSize: '10px' }}>⠿</span>}
+          {cat}
+        </div>
+        <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily, marginTop: '2px' }}>
+          {catTasks.length} משימות · {avg}%
+          {isNestTarget    && <span style={{ marginRight: '6px', color: '#7c3aed', fontWeight: 700 }}> ← קטגוריית אב</span>}
+          {isTaskDropTarget && <span style={{ marginRight: '6px', color, fontWeight: 700 }}> ← שחרר כאן</span>}
+        </div>
+      </div>
+
+      {/* Connector + task cards */}
+      {catTasks.length > 0 && (
+        <>
+          <svg width="2" height="24" viewBox="0 0 2 24" style={{ overflow: 'visible' }}>
+            <path d="M 1 0 C 1 12, 1 12, 1 24" stroke="#cbd5e1" strokeWidth="1.5" fill="none" />
+          </svg>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 0, alignItems: 'center' }}>
+            {catTasks.map((task, idx) => (
+              <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                {idx > 0 && (
+                  <svg width="2" height="10" viewBox="0 0 2 10" style={{ overflow: 'visible' }}>
+                    <path d="M 1 0 C 1 5, 1 5, 1 10" stroke="#e2e8f0" strokeWidth="1" fill="none" />
+                  </svg>
+                )}
+                <TaskCard
+                  task={task}
+                  color={color}
+                  currentUserName={currentUserName}
+                  editMode={editMode}
+                  onDragStart={onTaskDragStart}
+                  isDragging={dragTaskId === task.id}
+                />
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ── Tree canvas ───────────────────────────────────────────────────────────────
 function TreeCanvas({
   tasks,
   treeRef,
   currentUserName,
+  editMode,
+  dragTaskId,
+  dragCatName,
+  categoryParents,
+  onTaskDragStart,
+  onTaskMove,
+  onCatDragStart,
+  onCatNest,
 }: {
   tasks: MedicalTask[];
   treeRef: React.RefObject<HTMLDivElement | null>;
   currentUserName: string | null;
+  editMode: boolean;
+  dragTaskId: string | null;
+  dragCatName: string | null;
+  categoryParents: Record<string, string>; // child catName → parent catName
+  onTaskDragStart: (taskId: string) => void;
+  onTaskMove: (taskId: string, newCategory: string) => void;
+  onCatDragStart: (catName: string) => void;
+  onCatNest: (childCat: string, parentCat: string) => void;
 }) {
-  const categories = [...new Set(tasks.map(t => t.category))];
-  const N = categories.length;
+  const [dragOverTaskCat, setDragOverTaskCat] = useState<string | null>(null);
 
-  if (N === 0) return (
+  // All category names from tasks
+  const allCats = useMemo(() => [...new Set(tasks.map(t => t.category))], [tasks]);
+
+  // Root categories = those not in categoryParents (no parent)
+  const rootCats = useMemo(() => allCats.filter(c => !categoryParents[c]), [allCats, categoryParents]);
+
+  // Children grouped by parent
+  const childrenOf = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    for (const [child, parent] of Object.entries(categoryParents)) {
+      if (allCats.includes(child) && allCats.includes(parent)) {
+        if (!map[parent]) map[parent] = [];
+        map[parent].push(child);
+      }
+    }
+    return map;
+  }, [categoryParents, allCats]);
+
+  const N = rootCats.length;
+
+  if (N === 0 && allCats.length === 0) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '300px', color: colors.text.tertiary, fontFamily: typography.fontFamily }}>
       אין נתונים להצגה
     </div>
   );
+
+  const handleTaskDragOver = (cat: string) => setDragOverTaskCat(cat);
+  const handleTaskDragLeave = () => setDragOverTaskCat(null);
 
   return (
     <div
@@ -218,8 +453,10 @@ function TreeCanvas({
       <div style={{
         padding: '14px 48px',
         background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderTop: '4px solid #4f46e5',
+        borderTopWidth: '4px', borderTopStyle: 'solid', borderTopColor: '#4f46e5',
+        borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: '#e2e8f0',
+        borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#e2e8f0',
+        borderLeftWidth: '1px', borderLeftStyle: 'solid', borderLeftColor: '#e2e8f0',
         borderRadius: '12px',
         fontFamily: typography.fontFamily,
         fontSize: '17px', fontWeight: 600, color: '#1e1b4b',
@@ -230,7 +467,7 @@ function TreeCanvas({
         GROW
       </div>
 
-      {/* ── Bezier connectors: root → categories ─────────────── */}
+      {/* ── Bezier connectors: root → root categories ─────────── */}
       <svg
         width="100%"
         height={72}
@@ -238,7 +475,7 @@ function TreeCanvas({
         preserveAspectRatio="none"
         style={{ display: 'block', overflow: 'visible' }}
       >
-        {categories.map((_c, i) => {
+        {rootCats.map((_c, i) => {
           const cx = ((i + 0.5) / N) * 100;
           return (
             <path
@@ -252,56 +489,172 @@ function TreeCanvas({
         })}
       </svg>
 
-      {/* ── Category columns ─────────────────────────────────── */}
+      {/* ── Root category columns ─────────────────────────────── */}
       <div style={{
         display: 'flex',
-        gap: CARD_GAP,
+        gap: CARD_GAP * 2,
         alignItems: 'flex-start',
         justifyContent: 'center',
-        flexWrap: 'nowrap', // one row, no wrapping
+        flexWrap: 'nowrap',
       }}>
-        {categories.map(cat => {
-          const catTasks = tasks.filter(t => t.category === cat); // pre-sorted by TreeDataLoader
-          const color    = catTasks[0]?.color ?? '#94a3b8';
-          const avg      = catTasks.length
-            ? Math.round(catTasks.reduce((s, t) => s + (t.progress ?? 0), 0) / catTasks.length)
-            : 0;
+        {rootCats.map(cat => {
+          const children      = childrenOf[cat] ?? [];
+          const directTasks   = tasks.filter(t => t.category === cat);
+          const color         = directTasks[0]?.color ?? (tasks.find(t => t.category === cat)?.color) ?? '#94a3b8';
+          const hasChildren   = children.length > 0;
+
+          // Total pixel width of this root column (spans child columns)
+          const totalW = hasChildren
+            ? children.length * CARD_W + (children.length - 1) * CARD_GAP
+            : CARD_W;
 
           return (
             <div key={cat} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
-              {/* Category header */}
-              <div style={{
-                width: CARD_W,
-                padding: '10px 14px',
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderTop: `4px solid ${color}`,
-                borderRadius: '12px',
-                textAlign: 'center',
-                boxShadow: shadows.sm,
-              }}>
-                <div style={{ fontSize: '13px', fontWeight: 600, color: '#171717', fontFamily: typography.fontFamily }}>{cat}</div>
-                <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily, marginTop: '2px' }}>{catTasks.length} משימות · {avg}%</div>
+
+              {/* Root category header — spans children width */}
+              <div
+                draggable={editMode}
+                onDragStart={editMode ? (e) => {
+                  e.stopPropagation();
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', cat);
+                  e.dataTransfer.setData('text/x-drag-type', 'category');
+                  e.dataTransfer.setData('text/x-category-name', cat);
+                  onCatDragStart(cat);
+                } : undefined}
+                onDragOver={editMode && dragCatName && dragCatName !== cat ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  e.dataTransfer.dropEffect = 'move';
+                } : undefined}
+                onDrop={editMode && dragCatName && dragCatName !== cat ? (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const childName = e.dataTransfer.getData('text/x-category-name');
+                  if (childName && childName !== cat) onCatNest(childName, cat);
+                } : undefined}
+                style={{
+                  width: totalW,
+                  padding: '10px 14px',
+                  background: dragCatName && dragCatName !== cat ? '#ede9fe' : '#ffffff',
+                  borderTopWidth: '4px', borderTopStyle: 'solid',
+                  borderTopColor: (dragCatName && dragCatName !== cat) ? '#7c3aed' : color,
+                  borderRightWidth: '1px', borderRightStyle: 'solid',
+                  borderRightColor: (dragCatName && dragCatName !== cat) ? '#7c3aed' : '#e2e8f0',
+                  borderBottomWidth: '1px', borderBottomStyle: 'solid',
+                  borderBottomColor: (dragCatName && dragCatName !== cat) ? '#7c3aed' : '#e2e8f0',
+                  borderLeftWidth: '1px', borderLeftStyle: 'solid',
+                  borderLeftColor: (dragCatName && dragCatName !== cat) ? '#7c3aed' : '#e2e8f0',
+                  borderRadius: '12px',
+                  textAlign: 'center',
+                  boxShadow: (dragCatName && dragCatName !== cat)
+                    ? '0 0 0 3px rgba(124,58,237,0.25)'
+                    : shadows.sm,
+                  transition: 'background 0.15s, box-shadow 0.15s',
+                  cursor: editMode ? 'grab' : 'default',
+                }}
+              >
+                <div style={{ fontSize: '13px', fontWeight: 600, color: (dragCatName && dragCatName !== cat) ? '#5b21b6' : '#171717', fontFamily: typography.fontFamily }}>
+                  {editMode && <span style={{ marginLeft: '4px', opacity: 0.5, fontSize: '10px' }}>⠿</span>}
+                  {cat}
+                  {hasChildren && <span style={{ marginRight: '6px', fontSize: '11px', color: '#94a3b8', fontWeight: 400 }}> ({children.length}+)</span>}
+                </div>
+                <div style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily, marginTop: '2px' }}>
+                  {directTasks.length + children.reduce((s, c) => s + tasks.filter(t => t.category === c).length, 0)} משימות
+                  {dragCatName && dragCatName !== cat && <span style={{ marginRight: '6px', color: '#7c3aed', fontWeight: 700 }}> ← שחרר ליצירת תת-קטגוריה</span>}
+                </div>
               </div>
 
-              {/* Bezier connector: category → first task */}
-              <svg width="2" height="24" viewBox="0 0 2 24" style={{ overflow: 'visible' }}>
-                <path d="M 1 0 C 1 12, 1 12, 1 24" stroke="#cbd5e1" strokeWidth="1.5" fill="none" />
-              </svg>
+              {/* Children sub-columns */}
+              {hasChildren && (
+                <>
+                  {/* Connectors root-header → child headers */}
+                  <svg width={totalW} height={40} viewBox={`0 0 ${totalW} 40`} style={{ overflow: 'visible', display: 'block' }}>
+                    {children.map((_, ci) => {
+                      const cx = (ci + 0.5) / children.length * totalW;
+                      return (
+                        <path
+                          key={ci}
+                          d={`M ${totalW / 2} 0 C ${totalW / 2} 22, ${cx} 18, ${cx} 40`}
+                          stroke="#cbd5e1" strokeWidth="1" fill="none"
+                        />
+                      );
+                    })}
+                  </svg>
 
-              {/* Task cards column */}
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 0, alignItems: 'center' }}>
-                {catTasks.map((task, idx) => (
-                  <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                    {idx > 0 && (
-                      <svg width="2" height="10" viewBox="0 0 2 10" style={{ overflow: 'visible' }}>
-                        <path d="M 1 0 C 1 5, 1 5, 1 10" stroke="#e2e8f0" strokeWidth="1" fill="none" />
-                      </svg>
-                    )}
-                    <TaskCard task={task} color={color} currentUserName={currentUserName} />
+                  {/* Child category columns side-by-side */}
+                  <div style={{ display: 'flex', gap: CARD_GAP, alignItems: 'flex-start' }}>
+                    {children.map(childCat => {
+                      const childTasks = tasks.filter(t => t.category === childCat);
+                      const childColor = childTasks[0]?.color ?? '#94a3b8';
+                      return (
+                        <CategoryColumn
+                          key={childCat}
+                          cat={childCat}
+                          catTasks={childTasks}
+                          color={childColor}
+                          tasks={tasks}
+                          currentUserName={currentUserName}
+                          editMode={editMode}
+                          dragTaskId={dragTaskId}
+                          dragCatName={dragCatName}
+                          isNestTarget={false}
+                          isTaskDropTarget={editMode && dragOverTaskCat === childCat && dragTaskId !== null && tasks.find(t => t.id === dragTaskId)?.category !== childCat}
+                          onTaskDragStart={onTaskDragStart}
+                          onTaskMove={onTaskMove}
+                          onCatDragStart={onCatDragStart}
+                          onCatNest={onCatNest}
+                          onTaskDragOver={handleTaskDragOver}
+                          onTaskDragLeave={handleTaskDragLeave}
+                          isChild
+                        />
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
+
+              {/* Direct tasks of root cat (below children, if any) */}
+              {directTasks.length > 0 && (
+                <>
+                  <svg width="2" height="24" viewBox="0 0 2 24" style={{ overflow: 'visible' }}>
+                    <path d="M 1 0 C 1 12, 1 12, 1 24" stroke="#cbd5e1" strokeWidth="1.5" fill="none" />
+                  </svg>
+                  <div
+                    style={{ display: 'flex', flexDirection: 'column', gap: 0, alignItems: 'center' }}
+                    onDragOver={editMode && dragTaskId ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; handleTaskDragOver(cat); } : undefined}
+                    onDragLeave={editMode ? handleTaskDragLeave : undefined}
+                    onDrop={editMode ? (e) => {
+                      e.preventDefault();
+                      handleTaskDragLeave();
+                      const dragType = e.dataTransfer.getData('text/x-drag-type');
+                      if (dragType === 'task') {
+                        const tId = e.dataTransfer.getData('text/plain');
+                        const fromCat = tasks.find(t => t.id === tId)?.category;
+                        if (tId && fromCat !== cat) onTaskMove(tId, cat);
+                      }
+                    } : undefined}
+                  >
+                    {directTasks.map((task, idx) => (
+                      <div key={task.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                        {idx > 0 && (
+                          <svg width="2" height="10" viewBox="0 0 2 10" style={{ overflow: 'visible' }}>
+                            <path d="M 1 0 C 1 5, 1 5, 1 10" stroke="#e2e8f0" strokeWidth="1" fill="none" />
+                          </svg>
+                        )}
+                        <TaskCard
+                          task={task}
+                          color={color}
+                          currentUserName={currentUserName}
+                          editMode={editMode}
+                          onDragStart={onTaskDragStart}
+                          isDragging={dragTaskId === task.id}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
@@ -311,7 +664,6 @@ function TreeCanvas({
 }
 
 // ── Fit-to-width zoom ─────────────────────────────────────────────────────────
-// Scales so the full horizontal width of the tree fits in the viewport.
 function doFitWidth(
   api: ReactZoomPanPinchRef,
   treeEl: HTMLDivElement | null,
@@ -328,10 +680,8 @@ function doFitWidth(
   const ww = wrapper.clientWidth;
   const wh = wrapper.clientHeight;
 
-  // Fit to width (priority), cap at 1× to avoid blurry upscale
   const scale = Math.min((ww / w) * 0.94, 1);
   const x = (ww - w * scale) / 2;
-  // Center vertically if tree fits; otherwise leave some top padding
   const y = Math.max((wh - h * scale) / 2, 32);
 
   api.setTransform(x, y, scale, animTime);
@@ -345,12 +695,30 @@ function TreeCanvas_Wrapper({
   transformRef,
   currentUserName,
   animDone,
+  editMode,
+  onToggleEdit,
+  dragTaskId,
+  dragCatName,
+  categoryParents,
+  onTaskDragStart,
+  onTaskMove,
+  onCatDragStart,
+  onCatNest,
 }: {
   tasks: MedicalTask[];
   treeRef: React.RefObject<HTMLDivElement | null>;
   transformRef: React.RefObject<ReactZoomPanPinchRef | null>;
   currentUserName: string | null;
   animDone: boolean;
+  editMode: boolean;
+  onToggleEdit: () => void;
+  dragTaskId: string | null;
+  dragCatName: string | null;
+  categoryParents: Record<string, string>;
+  onTaskDragStart: (taskId: string) => void;
+  onTaskMove: (taskId: string, newCategory: string) => void;
+  onCatDragStart: (catName: string) => void;
+  onCatNest: (childCat: string, parentCat: string) => void;
 }) {
   const centered = useRef(false);
 
@@ -361,8 +729,6 @@ function TreeCanvas_Wrapper({
     if (ok) centered.current = true;
   }, [transformRef, treeRef]);
 
-  // Only start centering after the modal open animation has finished —
-  // prevents fitView from measuring a partially-sized container.
   useEffect(() => {
     if (!animDone || !tasks.length) return;
     centered.current = false;
@@ -380,11 +746,10 @@ function TreeCanvas_Wrapper({
       limitToBounds={false}
       centerZoomedOut={false}
       wheel={{ step: 0.06 }}
-      panning={{ velocityDisabled: true }}
+      panning={{ velocityDisabled: true, disabled: editMode }}
       doubleClick={{ disabled: true }}
       onInit={(ref) => {
         transformRef.current = ref;
-        // Centering is deferred to the animDone effect; no action needed here.
       }}
     >
       {({ zoomIn, zoomOut }) => (
@@ -393,21 +758,57 @@ function TreeCanvas_Wrapper({
             wrapperStyle={{ width: '100%', height: '100%', overflow: 'hidden', background: '#f8fafc' }}
             contentStyle={{ display: 'inline-flex' }}
           >
-            <TreeCanvas tasks={tasks} treeRef={treeRef} currentUserName={currentUserName} />
+            <TreeCanvas
+              tasks={tasks}
+              treeRef={treeRef}
+              currentUserName={currentUserName}
+              editMode={editMode}
+              dragTaskId={dragTaskId}
+              dragCatName={dragCatName}
+              categoryParents={categoryParents}
+              onTaskDragStart={onTaskDragStart}
+              onTaskMove={onTaskMove}
+              onCatDragStart={onCatDragStart}
+              onCatNest={onCatNest}
+            />
           </TransformComponent>
 
-          {/* Zoom controls — glass panel, bottom-right */}
+          {/* Controls panel — glass pill, bottom-right */}
           <div style={{
             position: 'absolute', bottom: 14, right: 14, zIndex: 10,
             display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-            background: 'rgba(255,255,255,0.88)',
+            background: 'rgba(255,255,255,0.92)',
             backdropFilter: 'blur(12px)',
             WebkitBackdropFilter: 'blur(12px)',
             borderRadius: '14px',
-            border: '1px solid rgba(226,232,240,0.8)',
+            borderWidth: '1px', borderStyle: 'solid', borderColor: 'rgba(226,232,240,0.8)',
             boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.06)',
             padding: '6px',
           }}>
+            {/* Edit mode toggle */}
+            <button
+              onClick={onToggleEdit}
+              title={editMode ? 'סיום עריכה (Esc)' : 'מצב עריכה — גרור משימות וקטגוריות'}
+              style={{
+                width: 36, height: 36, borderWidth: 0, borderStyle: 'solid', borderColor: 'transparent',
+                borderRadius: '10px',
+                background: editMode ? '#7c3aed' : 'transparent',
+                color: editMode ? '#ffffff' : '#4f46e5',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer', padding: 0,
+                transition: 'background 0.15s, color 0.15s',
+                boxShadow: editMode ? '0 2px 8px rgba(124,58,237,0.35)' : 'none',
+              }}
+              onMouseEnter={(e) => { if (!editMode) { e.currentTarget.style.background = '#f1f5f9'; } }}
+              onMouseLeave={(e) => { if (!editMode) { e.currentTarget.style.background = 'transparent'; } }}
+            >
+              {editMode ? <Check size={16} /> : <Pencil size={16} />}
+            </button>
+
+            {/* Divider */}
+            <div style={{ width: 22, height: 1, background: 'rgba(226,232,240,0.8)', margin: '2px 0' }} />
+
+            {/* Zoom buttons */}
             {[
               { icon: <ZoomIn size={16} />,    fn: () => zoomIn(),                                   tip: 'הגדל' },
               { icon: <ZoomOut size={16} />,   fn: () => zoomOut(),                                  tip: 'הקטן' },
@@ -415,7 +816,8 @@ function TreeCanvas_Wrapper({
             ].map(({ icon, fn, tip }) => (
               <button key={tip} onClick={fn} title={tip}
                 style={{
-                  width: 36, height: 36, border: 'none', borderRadius: '10px',
+                  width: 36, height: 36, borderWidth: 0, borderStyle: 'solid', borderColor: 'transparent',
+                  borderRadius: '10px',
                   background: 'transparent', color: '#475569',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: 'pointer', padding: 0, transition: 'background 0.15s, color 0.15s',
@@ -431,22 +833,26 @@ function TreeCanvas_Wrapper({
             position: 'absolute', bottom: 14, left: '50%', transform: 'translateX(-50%)',
             display: 'flex', alignItems: 'center', gap: '16px',
             background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(4px)',
-            border: '1px solid #e2e8f0', borderRadius: '8px',
+            borderWidth: '1px', borderStyle: 'solid', borderColor: '#e2e8f0',
+            borderRadius: '8px',
             padding: '5px 14px', pointerEvents: 'none',
           }}>
             <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748b', fontFamily: typography.fontFamily }}>
-              <span style={{ width: 10, height: 10, borderRadius: '2px', background: '#f8fafc', border: '1px dashed #cbd5e1', display: 'inline-block' }} />
+              <span style={{ width: 10, height: 10, borderRadius: '2px', background: '#f8fafc', borderWidth: '1px', borderStyle: 'dashed', borderColor: '#cbd5e1', display: 'inline-block' }} />
               לא החל
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748b', fontFamily: typography.fontFamily }}>
-              <span style={{ width: 10, height: 10, borderRadius: '2px', background: '#4f46e518', border: '1px solid #4f46e555', display: 'inline-block' }} />
+              <span style={{ width: 10, height: 10, borderRadius: '2px', background: '#4f46e518', borderWidth: '1px', borderStyle: 'solid', borderColor: '#4f46e555', display: 'inline-block' }} />
               פעיל
             </span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '11px', color: '#64748b', fontFamily: typography.fontFamily }}>
               <span style={{ width: 10, height: 10, borderRadius: '2px', background: RIBBON_COLOR, display: 'inline-block' }} />
               משימות שלי
             </span>
-            <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily }}>גלול לזום · גרור לניווט</span>
+            {editMode
+              ? <span style={{ fontSize: '11px', color: '#7c3aed', fontWeight: 600, fontFamily: typography.fontFamily }}>גרור משימה לעמודה · גרור קטגוריה לאב</span>
+              : <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: typography.fontFamily }}>גלול לזום · גרור לניווט</span>
+            }
           </div>
         </div>
       )}
@@ -469,39 +875,91 @@ function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
   const projectId = projects[0]?.id ?? null;
   const { tasks: rawTasks, loading: tasksLoading } = useTasks(projectId);
 
-  // Sort within each category: higher activity score → top.
-  // Groups are sorted independently so the comparator is always a valid
-  // total order — mixing categories in one sort() call with return 0 for
-  // cross-category pairs produces non-transitive comparisons and unpredictable results.
-  const tasks = useMemo(() => {
-    // 1. Collect unique category order from the raw array
-    const categoryOrder = [...new Set(rawTasks.map(t => t.category))];
+  // ── Edit mode + drag state ────────────────────────────────────────────────
+  const [editMode,   setEditMode]   = useState(false);
+  const [dragTaskId, setDragTaskId] = useState<string | null>(null);
+  const [dragCatName, setDragCatName] = useState<string | null>(null);
 
-    // 2. Bucket tasks by category
+  // Escape exits edit mode
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape' && editMode) setEditMode(false); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editMode]);
+
+  // ── Optimistic overrides for task moves ───────────────────────────────────
+  const [taskOverrides, setTaskOverrides] = useState<Record<string, { groupId: string; category: string; color: string }>>({});
+
+  // ── Category nesting (parent assignments) ─────────────────────────────────
+  const [categoryParents, setCategoryParents] = useState<Record<string, string>>({});
+
+  // category name → groupId (camelCase from MedicalTask)
+  const categoryGroupId = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const t of rawTasks) { if (t.groupId && !map[t.category]) map[t.category] = t.groupId; }
+    return map;
+  }, [rawTasks]);
+
+  // onTaskMove receives only category name; we look up group_id here
+  const handleTaskMove = useCallback(async (taskId: string, newCategory: string) => {
+    const newGroupId = categoryGroupId[newCategory];
+    const newColor   = rawTasks.find(t => t.category === newCategory)?.color ?? '#94a3b8';
+    setTaskOverrides(prev => ({ ...prev, [taskId]: { groupId: newGroupId ?? '', category: newCategory, color: newColor } }));
+    setDragTaskId(null);
+    if (newGroupId) {
+      const { error } = await supabase.from('tasks').update({ group_id: newGroupId }).eq('id', taskId);
+      if (error) {
+        console.error('[BigPicture] task move failed:', error.message);
+        setTaskOverrides(prev => { const n = { ...prev }; delete n[taskId]; return n; });
+      }
+    }
+  }, [rawTasks, categoryGroupId]);
+
+  const handleCategoryNest = useCallback(async (childCat: string, parentCat: string) => {
+    // Optimistic update
+    setCategoryParents(prev => ({ ...prev, [childCat]: parentCat }));
+    setDragCatName(null);
+
+    const childGroupId  = categoryGroupId[childCat];
+    const parentGroupId = categoryGroupId[parentCat];
+
+    if (childGroupId && parentGroupId) {
+      const { error } = await supabase
+        .from('groups')
+        .update({ parent_id: parentGroupId })
+        .eq('id', childGroupId);
+      if (error) {
+        console.error('[BigPicture] category nest failed:', error.message);
+        // Rollback
+        setCategoryParents(prev => { const n = { ...prev }; delete n[childCat]; return n; });
+      }
+    }
+  }, [categoryGroupId]);
+
+  // Sort tasks within each category by activity score
+  const tasks = useMemo(() => {
+    const merged = rawTasks.map(t => taskOverrides[t.id] ? { ...t, ...taskOverrides[t.id] } : t);
+    const categoryOrder = [...new Set(merged.map(t => t.category))];
     const buckets = new Map<string, MedicalTask[]>();
-    for (const t of rawTasks) {
+    for (const t of merged) {
       if (!buckets.has(t.category)) buckets.set(t.category, []);
       buckets.get(t.category)!.push(t);
     }
-
-    // 3. Sort each bucket independently (valid total order within bucket)
     for (const bucket of buckets.values()) {
       bucket.sort((a, b) => {
         const sa = Number(a.progress) * 10 + (a.assignedTo ? 1 : 0);
         const sb = Number(b.progress) * 10 + (b.assignedTo ? 1 : 0);
-        return sb - sa; // descending — 50% → top, 0%/no-assignee → bottom
+        return sb - sa;
       });
     }
-
-    // 4. Flatten preserving original category order
     return categoryOrder.flatMap(cat => buckets.get(cat) ?? []);
-  }, [rawTasks]);
+  }, [rawTasks, taskOverrides]);
 
   const isLoading = projectsLoading || (!!projectId && tasksLoading);
 
   if (isLoading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: colors.text.tertiary, fontFamily: typography.fontFamily, fontSize: '14px', gap: '10px', background: '#f8fafc' }}>
-      <div style={{ width: 20, height: 20, border: '2px solid #e2e8f0', borderTopColor: '#4f46e5', borderRadius: '9999px', animation: 'bpSpin 0.7s linear infinite' }} />
+      <div style={{ width: 20, height: 20, borderWidth: '2px', borderStyle: 'solid', borderColor: '#e2e8f0', borderTopColor: '#4f46e5', borderRadius: '9999px', animation: 'bpSpin 0.7s linear infinite' }} />
       טוען...
     </div>
   );
@@ -513,13 +971,27 @@ function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
   );
 
   return (
-    <TreeCanvas_Wrapper
-      tasks={tasks}
-      treeRef={treeRef}
-      transformRef={transformRef}
-      currentUserName={currentUserName}
-      animDone={animDone}
-    />
+    <div
+      style={{ width: '100%', height: '100%' }}
+      onDragEnd={() => { setDragTaskId(null); setDragCatName(null); }}
+    >
+      <TreeCanvas_Wrapper
+        tasks={tasks}
+        treeRef={treeRef}
+        transformRef={transformRef}
+        currentUserName={currentUserName}
+        animDone={animDone}
+        editMode={editMode}
+        onToggleEdit={() => setEditMode(m => !m)}
+        dragTaskId={dragTaskId}
+        dragCatName={dragCatName}
+        categoryParents={categoryParents}
+        onTaskDragStart={setDragTaskId}
+        onTaskMove={handleTaskMove}
+        onCatDragStart={setDragCatName}
+        onCatNest={handleCategoryNest}
+      />
+    </div>
   );
 }
 
@@ -539,7 +1011,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
     <>
       <style>{KEYFRAMES}</style>
 
-      {/* Backdrop — fades in with the modal */}
+      {/* Backdrop */}
       <motion.div
         key="bp-backdrop"
         initial={{ opacity: 0 }}
@@ -556,7 +1028,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
         }}
       />
 
-      {/* Modal — subtle scale + fade with ease-out spring feel */}
+      {/* Modal */}
       <motion.div
         key="bp-modal"
         initial={{ opacity: 0, scale: 0.98, y: 8 }}
@@ -583,7 +1055,7 @@ function ModalShell({ onClose }: { onClose: () => void }) {
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
           padding: '14px 20px',
           background: '#ffffff',
-          borderBottom: '1px solid #e2e8f0',
+          borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: '#e2e8f0',
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -597,7 +1069,8 @@ function ModalShell({ onClose }: { onClose: () => void }) {
             title="סגור (Esc)"
             style={{
               width: 32, height: 32, borderRadius: '8px',
-              background: 'none', border: '1px solid #e2e8f0',
+              background: 'none',
+              borderWidth: '1px', borderStyle: 'solid', borderColor: '#e2e8f0',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', color: colors.text.tertiary,
               transition: 'background 0.15s, color 0.15s', padding: 0,
@@ -611,7 +1084,11 @@ function ModalShell({ onClose }: { onClose: () => void }) {
 
         {/* Canvas */}
         <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
-          <TreeDataLoader transformRef={transformRef} treeRef={treeRef} animDone={animDone} />
+          <TreeDataLoader
+            transformRef={transformRef}
+            treeRef={treeRef}
+            animDone={animDone}
+          />
         </div>
       </motion.div>
     </>

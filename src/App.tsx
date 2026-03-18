@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useMatch, useLocation } from 'react-router-dom';
-import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand } from 'lucide-react';
+import { TreePine, X, LogOut, LogIn, Plus, Minus, Maximize2, Expand, Pencil, Check } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import { LoginModal } from './components/auth/LoginModal';
 import { ProfileEditModal } from './components/auth/ProfileEditModal';
@@ -14,7 +14,7 @@ import { TasksDashboard } from './components/tasks/TasksDashboard';
 import { TaskPageContent } from './components/tasks/TaskPage';
 import { QuickViewModal } from './components/tasks/QuickViewModal';
 import { WorkItemRow } from './components/ui/WorkItemRow';
-import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, type MedicalTask } from './lib/supabase-hooks';
+import { useTasks, useProfiles, useProjects, updateTask, createTask, deleteTask as deleteTaskFromSupabase, renameCategory as renameCategoryInDB, updateCategoryColor as updateCategoryColorInDB, moveTaskToCategory, createSuperCategoryGroup, setGroupParent, renameGroup, deleteSuperCategoryGroup, type MedicalTask, type GroupInfo } from './lib/supabase-hooks';
 import { CommandCenter } from './components/dashboard/CommandCenter';
 import { BigPictureModal } from './components/dashboard/BigPicturePanel';
 import { BottomNav, type MobileTab } from './components/BottomNav';
@@ -320,7 +320,7 @@ function App() {
   const effectiveProjectId = user && projects.length > 0 ? projects[0].id : null;
 
   // Load tasks from Supabase for the effective project (null = no fetch)
-  const { tasks: supabaseTasks } = useTasks(user ? effectiveProjectId : null);
+  const { tasks: supabaseTasks, groups: dbGroups } = useTasks(user ? effectiveProjectId : null);
 
   // Guest view (not logged in) → show mock data.
   // User view (logged in) → show their project's tasks from Supabase.
@@ -352,6 +352,44 @@ function App() {
   const [hoveredAssigneeTaskId, setHoveredAssigneeTaskId] = useState<string | null>(null);
   const [treeZoom, setTreeZoom] = useState(typeof window !== 'undefined' && window.innerWidth < 768 ? 0.5 : 1.0);
   const [treeFullscreen, setTreeFullscreen] = useState(false);
+  const [treeEditMode, setTreeEditMode] = useState(false);
+  const [, setTreeDraggedTaskId] = useState<string | null>(null);
+  const [treeDragOverCategory, setTreeDragOverCategory] = useState<string | null>(null);
+  const [treeDraggedCategory, setTreeDraggedCategory] = useState<string | null>(null);
+  const [treeDragOverSuperCat, setTreeDragOverSuperCat] = useState<string | null>(null);
+  const [treeDragOverCatHeader, setTreeDragOverCatHeader] = useState<string | null>(null);
+  // superCategoryMap is derived from DB groups (parent_id relationships) — not localStorage
+  const superCatGroupMap = useMemo<Map<string, GroupInfo>>(() => {
+    const parentIds = new Set(dbGroups.filter(g => g.parent_id).map(g => g.parent_id!));
+    const result = new Map<string, GroupInfo>();
+    for (const g of dbGroups) {
+      if (parentIds.has(g.id)) result.set(g.name, g);
+    }
+    return result;
+  }, [dbGroups]);
+
+  const categoryGroupMap = useMemo<Map<string, GroupInfo>>(() => {
+    // Category groups are those that tasks actually reference (by groupId)
+    const groupIdSet = new Set(supabaseTasks.map(t => t.groupId).filter(Boolean) as string[]);
+    const result = new Map<string, GroupInfo>();
+    for (const g of dbGroups) {
+      if (groupIdSet.has(g.id)) result.set(g.name, g);
+    }
+    return result;
+  }, [dbGroups, supabaseTasks]);
+
+  const superCategoryMap = useMemo<Record<string, string>>(() => {
+    const map: Record<string, string> = {};
+    for (const g of dbGroups) {
+      if (g.parent_id) {
+        const parent = dbGroups.find(p => p.id === g.parent_id);
+        if (parent) map[g.name] = parent.name;
+      }
+    }
+    return map;
+  }, [dbGroups]);
+  const [showAddSuperCategory, setShowAddSuperCategory] = useState(false);
+  const [newSuperCatName, setNewSuperCatName] = useState('');
   const [showTreeZoomHint, setShowTreeZoomHint] = useState(() => {
     // Show hint only if user hasn't seen it before
     const hasSeenHint = localStorage.getItem('grow.treeZoomHintSeen');
@@ -446,6 +484,33 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
   }, [viewMode]);
+
+  // One-time migration: move super-category grouping from localStorage into DB (parent_id on groups)
+  useEffect(() => {
+    if (!effectiveProjectId || dbGroups.length === 0) return;
+    const stored = localStorage.getItem('grow.superCategories');
+    if (!stored) return;
+    try {
+      const localMap: Record<string, string> = JSON.parse(stored);
+      if (Object.keys(localMap).length === 0) { localStorage.removeItem('grow.superCategories'); return; }
+      // If the DB already has parent relationships, migration is done
+      if (dbGroups.some(g => g.parent_id)) { localStorage.removeItem('grow.superCategories'); return; }
+      const localCategoryGroupMap = new Map(dbGroups.map(g => [g.name, g]));
+      const superCatNames = [...new Set(Object.values(localMap))];
+      (async () => {
+        for (const superCatName of superCatNames) {
+          const superCatId = await createSuperCategoryGroup(effectiveProjectId, superCatName);
+          const catsInGroup = Object.entries(localMap).filter(([, v]) => v === superCatName).map(([k]) => k);
+          await Promise.all(catsInGroup.map(catName => {
+            const catGroup = localCategoryGroupMap.get(catName);
+            return catGroup ? setGroupParent(catGroup.id, superCatId) : Promise.resolve();
+          }));
+        }
+        localStorage.removeItem('grow.superCategories');
+      })().catch(console.error);
+    } catch { /* ignore parse errors */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [effectiveProjectId, dbGroups.length > 0]);
 
   // Computed values
   const categories = [...new Set(tasks.map(t => t.category))];
@@ -694,6 +759,8 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
           setEditingTask(null);
         } else if (showKeyboardShortcuts) {
           setShowKeyboardShortcuts(false);
+        } else if (treeEditMode) {
+          setTreeEditMode(false);
         } else if (treeFullscreen) {
           setTreeFullscreen(false);
           setViewMode('command');
@@ -949,7 +1016,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         risksBlockers: '',
         dependencies: '',
         links: '',
-        milestones: [{ text: 'שלב ראשון', done: false }],
+        milestones: [],
         status: 'open',
         currentState: '',
         createdBy: null,
@@ -1038,6 +1105,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
         className="tree-pan-container"
         onMouseDown={(e) => {
           if ((e.target as HTMLElement).closest('button,input,a,[role="button"]')) return;
+          if (treeEditMode) return;
           const el = treePanRef.current;
           if (!el) return;
           treeDrag.current = { active: true, startX: e.clientX, startY: e.clientY, scrollLeft: el.scrollLeft, scrollTop: el.scrollTop };
@@ -1209,46 +1277,239 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             justifyContent: 'center',
             minWidth: 'fit-content'
           }}>
-            {categories.map(category => {
+            {/* Group categories by super-category */}
+            {(() => {
+              const superCats = [...new Set(Object.values(superCategoryMap))];
+              const ungrouped = categories.filter(c => !superCategoryMap[c]);
+              const groups: { label: string | null; cats: string[] }[] = [
+                ...superCats.map(sc => ({ label: sc, cats: categories.filter(c => superCategoryMap[c] === sc) })),
+                ...(ungrouped.length > 0 ? [{ label: null, cats: ungrouped }] : []),
+              ];
+              return groups.map(group => (
+                <div key={group.label ?? '__ungrouped'} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}>
+                  {group.label && (
+                    <>
+                      {/* Super-category node — buttons are OUTSIDE the drop zone to avoid drag interference */}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+
+                        {/* ✏ Rename — uses native prompt to avoid event/state issues */}
+                        {treeEditMode && (
+                          <button
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newName = window.prompt('שנה שם קבוצה:', group.label!);
+                              if (!newName || !newName.trim() || newName.trim() === group.label) return;
+                              const trimmed = newName.trim();
+                              const superCatGroup = superCatGroupMap.get(group.label!);
+                              if (superCatGroup) renameGroup(superCatGroup.id, trimmed).catch(console.error);
+                            }}
+                            title="שנה שם"
+                            style={{
+                              width: 22, height: 22, flexShrink: 0,
+                              background: '#eef2ff', color: '#6366f1',
+                              border: '1px solid #c7d2fe', borderRadius: 5,
+                              fontSize: 12, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              padding: 0,
+                            }}
+                          >✏</button>
+                        )}
+
+                        {/* Drop zone label / inline input */}
+                        <div
+                          onDragOver={treeEditMode ? (e) => {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = 'move';
+                            setTreeDragOverSuperCat(group.label);
+                          } : undefined}
+                          onDragLeave={treeEditMode ? () => setTreeDragOverSuperCat(null) : undefined}
+                          onDrop={treeEditMode ? (e) => {
+                            e.preventDefault();
+                            setTreeDragOverSuperCat(null);
+                            const catName = e.dataTransfer.getData('categoryName');
+                            if (!catName || !group.label) return;
+                            const catGroup = categoryGroupMap.get(catName);
+                            const superCatGroup = superCatGroupMap.get(group.label);
+                            if (catGroup && superCatGroup) setGroupParent(catGroup.id, superCatGroup.id).catch(console.error);
+                          } : undefined}
+                          style={{
+                            padding: '5px 14px',
+                            background: treeDragOverSuperCat === group.label ? 'rgba(99,102,241,0.15)' : '#ffffff',
+                            borderTopWidth: '4px', borderTopStyle: 'solid', borderTopColor: '#6366f1',
+                            borderRightWidth: '1px', borderRightStyle: 'solid', borderRightColor: treeDragOverSuperCat === group.label ? '#6366f1' : '#e0e7ff',
+                            borderBottomWidth: '1px', borderBottomStyle: 'solid', borderBottomColor: treeDragOverSuperCat === group.label ? '#6366f1' : '#e0e7ff',
+                            borderLeftWidth: '1px', borderLeftStyle: 'solid', borderLeftColor: treeDragOverSuperCat === group.label ? '#6366f1' : '#e0e7ff',
+                            borderRadius: 8,
+                            boxShadow: shadows.sm,
+                            transition: 'background 0.15s',
+                            minWidth: 100, textAlign: 'center',
+                          }}
+                        >
+                          <span style={{ fontSize: 12, fontWeight: 700, color: '#4338ca', whiteSpace: 'nowrap' }}>
+                            {group.label}
+                          </span>
+                        </div>
+
+                        {/* × Delete — outside drop zone */}
+                        {treeEditMode && (
+                          <button
+                            onMouseDown={(e) => { e.stopPropagation(); e.preventDefault(); }}
+                            onClick={() => {
+                              const superCatGroup = superCatGroupMap.get(group.label!);
+                              if (superCatGroup) deleteSuperCategoryGroup(superCatGroup.id).catch(console.error);
+                            }}
+                            title="מחק קבוצה"
+                            style={{
+                              width: 22, height: 22, flexShrink: 0,
+                              background: '#fee2e2', color: '#dc2626',
+                              border: '1px solid #fecaca', borderRadius: 5,
+                              fontSize: 14, fontWeight: 700,
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              padding: 0, lineHeight: 1,
+                            }}
+                          >×</button>
+                        )}
+                      </div>
+                      {/* Connector line down to category row */}
+                      <div style={{ width: 1, height: 14, background: '#c7d2fe' }} />
+                    </>
+                  )}
+                  <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                    {group.cats.map(category => {
               const categoryTasks = tasks
                 .filter(t => t.category === category)
                 .sort((a, b) => {
-                  // Active tasks (higher progress) float to top; inactive sink to bottom
                   const sa = Number(a.progress) * 10 + (a.assignedTo ? 1 : 0);
                   const sb = Number(b.progress) * 10 + (b.assignedTo ? 1 : 0);
                   return sb - sa;
                 });
-              const color = categoryTasks[0].color;
-              const avgProgress = Math.round(categoryTasks.reduce((sum, t) => sum + t.progress, 0) / categoryTasks.length);
+              const color = categoryTasks[0]?.color ?? '#94a3b8';
+              const avgProgress = Math.round(categoryTasks.reduce((sum, t) => sum + t.progress, 0) / (categoryTasks.length || 1));
+              const isDragTarget = treeEditMode && treeDragOverCategory === category;
 
               return (
-                <div key={category} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.md }}>
+                <div
+                  key={category}
+                  style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: spacing.md, opacity: treeDraggedCategory === category ? 0.4 : 1, transition: 'opacity 0.15s' }}
+                >
 
-                  {/* Category Node */}
-                  <div style={{
+                  {/* Category Node — draggable + drop target for nesting */}
+                  {(() => {
+                    const isNestTarget = treeEditMode && treeDragOverCatHeader === category && !!treeDraggedCategory && treeDraggedCategory !== category;
+                    return (
+                  <div
+                    draggable={treeEditMode ? true : false}
+                    onDragStart={treeEditMode ? (e) => {
+                      e.dataTransfer.effectAllowed = 'move';
+                      e.dataTransfer.setData('categoryName', category);
+                      e.dataTransfer.setData('categoryname', category);
+                      setTreeDraggedCategory(category);
+                    } : undefined}
+                    onDragEnd={() => { setTreeDraggedCategory(null); setTreeDragOverCatHeader(null); }}
+                    onDragOver={treeEditMode && treeDraggedCategory && treeDraggedCategory !== category ? (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = 'move';
+                      setTreeDragOverCatHeader(category);
+                    } : undefined}
+                    onDragLeave={treeEditMode ? () => setTreeDragOverCatHeader(null) : undefined}
+                    onDrop={treeEditMode && treeDraggedCategory && treeDraggedCategory !== category ? (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setTreeDragOverCatHeader(null);
+                      const childCat = e.dataTransfer.getData('categoryName');
+                      if (!childCat || childCat === category) return;
+                      setTreeDraggedCategory(null);
+                      // Both the dragged category AND the target become children of a new super-cat
+                      // named after the target category. Create the super-cat group in DB first.
+                      if (effectiveProjectId) {
+                        const childGroup = categoryGroupMap.get(childCat);
+                        const targetGroup = categoryGroupMap.get(category);
+                        createSuperCategoryGroup(effectiveProjectId, category).then(superCatId => {
+                          return Promise.all([
+                            childGroup ? setGroupParent(childGroup.id, superCatId) : Promise.resolve(),
+                            targetGroup ? setGroupParent(targetGroup.id, superCatId) : Promise.resolve(),
+                          ]);
+                        }).catch(console.error);
+                      }
+                    } : undefined}
+                    style={{
                     padding: '6px 10px',
-                    background: color + '22',
-                    border: `1px solid ${color}55`,
-                    borderTop: `4px solid ${color}`,
+                    background: isNestTarget ? '#ede9fe' : (isDragTarget ? color + '44' : color + '22'),
+                    // Use side-specific border props to avoid React shorthand conflict warnings
+                    borderTopWidth: '4px',
+                    borderTopStyle: 'solid',
+                    borderTopColor: isNestTarget ? '#7c3aed' : color,
+                    borderRightWidth: isNestTarget ? '2px' : (treeEditMode ? (isDragTarget ? '2px' : '2px') : '1px'),
+                    borderRightStyle: isNestTarget ? 'solid' : (treeEditMode ? (isDragTarget ? 'solid' : 'dashed') : 'solid'),
+                    borderRightColor: isNestTarget ? '#7c3aed' : (treeEditMode ? (isDragTarget ? color : color + '88') : color + '55'),
+                    borderBottomWidth: isNestTarget ? '2px' : (treeEditMode ? (isDragTarget ? '2px' : '2px') : '1px'),
+                    borderBottomStyle: isNestTarget ? 'solid' : (treeEditMode ? (isDragTarget ? 'solid' : 'dashed') : 'solid'),
+                    borderBottomColor: isNestTarget ? '#7c3aed' : (treeEditMode ? (isDragTarget ? color : color + '88') : color + '55'),
+                    borderLeftWidth: isNestTarget ? '2px' : (treeEditMode ? (isDragTarget ? '2px' : '2px') : '1px'),
+                    borderLeftStyle: isNestTarget ? 'solid' : (treeEditMode ? (isDragTarget ? 'solid' : 'dashed') : 'solid'),
+                    borderLeftColor: isNestTarget ? '#7c3aed' : (treeEditMode ? (isDragTarget ? color : color + '88') : color + '55'),
                     borderRadius: '8px',
                     width: '160px',
                     textAlign: 'center',
-                    boxShadow: shadows.sm,
-                    transition: 'all 0.3s ease'
+                    boxShadow: isNestTarget ? '0 0 0 3px rgba(124,58,237,0.25)' : (isDragTarget ? `0 0 0 3px ${color}44` : shadows.sm),
+                    transition: 'background 0.15s, box-shadow 0.15s',
+                    cursor: treeEditMode ? 'grab' : 'default',
                   }}>
-                    <div style={{ fontSize: '12px', fontWeight: 600, color: '#171717', marginBottom: '2px' }}>
+                    <div style={{ fontSize: '12px', fontWeight: 600, color: isNestTarget ? '#5b21b6' : '#171717', marginBottom: '2px' }}>
+                      {treeEditMode && <span style={{ fontSize: 10, marginLeft: 4, opacity: 0.5 }}>⠿</span>}
                       {category}
                     </div>
-                    <div style={{ fontSize: '10px', fontWeight: 300, color: color }}>
-                      {categoryTasks.length} משימות · {avgProgress}%
+                    <div style={{ fontSize: '10px', fontWeight: 300, color: isNestTarget ? '#7c3aed' : color }}>
+                      {isNestTarget ? '← שחרר ליצירת קבוצה' : `${categoryTasks.length} משימות · ${avgProgress}%`}
                     </div>
+                    {/* Remove from super-category button */}
+                    {treeEditMode && superCategoryMap[category] && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const catGroup = categoryGroupMap.get(category);
+                          if (catGroup) setGroupParent(catGroup.id, null).catch(console.error);
+                        }}
+                        title="הוצא מהקבוצה"
+                        style={{
+                          marginTop: 4,
+                          background: '#f1f5f9', color: '#64748b',
+                          border: 'none', borderRadius: 4,
+                          fontSize: 10, padding: '1px 6px',
+                          cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 2,
+                        }}
+                      >↗ הוצא מקבוצה</button>
+                    )}
                   </div>
+                    );
+                  })()}
 
                   {/* Connector: category → tasks */}
                   <div style={{ width: '1px', height: '14px', background: '#e2e8f0' }} />
 
-                  {/* Tasks */}
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', position: 'relative' }}>
+                  {/* Tasks — also a drop zone */}
+                  <div
+                    onDragOver={treeEditMode ? (e) => { e.preventDefault(); setTreeDragOverCategory(category); } : undefined}
+                    onDragLeave={treeEditMode ? () => setTreeDragOverCategory(null) : undefined}
+                    onDrop={treeEditMode ? async (e) => {
+                      e.preventDefault();
+                      setTreeDragOverCategory(null);
+                      const taskId = e.dataTransfer.getData('taskId');
+                      if (!taskId || !effectiveProjectId) return;
+                      const task = tasks.find(t => t.id === taskId);
+                      if (!task || task.category === category) return;
+                      try {
+                        await moveTaskToCategory(taskId, category, effectiveProjectId);
+                      } catch (err) {
+                        console.error('Move failed:', err);
+                        showToast('שגיאה בהעברת המשימה', 'error');
+                      }
+                      setTreeDraggedTaskId(null);
+                    } : undefined}
+                    style={{ display: 'flex', flexDirection: 'column', gap: '6px', alignItems: 'center', position: 'relative' }}
+                  >
                     {categoryTasks.map((task, idx) => {
                       const taskStatus  = task.status || 'open';
                       const isDone      = taskStatus === 'done';
@@ -1296,22 +1557,25 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                         {idx > 0 && <div style={{ width: '1px', height: '6px', background: '#e2e8f0' }} />}
 
                         <div
-                          onClick={() => navigate(`/task/${task.id}`)}
-                          onMouseEnter={() => setHoveredTaskInTree(task)}
-                          onMouseLeave={() => setHoveredTaskInTree(null)}
+                          onClick={treeEditMode ? undefined : () => navigate(`/task/${task.id}`)}
+                          draggable={treeEditMode}
+                          onDragStart={treeEditMode ? (e) => { e.dataTransfer.setData('taskId', task.id); setTreeDraggedTaskId(task.id); } : undefined}
+                          onDragEnd={treeEditMode ? () => { setTreeDraggedTaskId(null); setTreeDragOverCategory(null); } : undefined}
+                          onMouseEnter={() => { if (!treeEditMode) setHoveredTaskInTree(task); }}
+                          onMouseLeave={() => { if (!treeEditMode) setHoveredTaskInTree(null); }}
                           style={{
                             padding: '5px 8px 0 8px',
                             background: cardBg,
-                            border: cardBorder,
-                            ...(isActive ? { animation: 'treePulse 3s ease-in-out infinite' } : {}),
+                            border: treeEditMode ? `2px dashed ${color}88` : cardBorder,
+                            ...(isActive && !treeEditMode ? { animation: 'treePulse 3s ease-in-out infinite' } : {}),
                             borderRadius: '8px',
                             width: '160px',
                             height: 'auto',
                             minHeight: '62px',
-                            cursor: 'pointer',
+                            cursor: treeEditMode ? 'grab' : 'pointer',
                             transition: 'box-shadow 0.2s, transform 0.2s',
                             boxShadow: cardShadow,
-                            transform: cardTranslate,
+                            transform: treeEditMode ? 'none' : cardTranslate,
                             overflow: 'hidden',
                             position: 'relative',
                             zIndex: isPersonal ? 10 : hoveredTaskInTree?.id === task.id ? 20 : 1,
@@ -1536,6 +1800,44 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 </div>
               );
             })}
+                  </div>
+                </div>
+              ));
+            })()}
+
+            {/* Add category button — visible in edit mode */}
+            {treeEditMode && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, justifyContent: 'flex-start', paddingTop: 4 }}>
+                <button
+                  onClick={() => setShowAddCategory(true)}
+                  title="הוסף קטגוריה"
+                  style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    border: '2px dashed #cbd5e1', background: 'transparent',
+                    color: '#94a3b8', fontSize: 22, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#4f46e5'; e.currentTarget.style.color = '#4f46e5'; e.currentTarget.style.background = '#f0f0ff'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.background = 'transparent'; }}
+                >+</button>
+                <span style={{ fontSize: 9, color: '#94a3b8', whiteSpace: 'nowrap' }}>קטגוריה</span>
+                <button
+                  onClick={() => setShowAddSuperCategory(true)}
+                  title="הוסף על-קטגוריה"
+                  style={{
+                    width: 36, height: 36, borderRadius: 10,
+                    border: '2px dashed #c4b5fd', background: 'transparent',
+                    color: '#a78bfa', fontSize: 13, fontWeight: 700, cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    transition: 'all 0.15s',
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#7c3aed'; e.currentTarget.style.color = '#7c3aed'; e.currentTarget.style.background = '#f5f3ff'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#c4b5fd'; e.currentTarget.style.color = '#a78bfa'; e.currentTarget.style.background = 'transparent'; }}
+                >על</button>
+                <span style={{ fontSize: 9, color: '#94a3b8', whiteSpace: 'nowrap' }}>על-קטגוריה</span>
+              </div>
+            )}
           </div>
         </div>
         </div>
@@ -2929,6 +3231,28 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                 pointerEvents: 'auto',
               }}>
                 {/* Zoom In */}
+                {/* Edit mode toggle */}
+                <button
+                  onClick={() => setTreeEditMode(m => !m)}
+                  title={treeEditMode ? 'סיום עריכה (Esc)' : 'מצב עריכה'}
+                  style={{
+                    width: '36px', height: '36px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: 'none', borderRadius: '10px',
+                    background: treeEditMode ? '#7c3aed' : 'transparent',
+                    color: treeEditMode ? '#ffffff' : '#4f46e5',
+                    cursor: 'pointer', transition: 'background 0.15s, color 0.15s',
+                    boxShadow: treeEditMode ? '0 2px 8px rgba(124,58,237,0.35)' : 'none',
+                  }}
+                  onMouseEnter={(e) => { if (!treeEditMode) { e.currentTarget.style.background = '#f1f5f9'; } }}
+                  onMouseLeave={(e) => { if (!treeEditMode) { e.currentTarget.style.background = 'transparent'; } }}
+                >
+                  {treeEditMode ? <Check size={16} /> : <Pencil size={16} />}
+                </button>
+
+                {/* Divider */}
+                <div style={{ width: '24px', height: '1px', background: '#e2e8f0', margin: '2px 0' }} />
+
                 {([
                   { icon: <Plus size={16} />, onClick: zoomIn, title: 'הגדל (Zoom In)', label: 'הגדל' },
                   { icon: <Minus size={16} />, onClick: zoomOut, title: 'הקטן (Zoom Out)', label: 'הקטן' },
@@ -2952,7 +3276,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       color: '#475569',
                       cursor: 'pointer',
                       transition: 'background 0.15s, color 0.15s',
-                      marginBottom: i === 1 ? '4px' : 0, // gap between zoom pair and util pair
+                      marginBottom: i === 1 ? '4px' : 0,
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = '#f1f5f9';
@@ -3038,7 +3362,28 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                       boxShadow: '0 8px 32px rgba(0,0,0,0.10), 0 1.5px 6px rgba(0,0,0,0.06)',
                       padding: '6px',
                     }}>
-                      {([
+                      {/* Edit mode toggle */}
+                      <button
+                        onClick={() => setTreeEditMode(m => !m)}
+                        title={treeEditMode ? 'סיום עריכה (Esc)' : 'מצב עריכה'}
+                        style={{
+                          width: 32, height: 32, border: 'none', borderRadius: 9,
+                          background: treeEditMode ? '#7c3aed' : 'transparent',
+                          color: treeEditMode ? '#ffffff' : '#4f46e5',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', transition: 'background 0.15s, color 0.15s',
+                          boxShadow: treeEditMode ? '0 2px 8px rgba(124,58,237,0.35)' : 'none',
+                        }}
+                        onMouseEnter={(e) => { if (!treeEditMode) { e.currentTarget.style.background = '#e2e8f0'; } }}
+                        onMouseLeave={(e) => { if (!treeEditMode) { e.currentTarget.style.background = 'transparent'; } }}
+                      >
+                        {treeEditMode ? <Check size={15} /> : <Pencil size={15} />}
+                      </button>
+
+                      {/* Divider */}
+                      <div style={{ width: 22, height: 1, background: '#e2e8f0', margin: '2px 0' }} />
+
+                    {([
                         { icon: <Plus size={15} />,      fn: zoomIn,    title: 'הגדל' },
                         { icon: <Minus size={15} />,     fn: zoomOut,   title: 'הקטן' },
                         { icon: <Maximize2 size={14} />, fn: resetZoom, title: 'התאם למסך' },
@@ -4640,7 +4985,7 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
                   risksBlockers: formData.get('risksBlockers') as string || '',
                   dependencies: formData.get('dependencies') as string || '',
                   links: formData.get('links') as string || '',
-                  milestones: milestonesText.length > 0 ? milestonesText.map(text => ({ text, done: false })) : [{ text: 'שלב ראשון', done: false }],
+                  milestones: milestonesText.map(text => ({ text, done: false })),
                   status: 'open' as const,
                   currentState: '',
                   createdBy: null,
@@ -5386,6 +5731,66 @@ const OWNERS_STORAGE_KEY = 'grow.ownersDirectory.v1';
             }
           }}
         />
+      )}
+      {showAddSuperCategory && (
+        <>
+          <div onClick={() => setShowAddSuperCategory(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 9100 }} />
+          <div style={{
+            position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%,-50%)',
+            background: '#fff', borderRadius: 16, padding: '28px 24px', zIndex: 9101,
+            width: 320, boxShadow: '0 24px 64px rgba(0,0,0,0.18)', direction: 'rtl',
+          }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', marginBottom: 16 }}>הוסף על-קטגוריה</div>
+            <input
+              autoFocus
+              placeholder="שם הקבוצה..."
+              value={newSuperCatName}
+              onChange={(e) => setNewSuperCatName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && newSuperCatName.trim() && effectiveProjectId) {
+                  const name = newSuperCatName.trim();
+                  const ungrouped = categories.filter(c => !superCategoryMap[c]);
+                  createSuperCategoryGroup(effectiveProjectId, name).then(superCatId => {
+                    return Promise.all(ungrouped.map(catName => {
+                      const catGroup = categoryGroupMap.get(catName);
+                      return catGroup ? setGroupParent(catGroup.id, superCatId) : Promise.resolve();
+                    }));
+                  }).catch(console.error);
+                  setNewSuperCatName('');
+                  setShowAddSuperCategory(false);
+                }
+                if (e.key === 'Escape') setShowAddSuperCategory(false);
+              }}
+              style={{
+                width: '100%', padding: '10px 12px', borderRadius: 8,
+                border: '1.5px solid #e2e8f0', fontSize: 14, outline: 'none', marginBottom: 8,
+                boxSizing: 'border-box',
+              }}
+            />
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 16 }}>
+              הקטגוריות הקיימות ללא שיוך יצורפו אוטומטית. לאחר מכן ניתן לשייך קטגוריות ספציפיות.
+            </div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowAddSuperCategory(false)} style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #e2e8f0', background: 'none', cursor: 'pointer', fontSize: 13 }}>ביטול</button>
+              <button
+                onClick={() => {
+                  if (!newSuperCatName.trim() || !effectiveProjectId) return;
+                  const name = newSuperCatName.trim();
+                  const ungrouped = categories.filter(c => !superCategoryMap[c]);
+                  createSuperCategoryGroup(effectiveProjectId, name).then(superCatId => {
+                    return Promise.all(ungrouped.map(catName => {
+                      const catGroup = categoryGroupMap.get(catName);
+                      return catGroup ? setGroupParent(catGroup.id, superCatId) : Promise.resolve();
+                    }));
+                  }).catch(console.error);
+                  setNewSuperCatName('');
+                  setShowAddSuperCategory(false);
+                }}
+                style={{ padding: '8px 16px', borderRadius: 8, background: '#4f46e5', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}
+              >צור</button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );
