@@ -15,14 +15,11 @@ import { useAuth } from '@/contexts/AuthContext';
 // ── Config ─────────────────────────────────────────────────────────────────────
 
 
-const NAV_ITEMS = [
-  { id: 'foundations',  Icon: BookOpen,      label: 'יסודות'            },
-  { id: 'snapshot',     Icon: Activity,      label: 'תמונת מצב ויעדים' },
-  { id: 'participants', Icon: Users,         label: 'משתתפים'           },
-  { id: 'spec',         Icon: FileText,      label: 'אפיון'             },
-  { id: 'timeline',     Icon: ListChecks,    label: 'אבני דרך'          },
-  { id: 'outcome',      Icon: CheckCircle2,  label: 'תוצר סופי'         },
-  { id: 'discussion',   Icon: MessageSquare, label: 'דיון'              },
+const SCROLL_SECTIONS = [
+  { id: 'section-strategy',       label: 'אסטרטגיה ומדדים', color: '#3b82f6', Icon: BarChart2     },
+  { id: 'section-implementation', label: 'ביצוע וסיכונים',   color: '#f59e0b', Icon: FileText      },
+  { id: 'section-team',           label: 'צוות ומשתתפים',    color: '#10b981', Icon: Users         },
+  { id: 'section-completion',     label: 'סיום ותקשורת',     color: '#8b5cf6', Icon: MessageSquare },
 ] as const;
 
 // ── Shared style objects ───────────────────────────────────────────────────────
@@ -31,7 +28,7 @@ const cardStyle: React.CSSProperties = {
   background: '#ffffff',
   borderRadius: '16px',
   border: '1px solid #edf0f4',
-  padding: '20px',
+  padding: '14px 16px',
   boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
 };
 
@@ -109,7 +106,7 @@ function EditableArea({
   useEffect(() => {
     if (ref.current) {
       ref.current.style.height = 'auto';
-      ref.current.style.height = Math.max(ref.current.scrollHeight, minRows * 22) + 'px';
+      ref.current.style.height = Math.max(ref.current.scrollHeight, minRows * 19) + 'px';
     }
   }, [value, minRows]);
 
@@ -137,8 +134,8 @@ function EditableArea({
           resize: 'none',
           overflow: 'hidden',
           fontFamily: 'inherit',
-          fontSize: '13.5px',
-          lineHeight: '1.75',
+          fontSize: '13px',
+          lineHeight: '1.5',
           fontWeight: '400',
           color: value ? '#1e293b' : '#94a3b8',
           direction: 'rtl',
@@ -264,7 +261,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   }
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [activeSection, setActiveSection] = useState<string>('foundations');
+  const [activeSection, setActiveSection] = useState<string>('section-strategy');
   const [participantSearch, setParticipantSearch] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteSending, setInviteSending] = useState(false);
@@ -274,7 +271,14 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [sendingComment, setSendingComment] = useState(false);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<number>>(new Set());
   const [expandedOverviewCard, setExpandedOverviewCard] = useState<number | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [newMilestoneText, setNewMilestoneText] = useState('');
+
+  // Scroll-section refs for sticky side nav
+  const sectionStrategyRef       = useRef<HTMLDivElement>(null);
+  const sectionImplementationRef = useRef<HTMLDivElement>(null);
+  const sectionTeamRef           = useRef<HTMLDivElement>(null);
+  const sectionCompletionRef     = useRef<HTMLDivElement>(null);
 
   // Always-current ref so onBlur handlers don't use stale closure values
   const taskRef = useRef<MedicalTask | null>(null);
@@ -283,6 +287,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   // Seed local state once the remote task arrives
   useEffect(() => {
     if (fetchedTask && !localTask) setLocalTask(fetchedTask);
+  }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── One-time migration: currentState/goal → first metrics row ───────────────
+  const kpiMigrationRanRef = useRef(false);
+  useEffect(() => {
+    if (kpiMigrationRanRef.current || !fetchedTask) return;
+    if ((fetchedTask.kpis?.length ?? 0) > 0) return;
+    if (!fetchedTask.currentState && !fetchedTask.goal) return;
+    kpiMigrationRanRef.current = true;
+    const firstRow = { name: '', baseline: fetchedTask.currentState || '', baselineVal: '', target: fetchedTask.goal || '', targetVal: '', cadence: '', source: '', owner: '' };
+    const updated = { ...fetchedTask, kpis: [firstRow] };
+    setLocalTask(updated);
+    save(updated);
   }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Persist to Supabase ──────────────────────────────────────────────────────
@@ -336,8 +353,42 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     }
   };
 
-  // ── Tab switch ────────────────────────────────────────────────────────────────
-  const switchTab = (id: string) => setActiveSection(id);
+  // ── Scroll-spy: highlight the active section as the user scrolls ─────────────
+  useEffect(() => {
+    const entries = [
+      { id: 'section-strategy',       ref: sectionStrategyRef       },
+      { id: 'section-implementation', ref: sectionImplementationRef },
+      { id: 'section-team',           ref: sectionTeamRef           },
+      { id: 'section-completion',     ref: sectionCompletionRef     },
+    ];
+    const valid = entries.filter(e => e.ref.current);
+    if (valid.length === 0) return;
+    const obs = new IntersectionObserver(
+      changes => {
+        for (const ch of changes) {
+          if (ch.isIntersecting) {
+            const found = valid.find(e => e.ref.current === ch.target);
+            if (found) setActiveSection(found.id);
+          }
+        }
+      },
+      { rootMargin: '-10% 0px -65% 0px', threshold: 0 }
+    );
+    valid.forEach(e => obs.observe(e.ref.current!));
+    return () => obs.disconnect();
+  }, [localTask?.id]);
+
+  // ── Scroll to section ─────────────────────────────────────────────────────────
+  const scrollToSection = useCallback((id: string) => {
+    const refMap: Record<string, React.RefObject<HTMLDivElement>> = {
+      'section-strategy':       sectionStrategyRef,
+      'section-implementation': sectionImplementationRef,
+      'section-team':           sectionTeamRef,
+      'section-completion':     sectionCompletionRef,
+    };
+    refMap[id]?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActiveSection(id);
+  }, []);
 
   // ── Milestone toggle ─────────────────────────────────────────────────────────
   const toggleMilestone = async (idx: number) => {
@@ -449,7 +500,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const addKpi = useCallback(() => {
     setLocalTask(prev => {
       if (!prev) return prev;
-      const updated = { ...prev, kpis: [...(prev.kpis || []), { name: '', baseline: '', target: '', cadence: '', source: '', owner: '' }] };
+      const updated = { ...prev, kpis: [...(prev.kpis || []), { name: '', baseline: '', baselineVal: '', target: '', targetVal: '', cadence: '', source: '', owner: '' }] };
       save(updated);
       return updated;
     });
@@ -469,6 +520,68 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       if (!prev) return prev;
       const kpis = (prev.kpis || []).filter((_, i) => i !== idx);
       const updated = { ...prev, kpis };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  // ── Barrier list helpers ─────────────────────────────────────────────────────
+  const barrierMigrationRanRef = useRef(false);
+  useEffect(() => {
+    if (barrierMigrationRanRef.current || !fetchedTask) return;
+    if ((fetchedTask.barriers?.length ?? 0) > 0) return;
+    if (!fetchedTask.risksBlockers && !fetchedTask.mitigationPlan) return;
+    barrierMigrationRanRef.current = true;
+    const firstRow = { risk: fetchedTask.risksBlockers || '', mitigation: fetchedTask.mitigationPlan || '' };
+    const updated = { ...fetchedTask, barriers: [firstRow] };
+    setLocalTask(updated);
+    save(updated);
+  }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sectionCollapseInitRef = useRef(false);
+  useEffect(() => {
+    if (sectionCollapseInitRef.current || !fetchedTask) return;
+    sectionCollapseInitRef.current = true;
+    const c = new Set<string>();
+    if (fetchedTask.proposedSolution || fetchedTask.processName || fetchedTask.deliverables || (fetchedTask.barriers?.length ?? 0) > 0)
+      c.add('implementation');
+    if ((fetchedTask.milestones?.length ?? 0) > 0)
+      c.add('workplan');
+    if (fetchedTask.finalDeliverable || fetchedTask.rolloutNotes || fetchedTask.measuredResult || fetchedTask.lessonsLearned)
+      c.add('completion');
+    setCollapsedSections(c);
+  }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleSection = useCallback((id: string) => {
+    setCollapsedSections(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      return n;
+    });
+  }, []);
+
+  const addBarrier = useCallback(() => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, barriers: [...(prev.barriers || []), { risk: '', mitigation: '' }] };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  const patchBarrier = useCallback((idx: number, key: 'risk' | 'mitigation', value: string) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const barriers = (prev.barriers || []).map((b, i) => i === idx ? { ...b, [key]: value } : b);
+      return { ...prev, barriers };
+    });
+  }, []);
+
+  const deleteBarrier = useCallback((idx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const barriers = (prev.barriers || []).filter((_, i) => i !== idx);
+      const updated = { ...prev, barriers };
       save(updated);
       return updated;
     });
@@ -570,7 +683,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-grid, .tp-grid-3, .tp-grid-4 {
           display: grid;
           grid-template-columns: minmax(0, 1fr);
-          gap: 12px;
+          gap: 8px;
         }
         /* On mobile: span-2 must not overflow a 1-column grid */
         .tp-span-full  { grid-column: 1 / -1; }
@@ -589,44 +702,119 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           .tp-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         }
 
-        /* ── Tab bar ── */
-        .tp-tabbar {
+        /* ── Scroll layout: content + sticky side nav ── */
+        .tp-scroll-layout {
+          display: grid;
+          grid-template-columns: 1fr 168px;
+          gap: 0 20px;
+          align-items: start;
+        }
+        .tp-scroll-content { min-width: 0; }
+
+        /* ── Sticky side nav ── */
+        .tp-side-nav {
+          position: sticky;
+          top: 16px;
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e8edf3;
+          padding: 8px 6px;
+          box-shadow: 0 2px 8px rgba(15,23,42,0.06);
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .tp-nav-item {
           display: flex;
           align-items: center;
-          gap: 4px;
-          padding: 0 0 0 8px;
-          margin-bottom: 16px;
-          border-bottom: 1px solid #e2e8f0;
-          direction: rtl;
-          flex-wrap: nowrap;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-          scrollbar-width: none;
-        }
-        .tp-tabbar::-webkit-scrollbar { display: none; }
-        .tp-tab-button {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          padding: 4px 8px 10px;
+          gap: 7px;
+          padding: 8px 10px;
+          border-radius: 9px;
           border: none;
-          border-bottom: 2px solid transparent;
           background: transparent;
           cursor: pointer;
-          color: #64748b;
           font: inherit;
-          font-size: 12.5px;
+          font-size: 12px;
           font-weight: 500;
+          color: #64748b;
+          direction: rtl;
+          text-align: right;
+          transition: background 0.14s, color 0.14s;
           white-space: nowrap;
-          border-radius: 6px 6px 0 0;
-          transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
         }
-        .tp-tab-button:hover { color: #334155; background: rgba(0,0,0,0.025); }
-        .tp-tab-button[data-active="true"] {
-          color: #4f46e5;
+        .tp-nav-item:hover { background: #f1f5f9; color: #334155; }
+        .tp-nav-item[data-active="true"] {
+          background: var(--nav-bg, #eff6ff);
+          color: var(--nav-color, #2563eb);
           font-weight: 700;
-          border-bottom-color: #4f46e5;
         }
+
+        /* ── Section header bands ── */
+        .tp-section-band {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 8px 14px;
+          border-radius: 10px 10px 0 0;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.1px;
+          direction: rtl;
+          margin-bottom: 10px;
+          cursor: pointer;
+          user-select: none;
+        }
+        .tp-band-blue   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .tp-band-teal   { background: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; }
+        .tp-band-amber  { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+        .tp-band-green  { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        .tp-band-indigo { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+        .tp-band-purple { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+
+        /* ── KPI compare grid: Baseline | → | Target ── */
+        .tp-kpi-compare {
+          display: grid;
+          grid-template-columns: 1fr 28px 1fr;
+          gap: 0;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          overflow: hidden;
+          margin-bottom: 14px;
+        }
+        .tp-kpi-col-base  { background: #fef9f0; padding: 12px 14px; border-left: 1px solid #e2e8f0; }
+        .tp-kpi-col-arrow { display: flex; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 16px; }
+        .tp-kpi-col-tgt   { background: #f0fdf4; padding: 12px 14px; }
+        .tp-kpi-col-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; direction: rtl; }
+        .tp-kpi-col-base  .tp-kpi-col-label { color: #92400e; }
+        .tp-kpi-col-tgt   .tp-kpi-col-label { color: #166534; }
+
+        /* ── Barriers & Mitigation two-column table ── */
+        .tp-barriers-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          overflow: hidden;
+          margin-bottom: 12px;
+        }
+        .tp-barriers-col { padding: 12px 14px; direction: rtl; }
+        .tp-barriers-col:first-child { border-left: 1px solid #e2e8f0; background: #fff9f0; }
+        .tp-barriers-col:last-child  { background: #f0fdf4; }
+        .tp-barriers-col-header {
+          font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;
+          text-transform: uppercase; margin-bottom: 8px;
+          padding-bottom: 6px; border-bottom: 1px solid;
+          direction: rtl;
+        }
+        .tp-barriers-col:first-child .tp-barriers-col-header { color: #b45309; border-color: #fde68a; }
+        .tp-barriers-col:last-child  .tp-barriers-col-header { color: #166534; border-color: #bbf7d0; }
+        @media (max-width: 640px) {
+          .tp-barriers-grid { grid-template-columns: 1fr; }
+          .tp-barriers-col:first-child { border-left: none; border-bottom: 1px solid #e2e8f0; }
+        }
+
 
         /* ── Ghost action buttons ── */
         .tp-ghost-btn {
@@ -652,7 +840,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           background: #f8fafc;
           border-radius: 10px;
           border: 1px solid #eef2f7;
-          padding: 10px 12px;
+          padding: 6px 10px;
           direction: rtl;
           text-align: right;
           transition: border-color 0.14s, box-shadow 0.14s;
@@ -734,6 +922,20 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           transition: background 0.12s, border-color 0.12s;
         }
         .tp-kpi-add-btn:hover { background: #f5f3ff; border-color: #a5b4fc; }
+
+        /* ── Unified Metrics Table (compact) ── */
+        /* ── Unified Metrics Table (compact) ── */
+        .tp-mtable { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-top: 8px; background: white; }
+        .tp-mtable-head, .tp-mtable-row { display: grid; grid-template-columns: 1.4fr 1fr 24px 1fr 28px; direction: rtl; align-items: stretch; }
+        .tp-mtable-head { background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+        .tp-mtable-row { border-bottom: 1px solid #f0f2f5; transition: background 0.12s; background: white; min-height: 42px; }
+        .tp-mtable-row:last-child { border-bottom: none; }
+        .tp-mtable-row:hover { background: #fbfbff; }
+        .tp-mtable-hcell { padding: 6px 10px; font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 0.5px; text-transform: uppercase; text-align: right; display: flex; align-items: center; }
+        .tp-mtable-cell { padding: 5px 9px; min-width: 0; overflow: hidden; display: flex; align-items: center; }
+        .tp-mtable-arrow { display: flex; align-items: center; justify-content: center; color: #d1d5db; font-size: 14px; }
+        .tp-mtable-del { display: flex; align-items: center; justify-content: center; }
+        @media (max-width: 600px) { .tp-mtable-head { display: none; } .tp-mtable-row { grid-template-columns: 1fr 24px 1fr auto; } }
 
         /* ── Management Overview ── */
         .tp-overview {
@@ -905,7 +1107,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         /* ── Inline editable fields ── */
         .tp-editable {
           border-radius: 7px;
-          padding: 4px 8px;
+          padding: 2px 8px;
           border: 1px solid transparent;
           background: transparent;
           transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
@@ -1124,9 +1326,25 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         }
         .tp-check:hover:not(:checked) { border-color: #6366f1; }
 
-        /* ── Desktop: restore tab gap ── */
-        @media (min-width: 768px) {
-          .tp-tabbar { gap: 14px; padding: 0; }
+        /* ── Mobile: collapse side nav to top pill row ── */
+        @media (max-width: 767px) {
+          .tp-scroll-layout {
+            grid-template-columns: 1fr;
+          }
+          .tp-side-nav {
+            display: flex;
+            flex-direction: row;
+            overflow-x: auto;
+            position: relative;
+            top: 0;
+            border-radius: 10px;
+            padding: 6px;
+            gap: 4px;
+            scrollbar-width: none;
+            margin-bottom: 12px;
+          }
+          .tp-side-nav::-webkit-scrollbar { display: none; }
+          .tp-nav-item { white-space: nowrap; font-size: 11.5px; padding: 6px 10px; }
         }
 
         /* ── Mobile tweaks — density-first ── */
@@ -1685,7 +1903,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               {/* ── Modal footer ── */}
               <div className="tp-modal-footer">
                 <button
-                  onClick={() => { switchTab('timeline'); setExpandedMilestones(s => new Set([...s, mIdx])); setExpandedOverviewCard(null); }}
+                  onClick={() => { scrollToSection('section-implementation'); setExpandedMilestones(s => new Set([...s, mIdx])); setExpandedOverviewCard(null); }}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: '600', color: '#6366f1', cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, border-color 0.12s' }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; e.currentTarget.style.borderColor = '#a5b4fc'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
@@ -1709,26 +1927,415 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         );
       })()}
 
-      {/* ── Tab bar ──────────────────────────────────────────────────────────── */}
-      <nav className="tp-tabbar">
-        {NAV_ITEMS.map(({ id, Icon, label }) => {
-          const active = activeSection === id;
-          return (
+      {/* ── Scroll layout: content + sticky side nav ── */}
+      <div className="tp-scroll-layout">
+        <div className="tp-scroll-content">
+
+          {/* ══ SECTION 1: STRATEGY & METRICS (Blue) ══ */}
+          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '28px' }}>
+            <div className="tp-section-band tp-band-blue" onClick={() => toggleSection('strategy')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} /> אסטרטגיה ומדדים</span>
+              {collapsedSections.has('strategy') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('strategy') ? 'none' : undefined }}>
+              <div className="tp-grid-3">
+                <Field label="תיאור כללי" className="tp-span-full">
+                  <EditableArea value={task.description} onChange={v => patchLocal('description', v)} onBlur={saveLatest} placeholder="תאר בקצרה את הפרויקט — מה מתבצע, בידי מי, ובאיזה הקשר?" minRows={1} />
+                </Field>
+                <Field label="בעיה / הזדמנות" className="tp-span-full">
+                  <EditableArea value={task.problemStatement} onChange={v => patchLocal('problemStatement', v)} onBlur={saveLatest} placeholder="מהו הכשל, הבזבוז, העיכוב או הסיכון שמניע את הפרויקט?" minRows={1} />
+                </Field>
+                <Field label="קהל יעד">
+                  <EditableArea value={task.targetAudience ?? ''} onChange={v => patchLocal('targetAudience', v)} onBlur={saveLatest} placeholder="מחלקות, תפקידים, מטופלים..." minRows={1} />
+                </Field>
+              </div>
+
+              {/* ── Unified Metrics Table (compact) ── */}
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '10px', direction: 'rtl' }}>מדדים ויעדים</div>
+
+                {(task.kpis || []).length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1', marginBottom: '10px' }}>
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>לא הוגדרו מדדים עדיין — לחץ &quot;+ הוסף מדד&quot; כדי להתחיל.</p>
+                  </div>
+                ) : (
+                  <div className="tp-mtable">
+                    {/* Header */}
+                    <div className="tp-mtable-head">
+                      <div className="tp-mtable-hcell">שם המדד</div>
+                      <div className="tp-mtable-hcell">מצב בסיס</div>
+                      <div className="tp-mtable-hcell" />
+                      <div className="tp-mtable-hcell">יעד</div>
+                      <div className="tp-mtable-hcell" />
+                    </div>
+
+                    {/* Data rows */}
+                    {(task.kpis || []).map((kpi, idx) => (
+                      <div key={idx} className="tp-mtable-row">
+                        <div className="tp-mtable-cell">
+                          <EditableArea value={kpi.name} onChange={v => patchKpi(idx, 'name', v)} onBlur={saveLatest} placeholder="שם המדד" style={{ fontSize: '13px', fontWeight: '600' }} />
+                        </div>
+                        <div className="tp-mtable-cell">
+                          <EditableArea value={kpi.baseline} onChange={v => patchKpi(idx, 'baseline', v)} onBlur={saveLatest} placeholder="מצב נוכחי..." style={{ fontSize: '12px' }} />
+                        </div>
+                        <div className="tp-mtable-arrow">←</div>
+                        <div className="tp-mtable-cell">
+                          <EditableArea value={kpi.target} onChange={v => patchKpi(idx, 'target', v)} onBlur={saveLatest} placeholder="מצב רצוי..." style={{ fontSize: '12px' }} />
+                        </div>
+                        <div className="tp-mtable-del">
+                          <button className="tp-kpi-delete" onClick={() => deleteKpi(idx)} title="מחק מדד"><Trash2 size={12} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button className="tp-kpi-add-btn" onClick={addKpi} style={{ marginTop: '8px' }}><Plus size={13} /> הוסף מדד</button>
+              </div>
+            </section>
+          </div>
+
+          {/* ══ SECTION 2a: TEAM & PARTICIPANTS (Green) ══ */}
+          <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+            <div className="tp-section-band tp-band-green" onClick={() => toggleSection('team')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} /> צוות ומשתתפים</span>
+              {collapsedSections.has('team') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('team') ? 'none' : undefined }}>
+              <div className="tp-grid tp-grid-3">
+                <Field label="אחראי">
+                  <select value={task.assignedTo || ''} onChange={e => patch('assignedTo', e.target.value || null)} style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 14px', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}>
+                    <option value="">לא שויך</option>
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                  </select>
+                </Field>
+                <Field label="משתתפים" className="tp-span-full">
+                  {(task.participants || []).length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>אין משתתפים עדיין</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', direction: 'rtl' }}>
+                      {(task.participants || []).map(pid => {
+                        const profile = profiles.find(p => p.id === pid);
+                        if (!profile) return null;
+                        return (
+                          <span key={pid} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px 4px 6px', borderRadius: '20px', background: '#ede9fe', border: '1px solid #c7d2fe', color: '#6d28d9', fontSize: '12px', fontWeight: '500' }}>
+                            {profile.full_name || profile.email}
+                            <button onClick={() => patch('participants', task.participants.filter(id => id !== pid))} title="הסר" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '14px', height: '14px', borderRadius: '50%', background: 'rgba(109,40,217,0.15)', border: 'none', cursor: 'pointer', color: '#6d28d9', fontSize: '11px', fontWeight: '700', padding: 0, lineHeight: 1, fontFamily: 'inherit' }}>×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Field>
+                <Field label="הוסף משתתף" className="tp-span-full">
+                  <div style={{ position: 'relative', direction: 'rtl' }}>
+                    <input type="text" value={participantSearch} onChange={e => setParticipantSearch(e.target.value)} placeholder="חיפוש לפי שם או אימייל..." style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '14px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', background: '#f8fafc', direction: 'rtl' }} onFocus={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }} onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }} />
+                    {participantSearch.trim().length > 0 && (() => {
+                      const q = participantSearch.trim().toLowerCase();
+                      const opts = profiles.filter(p => !(task.participants || []).includes(p.id) && (p.full_name?.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q)));
+                      return (
+                        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, left: 0, zIndex: 20, background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                          {opts.length === 0 ? (
+                            <div style={{ padding: '10px 16px', fontSize: '13px', color: '#94a3b8' }}>אין תוצאות</div>
+                          ) : (
+                            opts.slice(0, 6).map(p => (
+                              <button key={p.id} onMouseDown={e => { e.preventDefault(); patch('participants', [...(task.participants || []), p.id]); setParticipantSearch(''); }} style={{ width: '100%', display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#334155', fontFamily: 'inherit', textAlign: 'right', direction: 'rtl', borderBottom: '1px solid #f1f5f9' }} onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }} onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}>
+                                {p.full_name || p.email}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </Field>
+                <Field label="הזמן לפי אימייל" className="tp-span-full">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', direction: 'rtl' }}>
+                      <input type="email" dir="ltr" value={inviteEmail} onChange={e => { setInviteEmail(e.target.value); setInviteStatus('idle'); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSendInvite(); } }} placeholder="כתובת אימייל להזמנה..." style={{ flex: 1, boxSizing: 'border-box', padding: '10px 14px', borderRadius: '14px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', background: '#f8fafc', direction: 'ltr', textAlign: 'left' }} onFocus={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }} onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }} />
+                      <button onClick={handleSendInvite} disabled={inviteSending || !inviteEmail.trim() || !profile} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '14px', background: inviteSending || !inviteEmail.trim() || !profile ? '#e2e8f0' : 'linear-gradient(135deg,#2563eb,#6366f1)', color: inviteSending || !inviteEmail.trim() || !profile ? '#94a3b8' : '#fff', border: 'none', cursor: inviteSending || !inviteEmail.trim() ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.15s' }}>
+                        {inviteSending ? <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'tpSpin 0.7s linear infinite' }} /> : <Send size={14} />}
+                        שלח הזמנה
+                      </button>
+                    </div>
+                    {inviteStatus === 'success' && <div style={{ fontSize: '12px', color: '#059669', background: '#d1fae5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '7px 12px' }}>✅ ההזמנה נשלחה בהצלחה! המוזמן יקבל אימייל עם קישור להרשמה.</div>}
+                    {inviteStatus === 'error' && <div style={{ fontSize: '12px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '7px 12px' }}>❌ {inviteError || 'שגיאה בשליחת ההזמנה — נסה שנית.'}</div>}
+                    {inviteStatus === 'idle' && <div style={{ fontSize: '11px', color: '#94a3b8' }}>המוזמן יקבל אימייל עם קישור להרשמה ל-GROW+ ויתווסף אוטומטית למשימה זו.</div>}
+                  </div>
+                </Field>
+              </div>
+            </section>
+          </div>
+
+          {/* ══ SECTION 2: BLUEPRINT — Characterization & Barriers (Teal) ══ */}
+          <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+            <div className="tp-section-band tp-band-teal" onClick={() => toggleSection('implementation')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} /> אפיון התהליך והחסמים</span>
+              {collapsedSections.has('implementation') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('implementation') ? 'none' : undefined }}>
+
+              {/* ── Project Characterization ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                <Field label="הפתרון המתוכנן / התהליך האידיאלי" className="tp-span-full">
+                  <EditableArea value={task.proposedSolution ?? ''} onChange={v => patchLocal('proposedSolution', v)} onBlur={saveLatest} placeholder="מה מתבצע ואיך זה עובד באופן אידיאלי — טכנולוגיה, תהליך, שינוי נוהל..." minRows={1} />
+                </Field>
+                <div className="tp-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                  <Field label="גישה ומתודולוגיה">
+                    <EditableArea value={task.processName} onChange={v => patchLocal('processName', v)} onBlur={saveLatest} placeholder="גישה טכנית, מסגרת עבודה, שיטת הטמעה..." minRows={1} />
+                  </Field>
+                  <Field label="תוצרים מצופים">
+                    <EditableArea value={task.deliverables ?? ''} onChange={v => patchLocal('deliverables', v)} onBlur={saveLatest} placeholder="מה יימסר בסוף — מערכת, דוח, נוהל, הדרכה..." minRows={1} />
+                  </Field>
+                </div>
+              </div>
+
+              {/* Barriers & Mitigation — dynamic table */}
+              <div style={{ fontSize: '11px', fontWeight: '700', color: '#0f766e', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '8px', direction: 'rtl' }}>חסמים ותוכנית מיתון</div>
+
+              {(task.barriers || []).length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', marginBottom: '8px' }}>
+                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>לא הוגדרו חסמים — לחץ &quot;+ הוסף חסם&quot; כדי להתחיל.</p>
+                </div>
+              ) : (
+                <div className="tp-mtable" style={{ marginBottom: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 28px', direction: 'rtl', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <div className="tp-mtable-hcell">חסם / סיכון</div>
+                    <div className="tp-mtable-hcell">פתרון / תוכנית מיתון</div>
+                    <div className="tp-mtable-hcell" />
+                  </div>
+                  {(task.barriers || []).map((b, idx) => (
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 28px', direction: 'rtl', alignItems: 'stretch', borderBottom: idx < (task.barriers || []).length - 1 ? '1px solid #f0f2f5' : 'none', background: 'white', minHeight: '38px' }}>
+                      <div className="tp-mtable-cell">
+                        <EditableArea value={b.risk} onChange={v => patchBarrier(idx, 'risk', v)} onBlur={saveLatest} placeholder="תאר את הסיכון או החסם..." style={{ fontSize: '12px' }} />
+                      </div>
+                      <div className="tp-mtable-cell" style={{ borderRight: '1px solid #f0f2f5' }}>
+                        <EditableArea value={b.mitigation} onChange={v => patchBarrier(idx, 'mitigation', v)} onBlur={saveLatest} placeholder="כיצד נתמודד עם זה..." style={{ fontSize: '12px' }} />
+                      </div>
+                      <div className="tp-mtable-del">
+                        <button className="tp-kpi-delete" onClick={() => deleteBarrier(idx)} title="מחק שורה"><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="tp-kpi-add-btn" onClick={addBarrier}><Plus size={13} /> הוסף חסם</button>
+
+            </section>
+          </div>
+
+          {/* ══ SECTION 2b: WORK PLAN — Milestones (Amber) ══ */}
+          <div style={{ scrollMarginTop: '16px', marginBottom: '28px' }}>
+            <div className="tp-section-band tp-band-indigo" onClick={() => toggleSection('workplan')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ListChecks size={15} /> תוכנית עבודה וביצוע (אבני דרך)
+                {task.milestones.length > 0 && (
+                  <span style={{ fontSize: '11px', fontWeight: '600', color: milestonesDone === task.milestones.length ? '#10b981' : '#4338ca', background: milestonesDone === task.milestones.length ? '#d1fae5' : '#e0e7ff', padding: '1px 8px', borderRadius: '10px' }}>
+                    {milestonesDone} / {task.milestones.length}
+                  </span>
+                )}
+              </span>
+              {collapsedSections.has('workplan') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('workplan') ? 'none' : undefined }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                {task.milestones.map((m, mIdx) => {
+                  const expanded = expandedMilestones.has(mIdx);
+                  const actions = m.actionItems || [];
+                  const actionsDone = actions.filter(a => a.done).length;
+                  const assignedProfile = m.assignedTo ? profiles.find(p => p.id === m.assignedTo) : null;
+                  const milestoneParticipantProfiles = task.participants.length > 0
+                    ? profiles.filter(p => task.participants.includes(p.id))
+                    : [];
+                  return (
+                    <div key={mIdx} className={`tp-milestone-row${m.done ? ' done' : ''}`}>
+                      <div className="tp-milestone-hd">
+                        <button onClick={() => toggleMilestone(mIdx)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center' }} title={m.done ? 'סמן כלא הושלם' : 'סמן כהושלם'}>
+                          {m.done ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#cbd5e1' }} />}
+                        </button>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <EditableArea value={m.text} onChange={v => patchMilestone(mIdx, 'text', v)} onBlur={saveLatest} placeholder="שם אבן הדרך..." style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#6ee7b7' : '#1e293b', textDecoration: m.done ? 'line-through' : 'none' }} />
+                        </div>
+                        <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} title="תאריך יעד" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: '11px', color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })(), fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0 }} />
+                        {actions.length > 0 && (
+                          <span style={{ fontSize: '10.5px', fontWeight: '600', flexShrink: 0, color: actionsDone === actions.length ? '#10b981' : '#6366f1', background: actionsDone === actions.length ? '#d1fae5' : '#ede9fe', padding: '1px 7px', borderRadius: '10px' }}>
+                            {actionsDone}/{actions.length}
+                          </span>
+                        )}
+                        <div style={{ flexShrink: 0, position: 'relative' }}>
+                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`} title="שייך אחראי">
+                            <UserCircle2 size={13} />
+                            <span>{assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0] : 'שייך'}</span>
+                            <select className="tp-assignee-select" value={m.assignedTo || ''} onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}>
+                              <option value="">ללא אחראי</option>
+                              {milestoneParticipantProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                            </select>
+                          </label>
+                        </div>
+                        <button className="tp-expand-btn" onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })} title={expanded ? 'כווץ' : 'הצג פעולות'}>
+                          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                          {actions.length === 0 ? 'פעולות' : ''}
+                        </button>
+                        <button onClick={() => deleteMilestone(mIdx)} title="מחק אבן דרך" className="tp-milestone-delete-btn">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                      {expanded && (
+                        <>
+                          {actions.map((a, aIdx) => {
+                            const participantProfiles = task.participants.length > 0 ? profiles.filter(p => task.participants.includes(p.id)) : [];
+                            const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
+                            return (
+                              <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>
+                                <div style={{ width: '1px', height: '100%', background: '#e2e8f0', flexShrink: 0, alignSelf: 'stretch', marginTop: '2px', marginBottom: '2px' }} />
+                                <input type="checkbox" className="tp-check" checked={a.done} onChange={e => patchActionItem(mIdx, aIdx, 'done', e.target.checked)} />
+                                <div style={{ flex: 1, minWidth: 0 }}>
+                                  <EditableArea value={a.text} onChange={v => patchActionItem(mIdx, aIdx, 'text', v)} onBlur={saveLatest} placeholder="תיאור הפעולה..." style={{ fontSize: '13px', color: a.done ? '#94a3b8' : '#334155', textDecoration: a.done ? 'line-through' : 'none' }} />
+                                </div>
+                                <label className={`tp-assignee-pill${!a.assignedTo ? ' unassigned' : ''}`} title="שייך לפעולה">
+                                  <UserCircle2 size={13} />
+                                  <span>{aProfile ? (aProfile.full_name || aProfile.email || '').split(' ')[0] : 'שייך'}</span>
+                                  <select className="tp-assignee-select" value={a.assignedTo || ''} onChange={e => patchActionItem(mIdx, aIdx, 'assignedTo', e.target.value || '')}>
+                                    <option value="">ללא שיוך</option>
+                                    {participantProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                                  </select>
+                                </label>
+                                <label className={`tp-action-date-pill${a.dueDate ? ' has-date' : ''}`} title="תאריך יעד" onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
+                                  <CalendarDays size={13} />
+                                  <span>{a.dueDate ? new Date(a.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך יעד'}</span>
+                                  <input type="date" value={a.dueDate || ''} onChange={e => patchActionItem(mIdx, aIdx, 'dueDate', e.target.value)} />
+                                </label>
+                                <button onClick={() => deleteActionItem(mIdx, aIdx)} title="הסר" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: '2px', borderRadius: '4px', fontSize: '13px', lineHeight: 1, flexShrink: 0, transition: 'color 0.12s' }} onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }} onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; }}>×</button>
+                              </div>
+                            );
+                          })}
+                          <button className="tp-add-action-btn" onClick={() => addActionItem(mIdx)}>
+                            <Plus size={12} />
+                            הוסף פעולה
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: task.milestones.length > 0 ? '4px' : '0' }}>
+                  <button onClick={() => addNewMilestone(newMilestoneText)} title="הוסף אבן דרך" style={{ flexShrink: 0, width: '24px', height: '24px', borderRadius: '50%', border: '1.5px dashed #94a3b8', background: newMilestoneText.trim() ? '#6366f1' : 'transparent', color: newMilestoneText.trim() ? '#fff' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s', padding: 0 }}
+                    onMouseEnter={e => { if (!newMilestoneText.trim()) { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#6366f1'; } }}
+                    onMouseLeave={e => { if (!newMilestoneText.trim()) { e.currentTarget.style.borderColor = '#94a3b8'; e.currentTarget.style.color = '#94a3b8'; } }}>
+                    <Plus size={13} />
+                  </button>
+                  <input type="text" dir="rtl" value={newMilestoneText} onChange={e => setNewMilestoneText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addNewMilestone(newMilestoneText); } if (e.key === 'Escape') setNewMilestoneText(''); }}
+                    placeholder="הוסף אבן דרך חדשה..."
+                    style={{ flex: 1, border: 'none', borderBottom: '1.5px dashed #e2e8f0', borderRadius: 0, padding: '4px 0', fontSize: '13px', color: '#334155', background: 'transparent', outline: 'none', fontFamily: 'inherit', textAlign: 'right', transition: 'border-color 0.15s' }}
+                    onFocus={e => { e.currentTarget.style.borderBottomColor = '#6366f1'; }}
+                    onBlur={e => { e.currentTarget.style.borderBottomColor = '#e2e8f0'; }} />
+                </div>
+              </div>
+            </section>
+          </div>
+
+
+          {/* ══ SECTION 4: COMPLETION & COMMUNICATION (Purple) ══ */}
+          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '28px' }}>
+            <div className="tp-section-band tp-band-purple" onClick={() => toggleSection('completion')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} /> סיום ותקשורת</span>
+              {collapsedSections.has('completion') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <section className="tp-section" style={{ ...cardStyle, borderColor: '#c7d2fe', borderWidth: '1.5px', boxShadow: '0 4px 20px rgba(79,70,229,0.08)', background: 'linear-gradient(160deg, #fefeff 0%, #f5f3ff 100%)', display: collapsedSections.has('completion') ? 'none' : undefined }}>
+              <div className="tp-grid-3" style={{ marginBottom: '16px' }}>
+                <Field label="תוצר מסירה" className="tp-span-2">
+                  <EditableArea value={task.finalDeliverable ?? ''} onChange={v => patchLocal('finalDeliverable', v)} onBlur={saveLatest} placeholder="מה הושלם ונמסר? — מערכת, נוהל, הדרכה, אב-טיפוס..." minRows={2} />
+                </Field>
+                <Field label="הערות Rollout">
+                  <EditableArea value={task.rolloutNotes ?? ''} onChange={v => patchLocal('rolloutNotes', v)} onBlur={saveLatest} placeholder="כיצד התבצע השילוב? תקלות? תגובות?" minRows={2} />
+                </Field>
+                <Field label="תוצאות מדודות" className="tp-span-2">
+                  <EditableArea value={task.measuredResult ?? ''} onChange={v => patchLocal('measuredResult', v)} onBlur={saveLatest} placeholder="KPI בפועל אחרי היישום — השווה לנקודת הבסיס." minRows={2} />
+                </Field>
+                <Field label="לקחים">
+                  <EditableArea value={task.lessonsLearned ?? ''} onChange={v => patchLocal('lessonsLearned', v)} onBlur={saveLatest} placeholder="מה למדנו? מה אחרת בפעם הבאה?" minRows={2} />
+                </Field>
+                <Field label="קישורים" className="tp-span-full">
+                  <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
+                </Field>
+              </div>
+
+              {/* Discussion */}
+              <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '8px', direction: 'rtl', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                דיון
+                {comments.length > 0 && <span style={{ fontSize: '11px', fontWeight: '600', color: '#6366f1', background: '#ede9fe', padding: '2px 8px', borderRadius: '10px', textTransform: 'none', letterSpacing: 'normal' }}>{comments.length}</span>}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+                {commentsLoading && <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}><div style={{ width: '20px', height: '20px', border: '2px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite' }} /></div>}
+                {!commentsLoading && comments.length === 0 && (
+                  <div style={{ padding: '32px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                    <MessageSquare size={32} style={{ color: '#cbd5e1', margin: '0 auto 12px' }} />
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>אין הודעות עדיין. התחל דיון...</p>
+                  </div>
+                )}
+                {comments.map(comment => {
+                  const isOwn = user?.id === comment.author_id;
+                  const authorName = comment.author?.full_name || comment.author?.email || 'משתמש לא ידוע';
+                  const date = new Date(comment.created_at);
+                  const timeStr = date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = date.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+                  return (
+                    <div key={comment.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '14px 16px', background: isOwn ? '#ede9fe' : '#f8fafc', borderRadius: '12px', border: `1px solid ${isOwn ? '#c7d2fe' : '#e2e8f0'}`, direction: 'rtl', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: isOwn ? '#6d28d9' : '#334155' }}>{authorName}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>{dateStr} • {timeStr}</span>
+                          {isOwn && (
+                            <button onClick={() => handleDeleteComment(comment.id)} title="מחק" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', fontSize: '11px', color: '#94a3b8', fontFamily: 'inherit', fontWeight: '600', borderRadius: '4px', transition: 'background 0.12s, color 0.12s' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.color = '#ef4444'; }} onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#94a3b8'; }}>מחק</button>
+                          )}
+                        </div>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.65', color: '#334155', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{comment.content}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              {user ? (
+                <div style={{ background: '#f8fafc', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '18px', direction: 'rtl' }}>
+                  <textarea value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="כתוב הודעה..." rows={3} style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', resize: 'none', background: 'white', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', fontFamily: 'inherit', color: '#334155', direction: 'rtl', textAlign: 'right' }} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSendComment(); } }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                    <button onClick={handleSendComment} disabled={!commentText.trim() || sendingComment} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: commentText.trim() ? 'pointer' : 'not-allowed', background: commentText.trim() ? '#6366f1' : '#e2e8f0', color: 'white', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit', transition: 'background 0.15s', opacity: sendingComment ? 0.6 : 1 }} onMouseEnter={e => { if (commentText.trim()) e.currentTarget.style.background = '#4f46e5'; }} onMouseLeave={e => { if (commentText.trim()) e.currentTarget.style.background = '#6366f1'; }}>
+                      <Send size={14} />
+                      {sendingComment ? 'שולח...' : 'שלח'}
+                    </button>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ctrl+Enter לשליחה</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center', background: '#fef3c7', borderRadius: '10px', border: '1px solid #fcd34d' }}>
+                  <p style={{ fontSize: '13px', color: '#92400e', margin: 0 }}>יש להתחבר כדי להשתתף בדיון</p>
+                </div>
+              )}
+            </section>
+          </div>
+
+        </div>{/* end tp-scroll-content */}
+
+        {/* ── Sticky side nav ── */}
+        <nav className="tp-side-nav">
+          {SCROLL_SECTIONS.map(({ id, label, color, Icon }) => (
             <button
               key={id}
-              onClick={() => switchTab(id)}
-              className={`tp-tab-button${id === 'outcome' ? ' outcome-tab' : ''}`}
-              data-active={active}
+              className="tp-nav-item"
+              data-active={activeSection === id}
+              style={{ '--nav-bg': color + '22', '--nav-color': color } as React.CSSProperties}
+              onClick={() => scrollToSection(id)}
             >
-              <Icon size={12} />
+              <Icon size={14} style={{ color: activeSection === id ? color : undefined, flexShrink: 0 }} />
               {label}
             </button>
-          );
-        })}
-      </nav>
+          ))}
+        </nav>
+      </div>{/* end tp-scroll-layout */}
 
-      {/* ── Tab panel — only the active section is rendered ─────────────────── */}
-      <div key={activeSection} style={{ animation: 'tpFadeIn 0.18s ease both' }}>
+      {/* ── Dead code: legacy tab panels (never rendered) ── */}
+      <div key={activeSection} style={{ display: 'none' }}>
 
         {/* FOUNDATIONS — יסודות */}
         {activeSection === 'foundations' && <Section icon={BookOpen} title="יסודות">
@@ -2612,7 +3219,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
         </Section>}
 
-      </div>
+      </div>{/* end legacy display:none wrapper */}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
