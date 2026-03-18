@@ -380,7 +380,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
   // ── Scroll to section ─────────────────────────────────────────────────────────
   const scrollToSection = useCallback((id: string) => {
-    const refMap: Record<string, React.RefObject<HTMLDivElement>> = {
+    const refMap: Record<string, React.RefObject<HTMLDivElement | null>> = {
       'section-strategy':       sectionStrategyRef,
       'section-implementation': sectionImplementationRef,
       'section-team':           sectionTeamRef,

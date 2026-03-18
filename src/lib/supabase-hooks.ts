@@ -72,7 +72,9 @@ export interface MedicalTask {
   kpis?: Array<{
     name: string;
     baseline: string;
+    baselineVal?: string;
     target: string;
+    targetVal?: string;
     cadence: string;
     source: string;
     owner: string;
@@ -83,6 +85,7 @@ export interface MedicalTask {
   approvers?: string[];     // Array of profile names/emails who must approve
   
   // ── Risks (סיכונים ותלויות) ──────────────────────────────────
+  barriers?: Array<{ risk: string; mitigation: string }>;
   risksBlockers: string;
   dependencies: string;
   links: string;
