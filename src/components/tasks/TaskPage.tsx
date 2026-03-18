@@ -542,20 +542,18 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   useEffect(() => {
     if (sectionCollapseInitRef.current || !fetchedTask) return;
     sectionCollapseInitRef.current = true;
-    const c = new Set<string>();
-    if (fetchedTask.proposedSolution || fetchedTask.processName || fetchedTask.deliverables || (fetchedTask.barriers?.length ?? 0) > 0)
-      c.add('implementation');
-    if ((fetchedTask.milestones?.length ?? 0) > 0)
-      c.add('workplan');
-    if (fetchedTask.finalDeliverable || fetchedTask.rolloutNotes || fetchedTask.measuredResult || fetchedTask.lessonsLearned)
-      c.add('completion');
-    setCollapsedSections(c);
-  }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
+    const saved = localStorage.getItem(`tp-sections-${taskId}`);
+    if (saved) {
+      try { setCollapsedSections(new Set(JSON.parse(saved) as string[])); return; } catch { /* ignore */ }
+    }
+    setCollapsedSections(new Set(['strategy', 'team', 'implementation', 'workplan', 'completion']));
+  }, [fetchedTask, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const toggleSection = useCallback((id: string) => {
     setCollapsedSections(prev => {
       const n = new Set(prev);
       n.has(id) ? n.delete(id) : n.add(id);
+      localStorage.setItem(`tp-sections-${taskId}`, JSON.stringify([...n]));
       return n;
     });
   }, []);
@@ -771,6 +769,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-band-green  { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
         .tp-band-indigo { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
         .tp-band-purple { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+        .tp-section-wrap { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease; }
+        .tp-section-wrap.tp-section-collapsed { grid-template-rows: 0fr; }
+        .tp-section-wrap > .tp-section { overflow: hidden; min-height: 0; }
 
         /* ── KPI compare grid: Baseline | → | Target ── */
         .tp-kpi-compare {
@@ -1937,7 +1938,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} /> אסטרטגיה ומדדים</span>
               {collapsedSections.has('strategy') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
-            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('strategy') ? 'none' : undefined }}>
+            <div className={`tp-section-wrap${collapsedSections.has('strategy') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
               <div className="tp-grid-3">
                 <Field label="תיאור כללי" className="tp-span-full">
                   <EditableArea value={task.description} onChange={v => patchLocal('description', v)} onBlur={saveLatest} placeholder="תאר בקצרה את הפרויקט — מה מתבצע, בידי מי, ובאיזה הקשר?" minRows={1} />
@@ -1993,6 +1995,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 <button className="tp-kpi-add-btn" onClick={addKpi} style={{ marginTop: '8px' }}><Plus size={13} /> הוסף מדד</button>
               </div>
             </section>
+            </div>{/* end tp-section-wrap strategy */}
           </div>
 
           {/* ══ SECTION 2a: TEAM & PARTICIPANTS (Green) ══ */}
@@ -2001,7 +2004,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} /> צוות ומשתתפים</span>
               {collapsedSections.has('team') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
-            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('team') ? 'none' : undefined }}>
+            <div className={`tp-section-wrap${collapsedSections.has('team') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
               <div className="tp-grid tp-grid-3">
                 <Field label="אחראי">
                   <select value={task.assignedTo || ''} onChange={e => patch('assignedTo', e.target.value || null)} style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 14px', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}>
@@ -2065,6 +2069,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 </Field>
               </div>
             </section>
+            </div>{/* end tp-section-wrap team */}
           </div>
 
           {/* ══ SECTION 2: BLUEPRINT — Characterization & Barriers (Teal) ══ */}
@@ -2073,7 +2078,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} /> אפיון התהליך והחסמים</span>
               {collapsedSections.has('implementation') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
-            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('implementation') ? 'none' : undefined }}>
+            <div className={`tp-section-wrap${collapsedSections.has('implementation') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
 
               {/* ── Project Characterization ── */}
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
@@ -2122,6 +2128,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <button className="tp-kpi-add-btn" onClick={addBarrier}><Plus size={13} /> הוסף חסם</button>
 
             </section>
+            </div>{/* end tp-section-wrap implementation */}
           </div>
 
           {/* ══ SECTION 2b: WORK PLAN — Milestones (Amber) ══ */}
@@ -2137,7 +2144,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               </span>
               {collapsedSections.has('workplan') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
-            <section className="tp-section" style={{ ...cardStyle, display: collapsedSections.has('workplan') ? 'none' : undefined }}>
+            <div className={`tp-section-wrap${collapsedSections.has('workplan') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
                 {task.milestones.map((m, mIdx) => {
                   const expanded = expandedMilestones.has(mIdx);
@@ -2233,6 +2241,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 </div>
               </div>
             </section>
+            </div>{/* end tp-section-wrap workplan */}
           </div>
 
 
@@ -2242,7 +2251,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} /> סיום ותקשורת</span>
               {collapsedSections.has('completion') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
-            <section className="tp-section" style={{ ...cardStyle, borderColor: '#c7d2fe', borderWidth: '1.5px', boxShadow: '0 4px 20px rgba(79,70,229,0.08)', background: 'linear-gradient(160deg, #fefeff 0%, #f5f3ff 100%)', display: collapsedSections.has('completion') ? 'none' : undefined }}>
+            <div className={`tp-section-wrap${collapsedSections.has('completion') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={{ ...cardStyle, borderColor: '#c7d2fe', borderWidth: '1.5px', boxShadow: '0 4px 20px rgba(79,70,229,0.08)', background: 'linear-gradient(160deg, #fefeff 0%, #f5f3ff 100%)' }}>
               <div className="tp-grid-3" style={{ marginBottom: '16px' }}>
                 <Field label="תוצר מסירה" className="tp-span-2">
                   <EditableArea value={task.finalDeliverable ?? ''} onChange={v => patchLocal('finalDeliverable', v)} onBlur={saveLatest} placeholder="מה הושלם ונמסר? — מערכת, נוהל, הדרכה, אב-טיפוס..." minRows={2} />
@@ -2313,6 +2323,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 </div>
               )}
             </section>
+            </div>{/* end tp-section-wrap completion */}
           </div>
 
         </div>{/* end tp-scroll-content */}
