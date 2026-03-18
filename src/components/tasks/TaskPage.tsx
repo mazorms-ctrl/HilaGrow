@@ -217,6 +217,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     return () => document.removeEventListener('mousedown', onOutside);
   }, [backupMenuOpen]);
 
+
   async function handleJsonBackup() {
     if (!task || backingUp) return;
     setBackupMenuOpen(false);
@@ -1209,19 +1210,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         /* ── Milestone rows — flat ── */
         .tp-milestone-row {
-          border-bottom: 1px solid #f1f4f8;
           background: transparent;
           transition: background 0.12s;
           overflow: hidden;
+          border-radius: 8px;
         }
-        .tp-milestone-row:last-child { border-bottom: none; }
         .tp-milestone-row:hover { background: #fafbff; }
         .tp-milestone-row.done:hover { background: #f0fdf9; }
+        .tp-milestone-row.done:hover .tp-milestone-delete-btn:hover { background: #d1fae5; color: #059669; }
         /* Manage / workspace trigger — ghost until row hover */
         .tp-manage-btn {
           display: inline-flex; align-items: center; justify-content: center;
           width: 26px; height: 26px; border: none; background: none; cursor: pointer;
-          color: #dde3f0; border-radius: 6px; transition: all 0.15s; flex-shrink: 0;
+          color: #dde3f0; border-radius: 9999px; transition: all 0.15s; flex-shrink: 0;
         }
         .tp-milestone-row:hover .tp-manage-btn { color: #a5b4fc; }
         .tp-manage-btn:hover { background: #eef2ff; color: #4f46e5; }
@@ -1433,7 +1434,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-admin-btn {
           display: inline-flex; align-items: center; justify-content: center;
           width: 26px; height: 26px; border: none; background: none; cursor: pointer;
-          color: #d1d5db; border-radius: 6px; transition: all 0.12s; flex-shrink: 0;
+          color: #d1d5db; border-radius: 9999px; transition: all 0.12s; flex-shrink: 0;
           font-size: 15px; font-family: inherit; line-height: 1;
         }
         .tp-admin-btn:hover { background: #f1f5f9; color: #64748b; }
@@ -1490,7 +1491,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         /* ── Milestone delete button — ghost until row hover ── */
         .tp-milestone-delete-btn {
           display: flex; align-items: center; justify-content: center;
-          padding: 3px; border-radius: 5px;
+          padding: 5px; border-radius: 9999px;
           border: none; background: transparent;
           cursor: pointer; color: #edf0f4;
           transition: color 0.15s, background 0.15s;
@@ -2448,10 +2449,10 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                                     </div>
                                     {/* Left: admin */}
                                     <div className="tp-action-admin">
-                                      <button className="tp-admin-btn promote" onClick={() => promoteActionItem(mIdx, aIdx)} title="קדם למשימה עיקרית">
+                                      <button className="tp-admin-btn promote tp-milestone-ghost" onClick={() => promoteActionItem(mIdx, aIdx)} title="קדם למשימה עיקרית">
                                         <CornerUpRight size={13} />
                                       </button>
-                                      <button className="tp-admin-btn del" onClick={() => deleteActionItem(mIdx, aIdx)} title="הסר">×</button>
+                                      <button className="tp-admin-btn del tp-milestone-ghost" onClick={() => deleteActionItem(mIdx, aIdx)} title="הסר">×</button>
                                     </div>
                                   </div>
                                   {noteOpen && (
