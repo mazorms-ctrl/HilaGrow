@@ -53,11 +53,15 @@ export interface MedicalTask {
     done: boolean;
     assignedTo?: string;        // profile ID
     dueDate?: string;           // ISO date string
+    updates?: string;           // Activity / status update log
+    meetingNotes?: string;      // Meeting summaries
+    parentRef?: string;         // "Born from" reference if promoted from an action item
     actionItems?: Array<{
       text: string;
       done: boolean;
       assignedTo?: string;      // profile ID
       dueDate?: string;         // ISO date string
+      notes?: string;           // Expandable detail/instructions
     }>;
   }>;
   

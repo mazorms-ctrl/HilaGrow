@@ -2,7 +2,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
-  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup,
+  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup, CornerUpRight,
+  StickyNote, Mail, CalendarPlus, Settings2,
 } from 'lucide-react';
 import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment } from '@/lib/supabase-hooks';
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -270,6 +271,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<number>>(new Set());
+  const [expandedActionNotes, setExpandedActionNotes] = useState<Set<string>>(new Set());
   const [expandedOverviewCard, setExpandedOverviewCard] = useState<number | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [newMilestoneText, setNewMilestoneText] = useState('');
@@ -465,7 +467,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   }, [save]);
 
   const patchActionItem = useCallback((
-    mIdx: number, aIdx: number, key: 'text' | 'done' | 'assignedTo' | 'dueDate', value: string | boolean
+    mIdx: number, aIdx: number, key: 'text' | 'done' | 'assignedTo' | 'dueDate' | 'notes', value: string | boolean
   ) => {
     setLocalTask(prev => {
       if (!prev) return prev;
@@ -495,6 +497,85 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       return updated;
     });
   }, [save]);
+
+  // ── Promote action item → standalone milestone ────────────────────────────
+  const promoteActionItem = useCallback((mIdx: number, aIdx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const parent = prev.milestones[mIdx];
+      const action = (parent.actionItems || [])[aIdx];
+      if (!action) return prev;
+      const newMilestone: MedicalTask['milestones'][0] = {
+        text: action.text,
+        done: action.done,
+        dueDate: action.dueDate,
+        parentRef: parent.text || `אבן דרך ${mIdx + 1}`,
+      };
+      const milestones = [
+        ...prev.milestones.map((m, i) =>
+          i !== mIdx ? m : { ...m, actionItems: (m.actionItems || []).filter((_, j) => j !== aIdx) }
+        ),
+        newMilestone,
+      ];
+      const updated = { ...prev, milestones };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  // ── Send milestone update email ────────────────────────────────────────────
+  const sendMilestoneUpdate = useCallback((mIdx: number) => {
+    const t = localTask ?? fetchedTask;
+    if (!t) return;
+    const m = t.milestones[mIdx];
+    if (!m) return;
+    const teamProfiles = profiles.filter(p => (t.participants || []).includes(p.id));
+    const emails = teamProfiles.map(p => p.email).filter(Boolean).join(',');
+    const title = m.text || 'אבן דרך';
+    const status = m.done ? '✅ הושלם' : `⏳ בתהליך${m.dueDate ? ` — תאריך יעד: ${m.dueDate}` : ''}`;
+    const lines: string[] = [`שלום,`, ``, `להלן עדכון על אבן הדרך: ${title}`, `סטטוס: ${status}`];
+    if (m.updates) lines.push(``, `מה נעשה:`, m.updates);
+    const actions = m.actionItems || [];
+    if (actions.length > 0) {
+      lines.push(``, `משימות המשך:`);
+      actions.forEach(a => lines.push(`${a.done ? '✅' : '⬜'} ${a.text}${a.dueDate ? ` (${a.dueDate})` : ''}`));
+    }
+    lines.push(``, `בברכה`);
+    const subject = encodeURIComponent(`עדכון: ${title}`);
+    const body = encodeURIComponent(lines.join('\n'));
+    window.open(`mailto:${emails}?subject=${subject}&body=${body}`);
+  }, [localTask, fetchedTask, profiles]);
+
+  // ── Send individual action-item update email ───────────────────────────────
+  const sendActionItemEmail = useCallback((mIdx: number, aIdx: number) => {
+    const t = localTask ?? fetchedTask;
+    if (!t) return;
+    const m = t.milestones[mIdx];
+    const a = (m?.actionItems || [])[aIdx];
+    if (!a) return;
+    const teamProfiles = profiles.filter(p => (t.participants || []).includes(p.id));
+    const emails = teamProfiles.map(p => p.email).filter(Boolean).join(',');
+    const status = a.done ? '✅ הושלם' : `⏳ בתהליך${a.dueDate ? ` — תאריך יעד: ${a.dueDate}` : ''}`;
+    const lines = [`שלום,`, ``, `עדכון על משימה: ${a.text}`, `סטטוס: ${status}`];
+    if (a.notes) lines.push(``, `הערות:`, a.notes);
+    lines.push(``, `(חלק מאבן הדרך: ${m.text || ''})`, ``, `בברכה`);
+    const subject = encodeURIComponent(`עדכון משימה: ${a.text}`);
+    const body = encodeURIComponent(lines.join('\n'));
+    window.open(`mailto:${emails}?subject=${subject}&body=${body}`);
+  }, [localTask, fetchedTask, profiles]);
+
+  // ── Add action item to Google Calendar ────────────────────────────────────
+  const addActionToCalendar = useCallback((a: { text: string; dueDate?: string; notes?: string }) => {
+    const dateStr = a.dueDate ? a.dueDate.replace(/-/g, '') : '';
+    const allDay = dateStr ? `${dateStr}/${dateStr}` : '';
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: a.text,
+      ...(allDay ? { dates: allDay } : {}),
+      ...(a.notes ? { details: a.notes } : {}),
+    });
+    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank');
+  }, []);
 
   // ── KPI list helpers ────────────────────────────────────────────────────────
   const addKpi = useCallback(() => {
@@ -753,15 +834,18 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           align-items: center;
           justify-content: space-between;
           gap: 8px;
-          padding: 8px 14px;
-          border-radius: 10px 10px 0 0;
+          padding: 10px 16px;
+          border-radius: 10px;
           font-size: 13px;
           font-weight: 700;
           letter-spacing: 0.1px;
           direction: rtl;
-          margin-bottom: 10px;
           cursor: pointer;
           user-select: none;
+          transition: border-radius 0.15s;
+        }
+        .tp-section-band.tp-band-open {
+          border-radius: 10px 10px 0 0;
         }
         .tp-band-blue   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
         .tp-band-teal   { background: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; }
@@ -769,9 +853,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-band-green  { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
         .tp-band-indigo { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
         .tp-band-purple { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
-        .tp-section-wrap { display: grid; grid-template-rows: 1fr; transition: grid-template-rows 0.3s ease; }
-        .tp-section-wrap.tp-section-collapsed { grid-template-rows: 0fr; }
-        .tp-section-wrap > .tp-section { overflow: hidden; min-height: 0; }
+        .tp-section-wrap { display: block; margin-top: 8px; }
+        .tp-section-wrap.tp-section-collapsed { display: none; }
 
         /* ── KPI compare grid: Baseline | → | Target ── */
         .tp-kpi-compare {
@@ -1124,16 +1207,31 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           box-shadow: 0 0 0 3px rgba(99,102,241,0.09);
         }
 
-        /* ── Milestone rows ── */
+        /* ── Milestone rows — flat ── */
         .tp-milestone-row {
-          border-radius: 10px;
-          border: 1px solid #e8edf3;
-          background: #ffffff;
-          transition: border-color 0.14s, box-shadow 0.14s;
+          border-bottom: 1px solid #f1f4f8;
+          background: transparent;
+          transition: background 0.12s;
           overflow: hidden;
         }
-        .tp-milestone-row:hover { border-color: #c7d2fe; box-shadow: 0 1px 6px rgba(99,102,241,0.07); }
-        .tp-milestone-row.done { border-color: #d1fae5; background: #f9fffe; }
+        .tp-milestone-row:last-child { border-bottom: none; }
+        .tp-milestone-row:hover { background: #fafbff; }
+        .tp-milestone-row.done:hover { background: #f0fdf9; }
+        /* Manage / workspace trigger — ghost until row hover */
+        .tp-manage-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 26px; height: 26px; border: none; background: none; cursor: pointer;
+          color: #dde3f0; border-radius: 6px; transition: all 0.15s; flex-shrink: 0;
+        }
+        .tp-milestone-row:hover .tp-manage-btn { color: #a5b4fc; }
+        .tp-manage-btn:hover { background: #eef2ff; color: #4f46e5; }
+        .tp-manage-btn.active { background: #eef2ff; color: #4f46e5; }
+        /* Ghost elements — invisible by default, appear on row hover */
+        .tp-milestone-ghost {
+          opacity: 0;
+          transition: opacity 0.15s, background 0.15s, color 0.15s;
+        }
+        .tp-milestone-row:hover .tp-milestone-ghost { opacity: 1; }
 
         /* ── Milestone header ── */
         .tp-milestone-hd {
@@ -1151,7 +1249,6 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           align-items: center;
           gap: 8px;
           padding: 6px 14px 6px 14px;
-          border-top: 1px solid #f1f5f9;
           direction: rtl;
           background: #fafbfc;
           transition: background 0.12s;
@@ -1159,7 +1256,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-action-row:hover { background: #f4f6f9; }
         .tp-action-row.done-action textarea { text-decoration: line-through; color: #94a3b8 !important; }
 
-        /* ── Assignee avatar pill ── */
+        /* ── Assignee avatar pill — ghost default, reveals on hover ── */
         .tp-assignee-pill {
           position: relative;
           overflow: hidden;
@@ -1168,24 +1265,22 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           gap: 5px;
           padding: 4px 10px 4px 7px;
           border-radius: 20px;
-          background: #ede9fe;
-          color: #6d28d9;
+          background: transparent;
+          color: #d1d5db;
           font-size: 11.5px;
           font-weight: 600;
           white-space: nowrap;
           cursor: pointer;
           border: 1px solid transparent;
           font-family: inherit;
-          transition: background 0.12s, border-color 0.12s;
+          transition: background 0.15s, border-color 0.15s, color 0.15s;
           flex-shrink: 0;
           user-select: none;
         }
-        .tp-assignee-pill:hover { background: #ddd6fe; border-color: #c4b5fd; }
-        .tp-assignee-pill.unassigned {
-          background: #f1f5f9;
-          color: #94a3b8;
-          border-color: transparent;
-        }
+        .tp-milestone-row:hover .tp-assignee-pill { color: #94a3b8; }
+        .tp-assignee-pill:hover { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }
+        .tp-assignee-pill.unassigned { color: #d1d5db; border-color: transparent; }
+        .tp-milestone-row:hover .tp-assignee-pill.unassigned { color: #94a3b8; }
         .tp-assignee-pill.unassigned:hover { background: #e2e8f0; color: #64748b; border-color: #cbd5e1; }
 
         /* ── Assignee dropdown — invisible full-cover overlay ── */
@@ -1254,6 +1349,110 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           margin: 0;
         }
 
+        /* ── Milestone workspace ── */
+        .tp-milestone-workspace {
+          background: #f8f8ff;
+          border: 1px solid #e0e7ff;
+          border-top: none;
+          border-radius: 0 0 10px 10px;
+          padding: 14px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          direction: rtl;
+        }
+        .tp-workspace-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: #4338ca;
+          letter-spacing: 0.4px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-bottom: 5px;
+        }
+        .tp-workspace-textarea {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid #e0e7ff;
+          border-radius: 8px;
+          padding: 9px 12px;
+          font-size: 13px;
+          font-family: inherit;
+          direction: rtl;
+          text-align: right;
+          color: #334155;
+          background: white;
+          resize: none;
+          min-height: 56px;
+          outline: none;
+          line-height: 1.55;
+          transition: border-color 0.15s;
+        }
+        .tp-workspace-textarea:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,0.1); }
+        .tp-workspace-divider { height: 1px; background: #e0e7ff; }
+        .tp-send-update-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 8px 16px;
+          border-radius: 8px;
+          border: none;
+          background: linear-gradient(135deg, #4f46e5, #6366f1);
+          color: white;
+          font-size: 13px;
+          font-weight: 600;
+          font-family: inherit;
+          cursor: pointer;
+          transition: opacity 0.15s;
+          align-self: flex-start;
+        }
+        .tp-send-update-btn:hover { opacity: 0.88; }
+        /* ── Action row v2: productivity group ── */
+        .tp-action-row { gap: 10px; padding: 7px 14px; }
+        .tp-action-productivity {
+          display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+          padding: 0 6px;
+        }
+        .tp-action-admin { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        /* Primary pill buttons */
+        .tp-pa-btn {
+          display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+          height: 24px; padding: 0 10px; cursor: pointer; flex-shrink: 0;
+          border-radius: 999px; font-size: 11px; font-weight: 600; font-family: inherit;
+          transition: all 0.18s; white-space: nowrap;
+        }
+        .tp-pa-btn.email { background: #eef2ff; color: #4f46e5; border: 1px solid #c7d2fe; }
+        .tp-pa-btn.email:hover { background: #4f46e5; color: white; border-color: #4f46e5; }
+        .tp-pa-btn.cal  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+        .tp-pa-btn.cal:hover  { background: #16a34a; color: white; border-color: #16a34a; }
+        .tp-pa-btn.note { background: transparent; color: #94a3b8; border: 1px solid #e2e8f0; }
+        .tp-pa-btn.note:hover  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+        .tp-pa-btn.note.active { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+        /* Admin ghost buttons */
+        .tp-admin-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 26px; height: 26px; border: none; background: none; cursor: pointer;
+          color: #d1d5db; border-radius: 6px; transition: all 0.12s; flex-shrink: 0;
+          font-size: 15px; font-family: inherit; line-height: 1;
+        }
+        .tp-admin-btn:hover { background: #f1f5f9; color: #64748b; }
+        .tp-admin-btn.del:hover { background: #fee2e2; color: #ef4444; }
+        .tp-admin-btn.promote:hover { background: #eef2ff; color: #4f46e5; }
+        .tp-action-notes-area {
+          width: 100%; box-sizing: border-box; margin: 4px 0 4px 0;
+          border: 1px dashed #c7d2fe; border-radius: 6px; padding: 7px 10px;
+          font-size: 12px; font-family: inherit; direction: rtl; text-align: right;
+          color: #475569; background: #f8f8ff; resize: none; outline: none;
+          line-height: 1.5; min-height: 38px;
+        }
+        .tp-action-notes-area:focus { border-color: #818cf8; background: white; }
+        .tp-milestone-parent-ref {
+          font-size: 10.5px; color: #6366f1; background: #ede9fe;
+          border-radius: 6px; padding: 1px 8px; display: inline-flex;
+          align-items: center; gap: 4px; margin-top: 2px; flex-shrink: 0;
+        }
+
         /* ── Add action button ── */
         .tp-add-action-btn {
           display: flex;
@@ -1288,16 +1487,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         }
         .tp-expand-btn:hover { background: #f1f5f9; color: #475569; }
 
-        /* ── Milestone delete button ── */
+        /* ── Milestone delete button — ghost until row hover ── */
         .tp-milestone-delete-btn {
           display: flex; align-items: center; justify-content: center;
           padding: 3px; border-radius: 5px;
           border: none; background: transparent;
-          cursor: pointer; color: #cbd5e1;
-          transition: color 0.12s, background 0.12s;
+          cursor: pointer; color: #edf0f4;
+          transition: color 0.15s, background 0.15s;
           flex-shrink: 0;
         }
-        .tp-milestone-delete-btn:hover { color: #ef4444; background: #fee2e2; }
+        .tp-milestone-row:hover .tp-milestone-delete-btn { color: #cbd5e1; }
+        .tp-milestone-delete-btn:hover { color: #ef4444 !important; background: #fee2e2; }
 
         /* ── Checkbox ── */
         .tp-check {
@@ -1933,8 +2133,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         <div className="tp-scroll-content">
 
           {/* ══ SECTION 1: STRATEGY & METRICS (Blue) ══ */}
-          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '28px' }}>
-            <div className="tp-section-band tp-band-blue" onClick={() => toggleSection('strategy')}>
+          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+            <div className={`tp-section-band tp-band-blue${!collapsedSections.has('strategy') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('strategy')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} /> אסטרטגיה ומדדים</span>
               {collapsedSections.has('strategy') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
@@ -2000,7 +2200,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
           {/* ══ SECTION 2a: TEAM & PARTICIPANTS (Green) ══ */}
           <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
-            <div className="tp-section-band tp-band-green" onClick={() => toggleSection('team')}>
+            <div className={`tp-section-band tp-band-green${!collapsedSections.has('team') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('team')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} /> צוות ומשתתפים</span>
               {collapsedSections.has('team') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
@@ -2074,7 +2274,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
           {/* ══ SECTION 2: BLUEPRINT — Characterization & Barriers (Teal) ══ */}
           <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
-            <div className="tp-section-band tp-band-teal" onClick={() => toggleSection('implementation')}>
+            <div className={`tp-section-band tp-band-teal${!collapsedSections.has('implementation') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('implementation')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} /> אפיון התהליך והחסמים</span>
               {collapsedSections.has('implementation') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
@@ -2132,8 +2332,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
 
           {/* ══ SECTION 2b: WORK PLAN — Milestones (Amber) ══ */}
-          <div style={{ scrollMarginTop: '16px', marginBottom: '28px' }}>
-            <div className="tp-section-band tp-band-indigo" onClick={() => toggleSection('workplan')}>
+          <div style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+            <div className={`tp-section-band tp-band-indigo${!collapsedSections.has('workplan') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('workplan')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ListChecks size={15} /> תוכנית עבודה וביצוע (אבני דרך)
                 {task.milestones.length > 0 && (
@@ -2158,70 +2358,120 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                   return (
                     <div key={mIdx} className={`tp-milestone-row${m.done ? ' done' : ''}`}>
                       <div className="tp-milestone-hd">
+                        {/* Checkbox toggle */}
                         <button onClick={() => toggleMilestone(mIdx)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center' }} title={m.done ? 'סמן כלא הושלם' : 'סמן כהושלם'}>
                           {m.done ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#cbd5e1' }} />}
                         </button>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <EditableArea value={m.text} onChange={v => patchMilestone(mIdx, 'text', v)} onBlur={saveLatest} placeholder="שם אבן הדרך..." style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#6ee7b7' : '#1e293b', textDecoration: m.done ? 'line-through' : 'none' }} />
+                        {/* Title + manage button as a single unit */}
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                            <EditableArea value={m.text} onChange={v => patchMilestone(mIdx, 'text', v)} onBlur={saveLatest} placeholder="שם אבן הדרך..." style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b' }} />
+                            {m.done && <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: '#94a3b8', pointerEvents: 'none' }} />}
+                            {m.parentRef && <span className="tp-milestone-parent-ref"><CornerUpRight size={10} /> מתוך: {m.parentRef}</span>}
+                          </div>
+                          {/* Manage workspace — sits right next to the title */}
+                          <button className={`tp-manage-btn${expanded ? ' active' : ''}`} onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })} title={expanded ? 'סגור מרחב עבודה' : 'פתח מרחב ניהול'}>
+                            <Settings2 size={14} />
+                          </button>
                         </div>
-                        <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} title="תאריך יעד" style={{ background: 'transparent', border: 'none', outline: 'none', fontSize: '11px', color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })(), fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0 }} />
+                        {/* Date ghost label */}
+                        <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: '500', cursor: 'pointer', position: 'relative', flexShrink: 0, color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })() }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
+                          <CalendarDays size={11} />
+                          <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : ''}</span>
+                          <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                        </label>
+                        {/* Progress badge */}
                         {actions.length > 0 && (
-                          <span style={{ fontSize: '10.5px', fontWeight: '600', flexShrink: 0, color: actionsDone === actions.length ? '#10b981' : '#6366f1', background: actionsDone === actions.length ? '#d1fae5' : '#ede9fe', padding: '1px 7px', borderRadius: '10px' }}>
+                          <span style={{ fontSize: '10px', fontWeight: '700', flexShrink: 0, letterSpacing: '0.2px', color: actionsDone === actions.length ? '#059669' : '#6366f1', background: actionsDone === actions.length ? '#f0fdf4' : '#f0f4ff', border: `1px solid ${actionsDone === actions.length ? '#d1fae5' : '#e0e7ff'}`, padding: '2px 8px', borderRadius: '999px' }}>
                             {actionsDone}/{actions.length}
                           </span>
                         )}
-                        <div style={{ flexShrink: 0, position: 'relative' }}>
-                          <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`} title="שייך אחראי">
-                            <UserCircle2 size={13} />
-                            <span>{assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0] : 'שייך'}</span>
-                            <select className="tp-assignee-select" value={m.assignedTo || ''} onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}>
-                              <option value="">ללא אחראי</option>
-                              {milestoneParticipantProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
-                            </select>
-                          </label>
-                        </div>
-                        <button className="tp-expand-btn" onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })} title={expanded ? 'כווץ' : 'הצג פעולות'}>
-                          {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                          {actions.length === 0 ? 'פעולות' : ''}
-                        </button>
-                        <button onClick={() => deleteMilestone(mIdx)} title="מחק אבן דרך" className="tp-milestone-delete-btn">
+                        {/* Assignee — ghost until row hover */}
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} className={`tp-assignee-pill tp-milestone-ghost${!m.assignedTo ? ' unassigned' : ''}`} title="שייך אחראי">
+                          <UserCircle2 size={13} />
+                          <span>{assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0] : 'שייך'}</span>
+                          <select className="tp-assignee-select" value={m.assignedTo || ''} onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}>
+                            <option value="">ללא אחראי</option>
+                            {milestoneParticipantProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                          </select>
+                        </label>
+                        {/* Delete — ghost until row hover */}
+                        <button onClick={() => deleteMilestone(mIdx)} title="מחק אבן דרך" className="tp-milestone-delete-btn tp-milestone-ghost">
                           <Trash2 size={13} />
                         </button>
                       </div>
                       {expanded && (
-                        <>
-                          {actions.map((a, aIdx) => {
-                            const participantProfiles = task.participants.length > 0 ? profiles.filter(p => task.participants.includes(p.id)) : [];
-                            const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
-                            return (
-                              <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>
-                                <div style={{ width: '1px', height: '100%', background: '#e2e8f0', flexShrink: 0, alignSelf: 'stretch', marginTop: '2px', marginBottom: '2px' }} />
-                                <input type="checkbox" className="tp-check" checked={a.done} onChange={e => patchActionItem(mIdx, aIdx, 'done', e.target.checked)} />
-                                <div style={{ flex: 1, minWidth: 0 }}>
-                                  <EditableArea value={a.text} onChange={v => patchActionItem(mIdx, aIdx, 'text', v)} onBlur={saveLatest} placeholder="תיאור הפעולה..." style={{ fontSize: '13px', color: a.done ? '#94a3b8' : '#334155', textDecoration: a.done ? 'line-through' : 'none' }} />
+                        <div className="tp-milestone-workspace">
+                          {/* Status Update */}
+                          <div>
+                            <div className="tp-workspace-label"><DatabaseBackup size={13} /> עדכון סטטוס / מה נעשה</div>
+                            <textarea
+                              className="tp-workspace-textarea"
+                              value={m.updates || ''}
+                              onChange={e => { patchMilestone(mIdx, 'updates', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                              placeholder="מה קדם מאז הפגישה האחרונה? מה הושלם? מה תקוע?"
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Action Items */}
+                          <div>
+                            <div className="tp-workspace-label"><ListChecks size={13} /> משימות המשך</div>
+                            {actions.map((a, aIdx) => {
+                              const noteKey = `${mIdx}-${aIdx}`;
+                              const noteOpen = expandedActionNotes.has(noteKey);
+                              return (
+                                <div key={aIdx}>
+                                  <div className={`tp-action-row${a.done ? ' done-action' : ''}`}>
+                                    {/* Right: status */}
+                                    <input type="checkbox" className="tp-check" checked={a.done} onChange={e => patchActionItem(mIdx, aIdx, 'done', e.target.checked)} />
+                                    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                                      <EditableArea value={a.text} onChange={v => patchActionItem(mIdx, aIdx, 'text', v)} onBlur={saveLatest} placeholder="תיאור המשימה..." style={{ fontSize: '13px', color: a.done ? '#94a3b8' : '#334155' }} />
+                                      {a.done && <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: '#94a3b8', pointerEvents: 'none' }} />}
+                                    </div>
+                                    {/* Center: productivity group */}
+                                    <div className="tp-action-productivity">
+                                      <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', height: '24px', padding: '0 8px', borderRadius: '999px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', position: 'relative', whiteSpace: 'nowrap', border: `1px solid ${a.dueDate ? '#c7d2fe' : '#e2e8f0'}`, color: a.dueDate ? '#4f46e5' : '#94a3b8', background: a.dueDate ? '#eef2ff' : 'transparent', transition: 'all 0.15s' }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
+                                        <CalendarDays size={11} />
+                                        <span>{a.dueDate ? new Date(a.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך יעד'}</span>
+                                        <input type="date" value={a.dueDate || ''} onChange={e => patchActionItem(mIdx, aIdx, 'dueDate', e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                                      </label>
+                                      <button className={`tp-pa-btn cal`} onClick={() => addActionToCalendar(a)} title="הוסף ליומן Google">
+                                        <CalendarPlus size={12} /> יומן
+                                      </button>
+                                      <button className={`tp-pa-btn note${noteOpen ? ' active' : ''}`} onClick={() => setExpandedActionNotes(s => { const n = new Set(s); n.has(noteKey) ? n.delete(noteKey) : n.add(noteKey); return n; })} title="הוסף הערה">
+                                        <StickyNote size={12} /> הערה
+                                      </button>
+                                      <button className="tp-pa-btn email" onClick={() => sendActionItemEmail(mIdx, aIdx)} title="שלח עדכון על משימה זו">
+                                        <Mail size={12} /> מייל
+                                      </button>
+                                    </div>
+                                    {/* Left: admin */}
+                                    <div className="tp-action-admin">
+                                      <button className="tp-admin-btn promote" onClick={() => promoteActionItem(mIdx, aIdx)} title="קדם למשימה עיקרית">
+                                        <CornerUpRight size={13} />
+                                      </button>
+                                      <button className="tp-admin-btn del" onClick={() => deleteActionItem(mIdx, aIdx)} title="הסר">×</button>
+                                    </div>
+                                  </div>
+                                  {noteOpen && (
+                                    <textarea
+                                      className="tp-action-notes-area"
+                                      value={a.notes || ''}
+                                      onChange={e => { patchActionItem(mIdx, aIdx, 'notes', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                      placeholder="הוסף הוראות, קישורים, או הקשר נוסף..."
+                                      rows={2}
+                                    />
+                                  )}
                                 </div>
-                                <label className={`tp-assignee-pill${!a.assignedTo ? ' unassigned' : ''}`} title="שייך לפעולה">
-                                  <UserCircle2 size={13} />
-                                  <span>{aProfile ? (aProfile.full_name || aProfile.email || '').split(' ')[0] : 'שייך'}</span>
-                                  <select className="tp-assignee-select" value={a.assignedTo || ''} onChange={e => patchActionItem(mIdx, aIdx, 'assignedTo', e.target.value || '')}>
-                                    <option value="">ללא שיוך</option>
-                                    {participantProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
-                                  </select>
-                                </label>
-                                <label className={`tp-action-date-pill${a.dueDate ? ' has-date' : ''}`} title="תאריך יעד" onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
-                                  <CalendarDays size={13} />
-                                  <span>{a.dueDate ? new Date(a.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך יעד'}</span>
-                                  <input type="date" value={a.dueDate || ''} onChange={e => patchActionItem(mIdx, aIdx, 'dueDate', e.target.value)} />
-                                </label>
-                                <button onClick={() => deleteActionItem(mIdx, aIdx)} title="הסר" style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#cbd5e1', padding: '2px', borderRadius: '4px', fontSize: '13px', lineHeight: 1, flexShrink: 0, transition: 'color 0.12s' }} onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }} onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; }}>×</button>
-                              </div>
-                            );
-                          })}
-                          <button className="tp-add-action-btn" onClick={() => addActionItem(mIdx)}>
-                            <Plus size={12} />
-                            הוסף פעולה
-                          </button>
-                        </>
+                              );
+                            })}
+                            <button className="tp-add-action-btn" onClick={() => addActionItem(mIdx)}>
+                              <Plus size={12} /> הוסף משימת המשך
+                            </button>
+                          </div>
+
+                        </div>
                       )}
                     </div>
                   );
@@ -2246,8 +2496,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
 
           {/* ══ SECTION 4: COMPLETION & COMMUNICATION (Purple) ══ */}
-          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '28px' }}>
-            <div className="tp-section-band tp-band-purple" onClick={() => toggleSection('completion')}>
+          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+            <div className={`tp-section-band tp-band-purple${!collapsedSections.has('completion') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('completion')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} /> סיום ותקשורת</span>
               {collapsedSections.has('completion') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
@@ -2561,7 +2811,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     {/* ── Milestone header row ── */}
                     <div className="tp-milestone-hd">
 
-                      {/* Toggle done */}
+                      {/* Checkbox toggle */}
                       <button
                         onClick={() => toggleMilestone(mIdx)}
                         style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center' }}
@@ -2573,96 +2823,67 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         }
                       </button>
 
-                      {/* Title — inline editable */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <EditableArea
-                          value={m.text}
-                          onChange={v => patchMilestone(mIdx, 'text', v)}
-                          onBlur={saveLatest}
-                          placeholder="שם אבן הדרך..."
-                          style={{
-                            fontSize: '13.5px',
-                            fontWeight: m.done ? '400' : '500',
-                            color: m.done ? '#6ee7b7' : '#1e293b',
-                            textDecoration: m.done ? 'line-through' : 'none',
-                          }}
-                        />
+                      {/* Title + manage button as a single unit */}
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                          <EditableArea
+                            value={m.text}
+                            onChange={v => patchMilestone(mIdx, 'text', v)}
+                            onBlur={saveLatest}
+                            placeholder="שם אבן הדרך..."
+                            style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b' }}
+                          />
+                          {m.done && <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: '#94a3b8', pointerEvents: 'none' }} />}
+                          {m.parentRef && <span className="tp-milestone-parent-ref"><CornerUpRight size={10} /> מתוך: {m.parentRef}</span>}
+                        </div>
+                        {/* Manage workspace — sits right next to the title */}
+                        <button
+                          className={`tp-manage-btn${expanded ? ' active' : ''}`}
+                          onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })}
+                          title={expanded ? 'כווץ' : 'הצג פעולות'}
+                        >
+                          <Settings2 size={14} />
+                        </button>
                       </div>
 
-                      {/* Due date */}
-                      <input
-                        type="date"
-                        value={m.dueDate || ''}
-                        onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)}
-                        title="תאריך יעד"
-                        style={{
-                          background: 'transparent', border: 'none', outline: 'none',
-                          fontSize: '11px', color: (() => {
-                            if (!m.dueDate || m.done) return '#94a3b8';
-                            const d = new Date(m.dueDate); d.setHours(0,0,0,0);
-                            const t = new Date(); t.setHours(0,0,0,0);
-                            return d < t ? '#ef4444' : '#64748b';
-                          })(),
-                          fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0,
-                        }}
-                      />
+                      {/* Date ghost label */}
+                      <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: '500', cursor: 'pointer', position: 'relative', flexShrink: 0, color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })() }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
+                        <CalendarDays size={11} />
+                        <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : ''}</span>
+                        <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                      </label>
 
-                      {/* Action items counter badge */}
+                      {/* Progress badge — pill */}
                       {actions.length > 0 && (
-                        <span style={{
-                          fontSize: '10.5px', fontWeight: '600', flexShrink: 0,
-                          color: actionsDone === actions.length ? '#10b981' : '#6366f1',
-                          background: actionsDone === actions.length ? '#d1fae5' : '#ede9fe',
-                          padding: '1px 7px', borderRadius: '10px',
-                        }}>
+                        <span style={{ fontSize: '10px', fontWeight: '700', flexShrink: 0, letterSpacing: '0.2px', color: actionsDone === actions.length ? '#059669' : '#6366f1', background: actionsDone === actions.length ? '#f0fdf4' : '#f0f4ff', border: `1px solid ${actionsDone === actions.length ? '#d1fae5' : '#e0e7ff'}`, padding: '2px 8px', borderRadius: '999px' }}>
                           {actionsDone}/{actions.length}
                         </span>
                       )}
 
-                      {/* Assignee pill */}
-                      <div style={{ flexShrink: 0, position: 'relative' }}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`}
-                          title="שייך אחראי"
-                        >
-                          <UserCircle2 size={13} />
-                          <span>
-                            {assignedProfile
-                              ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0]
-                              : 'שייך'}
-                          </span>
-                          <select
-                            className="tp-assignee-select"
-                            value={m.assignedTo || ''}
-                            onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
-                          >
-                            <option value="">ללא אחראי</option>
-                            {milestoneParticipantProfiles.map(p => (
-                              <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      {/* Expand / collapse */}
-                      <button
-                        className="tp-expand-btn"
-                        onClick={() => setExpandedMilestones(s => {
-                          const n = new Set(s);
-                          n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx);
-                          return n;
-                        })}
-                        title={expanded ? 'כווץ' : 'הצג פעולות'}
+                      {/* Assignee — ghost until row hover */}
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        className={`tp-assignee-pill tp-milestone-ghost${!m.assignedTo ? ' unassigned' : ''}`}
+                        title="שייך אחראי"
                       >
-                        {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                        {actions.length === 0 ? 'פעולות' : ''}
-                      </button>
+                        <UserCircle2 size={13} />
+                        <span>{assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0] : 'שייך'}</span>
+                        <select
+                          className="tp-assignee-select"
+                          value={m.assignedTo || ''}
+                          onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
+                        >
+                          <option value="">ללא אחראי</option>
+                          {milestoneParticipantProfiles.map(p => (
+                            <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                          ))}
+                        </select>
+                      </label>
 
-                      {/* Delete milestone */}
+                      {/* Delete — ghost until row hover */}
                       <button
                         onClick={() => deleteMilestone(mIdx)}
                         title="מחק אבן דרך"
-                        className="tp-milestone-delete-btn"
+                        className="tp-milestone-delete-btn tp-milestone-ghost"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -2679,9 +2900,6 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                           const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                           return (
                             <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>
-
-                              {/* Indent line */}
-                              <div style={{ width: '1px', height: '100%', background: '#e2e8f0', flexShrink: 0, alignSelf: 'stretch', marginTop: '2px', marginBottom: '2px' }} />
 
                               {/* Checkbox */}
                               <input
@@ -2751,18 +2969,11 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                                 />
                               </label>
 
-                              {/* Delete action item */}
+                              {/* Delete action item — ghost */}
                               <button
                                 onClick={() => deleteActionItem(mIdx, aIdx)}
                                 title="הסר"
-                                style={{
-                                  background: 'none', border: 'none', cursor: 'pointer',
-                                  color: '#cbd5e1', padding: '2px', borderRadius: '4px',
-                                  fontSize: '13px', lineHeight: 1, flexShrink: 0,
-                                  transition: 'color 0.12s',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-                                onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; }}
+                                className="tp-admin-btn del tp-milestone-ghost"
                               >
                                 ×
                               </button>
