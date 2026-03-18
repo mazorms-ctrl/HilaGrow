@@ -524,29 +524,6 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     });
   }, [save]);
 
-  // ── Send milestone update email ────────────────────────────────────────────
-  const sendMilestoneUpdate = useCallback((mIdx: number) => {
-    const t = localTask ?? fetchedTask;
-    if (!t) return;
-    const m = t.milestones[mIdx];
-    if (!m) return;
-    const teamProfiles = profiles.filter(p => (t.participants || []).includes(p.id));
-    const emails = teamProfiles.map(p => p.email).filter(Boolean).join(',');
-    const title = m.text || 'אבן דרך';
-    const status = m.done ? '✅ הושלם' : `⏳ בתהליך${m.dueDate ? ` — תאריך יעד: ${m.dueDate}` : ''}`;
-    const lines: string[] = [`שלום,`, ``, `להלן עדכון על אבן הדרך: ${title}`, `סטטוס: ${status}`];
-    if (m.updates) lines.push(``, `מה נעשה:`, m.updates);
-    const actions = m.actionItems || [];
-    if (actions.length > 0) {
-      lines.push(``, `משימות המשך:`);
-      actions.forEach(a => lines.push(`${a.done ? '✅' : '⬜'} ${a.text}${a.dueDate ? ` (${a.dueDate})` : ''}`));
-    }
-    lines.push(``, `בברכה`);
-    const subject = encodeURIComponent(`עדכון: ${title}`);
-    const body = encodeURIComponent(lines.join('\n'));
-    window.open(`mailto:${emails}?subject=${subject}&body=${body}`);
-  }, [localTask, fetchedTask, profiles]);
-
   // ── Send individual action-item update email ───────────────────────────────
   const sendActionItemEmail = useCallback((mIdx: number, aIdx: number) => {
     const t = localTask ?? fetchedTask;
