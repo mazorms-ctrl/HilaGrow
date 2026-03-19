@@ -3,7 +3,7 @@ import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
   Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup, CornerUpRight,
-  StickyNote, Mail, CalendarPlus, Paperclip, Download,
+  StickyNote, Mail, CalendarPlus, Paperclip, Download, Flag,
 } from 'lucide-react';
 import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment, fetchMilestoneAttachments, insertMilestoneAttachment, deleteMilestoneAttachmentRow, type MilestoneAttachment } from '@/lib/supabase-hooks';
 import { supabase } from '@/lib/supabase';
@@ -18,10 +18,11 @@ import { useAuth } from '@/contexts/AuthContext';
 
 
 const SCROLL_SECTIONS = [
-  { id: 'section-strategy',       label: 'אסטרטגיה ומדדים', color: '#3b82f6', Icon: BarChart2     },
-  { id: 'section-implementation', label: 'ביצוע וסיכונים',   color: '#f59e0b', Icon: FileText      },
-  { id: 'section-team',           label: 'צוות ומשתתפים',    color: '#10b981', Icon: Users         },
-  { id: 'section-completion',     label: 'סיום ותקשורת',     color: '#8b5cf6', Icon: MessageSquare },
+  { id: 'section-strategy',       label: 'אסטרטגיה ומדדים',            color: '#3b82f6', Icon: BarChart2,     accordionKey: 'strategy'       },
+  { id: 'section-team',           label: 'צוות ומשתתפים',              color: '#10b981', Icon: Users,         accordionKey: 'team'           },
+  { id: 'section-implementation', label: 'אפיון התהליך והחסמים',       color: '#0d9488', Icon: FileText,      accordionKey: 'implementation' },
+  { id: 'section-workplan',       label: 'תוכנית עבודה וביצוע',        color: '#6366f1', Icon: Flag,          accordionKey: 'workplan'       },
+  { id: 'section-completion',     label: 'סיום ותקשורת',               color: '#8b5cf6', Icon: MessageSquare, accordionKey: 'completion'     },
 ] as const;
 
 // ── Shared style objects ───────────────────────────────────────────────────────
@@ -282,9 +283,11 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
   // Scroll-section refs for sticky side nav
   const sectionStrategyRef       = useRef<HTMLDivElement>(null);
+  const sectionWorkplanRef       = useRef<HTMLDivElement>(null);
   const sectionImplementationRef = useRef<HTMLDivElement>(null);
   const sectionTeamRef           = useRef<HTMLDivElement>(null);
   const sectionCompletionRef     = useRef<HTMLDivElement>(null);
+  const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
 
   // Always-current ref so onBlur handlers don't use stale closure values
   const taskRef = useRef<MedicalTask | null>(null);
@@ -376,8 +379,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   useEffect(() => {
     const entries = [
       { id: 'section-strategy',       ref: sectionStrategyRef       },
-      { id: 'section-implementation', ref: sectionImplementationRef },
       { id: 'section-team',           ref: sectionTeamRef           },
+      { id: 'section-implementation', ref: sectionImplementationRef },
+      { id: 'section-workplan',       ref: sectionWorkplanRef       },
       { id: 'section-completion',     ref: sectionCompletionRef     },
     ];
     const valid = entries.filter(e => e.ref.current);
@@ -401,10 +405,26 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const scrollToSection = useCallback((id: string) => {
     const refMap: Record<string, React.RefObject<HTMLDivElement | null>> = {
       'section-strategy':       sectionStrategyRef,
-      'section-implementation': sectionImplementationRef,
       'section-team':           sectionTeamRef,
+      'section-implementation': sectionImplementationRef,
+      'section-workplan':       sectionWorkplanRef,
       'section-completion':     sectionCompletionRef,
     };
+    const accordionMap: Record<string, string> = {
+      'section-strategy':       'strategy',
+      'section-team':           'team',
+      'section-implementation': 'implementation',
+      'section-workplan':       'workplan',
+      'section-completion':     'completion',
+    };
+    // Expand the target accordion if it's collapsed
+    const key = accordionMap[id];
+    if (key) {
+      setCollapsedSections(prev => { const n = new Set(prev); n.delete(key); return n; });
+    }
+    // Brief glow highlight on the target section
+    setHighlightedSection(key ?? null);
+    setTimeout(() => setHighlightedSection(null), 1600);
     refMap[id]?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     setActiveSection(id);
   }, []);
@@ -840,16 +860,21 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         /* ── Scroll layout: content + sticky side nav ── */
         .tp-scroll-layout {
           display: grid;
-          grid-template-columns: 1fr 168px;
+          grid-template-columns: 1fr 190px;
           gap: 0 20px;
-          align-items: start;
+          /* no align-items — cells stretch to row height so sticky works */
         }
         .tp-scroll-content { min-width: 0; }
+        /* Wrapper column stretches to full content height; nav sticks inside it */
+        .tp-side-nav-col { min-width: 0; }
 
         /* ── Sticky side nav ── */
         .tp-side-nav {
           position: sticky;
           top: 16px;
+          max-height: calc(100vh - 48px);
+          overflow-y: auto;
+          scrollbar-width: none;
           background: #ffffff;
           border-radius: 14px;
           border: 1px solid #e8edf3;
@@ -859,6 +884,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           flex-direction: column;
           gap: 4px;
         }
+        .tp-side-nav::-webkit-scrollbar { display: none; }
         .tp-nav-item {
           display: flex;
           align-items: center;
@@ -2224,7 +2250,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         <div className="tp-scroll-content">
 
           {/* ══ SECTION 1: STRATEGY & METRICS (Blue) ══ */}
-          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'strategy' ? '0 0 0 3px #93c5fd, 0 0 20px rgba(59,130,246,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-blue${!collapsedSections.has('strategy') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('strategy')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} /> אסטרטגיה ומדדים</span>
               {collapsedSections.has('strategy') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -2290,7 +2316,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
 
           {/* ══ SECTION 2a: TEAM & PARTICIPANTS (Green) ══ */}
-          <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+          <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'team' ? '0 0 0 3px #6ee7b7, 0 0 20px rgba(16,185,129,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-green${!collapsedSections.has('team') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('team')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} /> צוות ומשתתפים</span>
               {collapsedSections.has('team') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -2364,7 +2390,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
 
           {/* ══ SECTION 2: BLUEPRINT — Characterization & Barriers (Teal) ══ */}
-          <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+          <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'implementation' ? '0 0 0 3px #5eead4, 0 0 20px rgba(13,148,136,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-teal${!collapsedSections.has('implementation') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('implementation')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} /> אפיון התהליך והחסמים</span>
               {collapsedSections.has('implementation') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -2423,7 +2449,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
 
           {/* ══ SECTION 2b: WORK PLAN — Milestones (Amber) ══ */}
-          <div style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+          <div id="section-workplan" ref={sectionWorkplanRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'workplan' ? '0 0 0 3px #a5b4fc, 0 0 20px rgba(99,102,241,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-indigo${!collapsedSections.has('workplan') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('workplan')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ListChecks size={15} /> תוכנית עבודה וביצוע (אבני דרך)
@@ -2619,7 +2645,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
 
           {/* ══ SECTION 4: COMPLETION & COMMUNICATION (Purple) ══ */}
-          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '16px' }}>
+          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'completion' ? '0 0 0 3px #c4b5fd, 0 0 20px rgba(139,92,246,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-purple${!collapsedSections.has('completion') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('completion')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} /> סיום ותקשורת</span>
               {collapsedSections.has('completion') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -2702,20 +2728,22 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         </div>{/* end tp-scroll-content */}
 
         {/* ── Sticky side nav ── */}
-        <nav className="tp-side-nav">
-          {SCROLL_SECTIONS.map(({ id, label, color, Icon }) => (
-            <button
-              key={id}
-              className="tp-nav-item"
-              data-active={activeSection === id}
-              style={{ '--nav-bg': color + '22', '--nav-color': color } as React.CSSProperties}
-              onClick={() => scrollToSection(id)}
-            >
-              <Icon size={14} style={{ color: activeSection === id ? color : undefined, flexShrink: 0 }} />
-              {label}
-            </button>
-          ))}
-        </nav>
+        <div className="tp-side-nav-col">
+          <nav className="tp-side-nav">
+            {SCROLL_SECTIONS.map(({ id, label, color, Icon }) => (
+              <button
+                key={id}
+                className="tp-nav-item"
+                data-active={activeSection === id}
+                style={{ '--nav-bg': color + '22', '--nav-color': color } as React.CSSProperties}
+                onClick={() => scrollToSection(id)}
+              >
+                <Icon size={14} style={{ color: activeSection === id ? color : undefined, flexShrink: 0 }} />
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
       </div>{/* end tp-scroll-layout */}
 
       {/* ── Dead code: legacy tab panels (never rendered) ── */}
