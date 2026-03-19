@@ -3,9 +3,10 @@ import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
   Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup, CornerUpRight,
-  StickyNote, Mail, CalendarPlus, Settings2,
+  StickyNote, Mail, CalendarPlus, Paperclip, Download,
 } from 'lucide-react';
-import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment } from '@/lib/supabase-hooks';
+import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment, fetchMilestoneAttachments, insertMilestoneAttachment, deleteMilestoneAttachmentRow, type MilestoneAttachment } from '@/lib/supabase-hooks';
+import { supabase } from '@/lib/supabase';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { exportSingleTask, exportSingleTaskAsPdf } from '@/services/backupService';
 import { sendTaskInvite } from '@/services/inviteService';
@@ -273,6 +274,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [sendingComment, setSendingComment] = useState(false);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<number>>(new Set());
   const [expandedActionNotes, setExpandedActionNotes] = useState<Set<string>>(new Set());
+  const [uploadingMilestone, setUploadingMilestone] = useState<number | null>(null);
+  const [attachmentsByMilestone, setAttachmentsByMilestone] = useState<Record<number, MilestoneAttachment[]>>({});
   const [expandedOverviewCard, setExpandedOverviewCard] = useState<number | null>(null);
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [newMilestoneText, setNewMilestoneText] = useState('');
@@ -291,6 +294,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   useEffect(() => {
     if (fetchedTask && !localTask) setLocalTask(fetchedTask);
   }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load milestone attachments from DB on mount
+  useEffect(() => {
+    if (!taskId) return;
+    fetchMilestoneAttachments(taskId).then(rows => {
+      const byIdx: Record<number, MilestoneAttachment[]> = {};
+      for (const row of rows) {
+        if (!byIdx[row.milestone_idx]) byIdx[row.milestone_idx] = [];
+        byIdx[row.milestone_idx].push(row);
+      }
+      setAttachmentsByMilestone(byIdx);
+    }).catch(() => null); // silently ignore if table doesn't exist yet
+  }, [taskId]);
 
   // ── One-time migration: currentState/goal → first metrics row ───────────────
   const kpiMigrationRanRef = useRef(false);
@@ -419,6 +435,68 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       return updated;
     });
   }, [save]);
+
+  // ── Milestone file upload / delete ────────────────────────────────────────
+  const uploadMilestoneFile = useCallback(async (mIdx: number, file: File) => {
+    if (!localTask) return;
+    setUploadingMilestone(mIdx);
+
+    // 1. Optimistic: show file immediately with a local blob URL
+    const tempId = crypto.randomUUID();
+    const localUrl = URL.createObjectURL(file);
+    const optimistic: MilestoneAttachment = {
+      id: tempId, task_id: localTask.id, milestone_idx: mIdx,
+      file_name: file.name, file_path: '', file_url: localUrl,
+      file_type: file.type, file_size: file.size, uploaded_at: new Date().toISOString(),
+    };
+    setAttachmentsByMilestone(prev => ({
+      ...prev,
+      [mIdx]: [...(prev[mIdx] || []), optimistic],
+    }));
+    setUploadingMilestone(null);
+
+    // 2. Upload to Supabase Storage
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${localTask.id}/${mIdx}/${Date.now()}_${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('milestone-attachments')
+        .upload(storagePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('milestone-attachments')
+        .getPublicUrl(storagePath);
+
+      // 3. Persist metadata to DB
+      const saved = await insertMilestoneAttachment({
+        task_id: localTask.id, milestone_idx: mIdx,
+        file_name: file.name, file_path: storagePath,
+        file_url: publicUrl, file_type: file.type, file_size: file.size,
+      });
+
+      // 4. Replace optimistic entry with the real DB row
+      setAttachmentsByMilestone(prev => ({
+        ...prev,
+        [mIdx]: (prev[mIdx] || []).map(a => a.id === tempId ? saved : a),
+      }));
+    } catch {
+      // Storage/DB not ready — file stays as session-only preview via blob URL
+    }
+  }, [localTask]);
+
+  const deleteMilestoneFile = useCallback(async (mIdx: number, attachmentId: string, filePath: string) => {
+    // Optimistic: remove from UI immediately
+    setAttachmentsByMilestone(prev => ({
+      ...prev,
+      [mIdx]: (prev[mIdx] || []).filter(a => a.id !== attachmentId),
+    }));
+    // Cleanup storage and DB row (fire-and-forget)
+    if (filePath) {
+      supabase.storage.from('milestone-attachments').remove([filePath]).catch(() => null);
+    }
+    deleteMilestoneAttachmentRow(attachmentId).catch(() => null);
+  }, []);
 
   // ── Delete milestone ──────────────────────────────────────────────────────
   const deleteMilestone = useCallback((mIdx: number) => {
@@ -1195,15 +1273,15 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-milestone-row:hover { background: #fafbff; }
         .tp-milestone-row.done:hover { background: #f0fdf9; }
         .tp-milestone-row.done:hover .tp-milestone-delete-btn:hover { background: #d1fae5; color: #059669; }
-        /* Manage / workspace trigger — ghost until row hover */
+        /* Manage / workspace trigger — labeled pill, always visible */
         .tp-manage-btn {
-          display: inline-flex; align-items: center; justify-content: center;
-          width: 26px; height: 26px; border: none; background: none; cursor: pointer;
-          color: #dde3f0; border-radius: 9999px; transition: all 0.15s; flex-shrink: 0;
+          display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+          height: 26px; padding: 0 10px; border: none; background: #f1f5f9; cursor: pointer;
+          color: #475569; border-radius: 9999px; transition: all 0.15s; flex-shrink: 0;
+          font-size: 11px; font-weight: 600; font-family: inherit; letter-spacing: 0.2px;
         }
-        .tp-milestone-row:hover .tp-manage-btn { color: #a5b4fc; }
-        .tp-manage-btn:hover { background: #eef2ff; color: #4f46e5; }
-        .tp-manage-btn.active { background: #eef2ff; color: #4f46e5; }
+        .tp-manage-btn:hover { background: #e2e8f0; color: #1e293b; }
+        .tp-manage-btn.active { background: #e0e7ff; color: #4338ca; }
         /* Ghost elements — invisible by default, appear on row hover */
         .tp-milestone-ghost {
           opacity: 0;
@@ -1244,21 +1322,19 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           padding: 4px 10px 4px 7px;
           border-radius: 20px;
           background: transparent;
-          color: #d1d5db;
+          color: #64748b;
           font-size: 11.5px;
           font-weight: 600;
           white-space: nowrap;
           cursor: pointer;
-          border: 1px solid transparent;
+          border: 1px solid #e2e8f0;
           font-family: inherit;
           transition: background 0.15s, border-color 0.15s, color 0.15s;
           flex-shrink: 0;
           user-select: none;
         }
-        .tp-milestone-row:hover .tp-assignee-pill { color: #94a3b8; }
         .tp-assignee-pill:hover { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }
-        .tp-assignee-pill.unassigned { color: #d1d5db; border-color: transparent; }
-        .tp-milestone-row:hover .tp-assignee-pill.unassigned { color: #94a3b8; }
+        .tp-assignee-pill.unassigned { color: #94a3b8; border-color: #e2e8f0; }
         .tp-assignee-pill.unassigned:hover { background: #e2e8f0; color: #64748b; border-color: #cbd5e1; }
 
         /* ── Assignee dropdown — invisible full-cover overlay ── */
@@ -1329,8 +1405,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
 
         /* ── Milestone workspace ── */
         .tp-milestone-workspace {
-          background: #f8f8ff;
-          border: 1px solid #e0e7ff;
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
           border-top: none;
           border-radius: 0 0 10px 10px;
           padding: 14px 16px;
@@ -1342,7 +1418,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-workspace-label {
           font-size: 11px;
           font-weight: 700;
-          color: #4338ca;
+          color: #475569;
           letter-spacing: 0.4px;
           display: flex;
           align-items: center;
@@ -1352,7 +1428,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-workspace-textarea {
           width: 100%;
           box-sizing: border-box;
-          border: 1px solid #e0e7ff;
+          border: 1px solid #e2e8f0;
           border-radius: 8px;
           padding: 9px 12px;
           font-size: 13px;
@@ -1367,8 +1443,45 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           line-height: 1.55;
           transition: border-color 0.15s;
         }
-        .tp-workspace-textarea:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129,140,248,0.1); }
-        .tp-workspace-divider { height: 1px; background: #e0e7ff; }
+        .tp-workspace-textarea:focus { border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(148,163,184,0.15); }
+        .tp-workspace-divider { height: 1px; background: #e2e8f0; }
+        /* ── File upload section ── */
+        .tp-file-upload-btn {
+          display: inline-flex; align-items: center; gap: 5px;
+          height: 24px; padding: 0 10px; border-radius: 9999px; cursor: pointer;
+          font-size: 11px; font-weight: 600; font-family: inherit;
+          background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+          transition: all 0.15s; white-space: nowrap;
+        }
+        .tp-file-upload-btn:hover { background: #e2e8f0; color: #1e293b; }
+        .tp-file-list { display: flex; flex-wrap: wrap; gap: 10px; }
+        .tp-file-item {
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          width: 72px;
+        }
+        .tp-file-thumb {
+          width: 64px; height: 64px; object-fit: cover; border-radius: 8px;
+          border: 1px solid #e2e8f0;
+        }
+        .tp-file-icon {
+          width: 64px; height: 64px; border-radius: 8px; border: 1px solid #e2e8f0;
+          background: white; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; gap: 3px; color: #94a3b8;
+        }
+        .tp-file-ext { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; color: #64748b; }
+        .tp-file-name {
+          font-size: 10px; color: #64748b; text-align: center; width: 72px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .tp-file-actions { display: flex; gap: 3px; }
+        .tp-file-action-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 22px; height: 22px; border-radius: 9999px; border: none;
+          background: #f1f5f9; color: #64748b; cursor: pointer; font-size: 13px;
+          transition: all 0.12s; text-decoration: none;
+        }
+        .tp-file-action-btn:hover { background: #e2e8f0; color: #1e293b; }
+        .tp-file-action-btn.del:hover { background: #fee2e2; color: #ef4444; }
         .tp-send-update-btn {
           display: inline-flex;
           align-items: center;
@@ -1419,12 +1532,12 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-admin-btn.promote:hover { background: #eef2ff; color: #4f46e5; }
         .tp-action-notes-area {
           width: 100%; box-sizing: border-box; margin: 4px 0 4px 0;
-          border: 1px dashed #c7d2fe; border-radius: 6px; padding: 7px 10px;
+          border: 1px dashed #e2e8f0; border-radius: 6px; padding: 7px 10px;
           font-size: 12px; font-family: inherit; direction: rtl; text-align: right;
-          color: #475569; background: #f8f8ff; resize: none; outline: none;
+          color: #475569; background: #f8fafc; resize: none; outline: none;
           line-height: 1.5; min-height: 38px;
         }
-        .tp-action-notes-area:focus { border-color: #818cf8; background: white; }
+        .tp-action-notes-area:focus { border-color: #94a3b8; background: white; }
         .tp-milestone-parent-ref {
           font-size: 10.5px; color: #6366f1; background: #ede9fe;
           border-radius: 6px; padding: 1px 8px; display: inline-flex;
@@ -2340,22 +2453,21 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         <button onClick={() => toggleMilestone(mIdx)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center' }} title={m.done ? 'סמן כלא הושלם' : 'סמן כהושלם'}>
                           {m.done ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#cbd5e1' }} />}
                         </button>
-                        {/* Title + manage button as a single unit */}
-                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
-                            <EditableArea value={m.text} onChange={v => patchMilestone(mIdx, 'text', v)} onBlur={saveLatest} placeholder="שם אבן הדרך..." style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b' }} />
-                            {m.done && <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: '#94a3b8', pointerEvents: 'none' }} />}
+                        {/* Title + open button: title takes natural width, button hugs it */}
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ minWidth: 0, flexShrink: 1, position: 'relative' }}>
+                            <EditableArea value={m.text} onChange={v => patchMilestone(mIdx, 'text', v)} onBlur={saveLatest} placeholder="שם אבן הדרך..." style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b', textDecoration: m.done ? 'line-through' : 'none' }} />
                             {m.parentRef && <span className="tp-milestone-parent-ref"><CornerUpRight size={10} /> מתוך: {m.parentRef}</span>}
                           </div>
-                          {/* Manage workspace — sits right next to the title */}
                           <button className={`tp-manage-btn${expanded ? ' active' : ''}`} onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })} title={expanded ? 'סגור מרחב עבודה' : 'פתח מרחב ניהול'}>
-                            <Settings2 size={14} />
+                            פתח
+                            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                           </button>
                         </div>
-                        {/* Date ghost label */}
+                        {/* Date — always visible */}
                         <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: '500', cursor: 'pointer', position: 'relative', flexShrink: 0, color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })() }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
                           <CalendarDays size={11} />
-                          <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : ''}</span>
+                          <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך'}</span>
                           <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
                         </label>
                         {/* Progress badge */}
@@ -2364,8 +2476,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                             {actionsDone}/{actions.length}
                           </span>
                         )}
-                        {/* Assignee — ghost until row hover */}
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} className={`tp-assignee-pill tp-milestone-ghost${!m.assignedTo ? ' unassigned' : ''}`} title="שייך אחראי">
+                        {/* Assignee — always visible */}
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`} title="שייך אחראי">
                           <UserCircle2 size={13} />
                           <span>{assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0] : 'שייך'}</span>
                           <select className="tp-assignee-select" value={m.assignedTo || ''} onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}>
@@ -2447,6 +2559,39 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                             <button className="tp-add-action-btn" onClick={() => addActionItem(mIdx)}>
                               <Plus size={12} /> הוסף משימת המשך
                             </button>
+                          </div>
+
+                          {/* Files & Documents */}
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <div className="tp-workspace-label" style={{ marginBottom: 0 }}><Paperclip size={13} /> קבצים ומסמכים</div>
+                              <label htmlFor={`file-up-${mIdx}`} className="tp-file-upload-btn">
+                                {uploadingMilestone === mIdx
+                                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: 10, height: 10, border: '2px solid #cbd5e1', borderTopColor: '#475569', borderRadius: '50%', display: 'inline-block', animation: 'tpSpin 0.7s linear infinite' }} /> מעלה...</span>
+                                  : <><Paperclip size={11} /> העלה קובץ</>}
+                              </label>
+                              <input type="file" id={`file-up-${mIdx}`} style={{ display: 'none' }} accept="image/*,.pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMilestoneFile(mIdx, f); e.target.value = ''; }} />
+                            </div>
+                            {((attachmentsByMilestone[mIdx] || []).length > 0) ? (
+                              <div className="tp-file-list">
+                                {(attachmentsByMilestone[mIdx] || []).map(a => {
+                                  const isImage = (a.file_type || '').startsWith('image/');
+                                  const ext = a.file_name.split('.').pop()?.toUpperCase() ?? 'FILE';
+                                  return (
+                                    <div key={a.id} className="tp-file-item">
+                                      {isImage ? <img src={a.file_url} alt={a.file_name} className="tp-file-thumb" /> : <div className="tp-file-icon"><FileText size={20} /><span className="tp-file-ext">{ext}</span></div>}
+                                      <div className="tp-file-name">{a.file_name}</div>
+                                      <div className="tp-file-actions">
+                                        <a href={a.file_url} download={a.file_name} target="_blank" rel="noopener noreferrer" className="tp-file-action-btn" title="הורד"><Download size={11} /></a>
+                                        <button className="tp-file-action-btn del" onClick={() => deleteMilestoneFile(mIdx, a.id, a.file_path)} title="מחק">×</button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '11.5px', color: '#94a3b8', padding: '6px 0' }}>אין קבצים מצורפים</div>
+                            )}
                           </div>
 
                         </div>
@@ -2801,33 +2946,32 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         }
                       </button>
 
-                      {/* Title + manage button as a single unit */}
-                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                      {/* Title + open button: title takes natural width, button hugs it */}
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ minWidth: 0, flexShrink: 1, position: 'relative' }}>
                           <EditableArea
                             value={m.text}
                             onChange={v => patchMilestone(mIdx, 'text', v)}
                             onBlur={saveLatest}
                             placeholder="שם אבן הדרך..."
-                            style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b' }}
+                            style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b', textDecoration: m.done ? 'line-through' : 'none' }}
                           />
-                          {m.done && <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: '#94a3b8', pointerEvents: 'none' }} />}
                           {m.parentRef && <span className="tp-milestone-parent-ref"><CornerUpRight size={10} /> מתוך: {m.parentRef}</span>}
                         </div>
-                        {/* Manage workspace — sits right next to the title */}
                         <button
                           className={`tp-manage-btn${expanded ? ' active' : ''}`}
                           onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })}
                           title={expanded ? 'כווץ' : 'הצג פעולות'}
                         >
-                          <Settings2 size={14} />
+                          פתח
+                          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                         </button>
                       </div>
 
-                      {/* Date ghost label */}
+                      {/* Date — always visible */}
                       <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: '500', cursor: 'pointer', position: 'relative', flexShrink: 0, color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })() }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
                         <CalendarDays size={11} />
-                        <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : ''}</span>
+                        <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך'}</span>
                         <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
                       </label>
 
@@ -2838,9 +2982,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         </span>
                       )}
 
-                      {/* Assignee — ghost until row hover */}
+                      {/* Assignee — always visible */}
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                        className={`tp-assignee-pill tp-milestone-ghost${!m.assignedTo ? ' unassigned' : ''}`}
+                        className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`}
                         title="שייך אחראי"
                       >
                         <UserCircle2 size={13} />
@@ -2968,6 +3112,39 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                           <Plus size={12} />
                           הוסף פעולה
                         </button>
+
+                        {/* Files & Documents */}
+                        <div style={{ padding: '10px 14px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', borderRadius: '0 0 8px 8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <div className="tp-workspace-label" style={{ marginBottom: 0 }}><Paperclip size={13} /> קבצים ומסמכים</div>
+                            <label htmlFor={`file-up2-${mIdx}`} className="tp-file-upload-btn">
+                              {uploadingMilestone === mIdx
+                                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: 10, height: 10, border: '2px solid #cbd5e1', borderTopColor: '#475569', borderRadius: '50%', display: 'inline-block', animation: 'tpSpin 0.7s linear infinite' }} /> מעלה...</span>
+                                  : <><Paperclip size={11} /> העלה קובץ</>}
+                            </label>
+                            <input type="file" id={`file-up2-${mIdx}`} style={{ display: 'none' }} accept="image/*,.pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMilestoneFile(mIdx, f); e.target.value = ''; }} />
+                          </div>
+                          {((attachmentsByMilestone[mIdx] || []).length > 0) ? (
+                            <div className="tp-file-list">
+                              {(attachmentsByMilestone[mIdx] || []).map(a => {
+                                const isImage = (a.file_type || '').startsWith('image/');
+                                const ext = a.file_name.split('.').pop()?.toUpperCase() ?? 'FILE';
+                                return (
+                                  <div key={a.id} className="tp-file-item">
+                                    {isImage ? <img src={a.file_url} alt={a.file_name} className="tp-file-thumb" /> : <div className="tp-file-icon"><FileText size={20} /><span className="tp-file-ext">{ext}</span></div>}
+                                    <div className="tp-file-name">{a.file_name}</div>
+                                    <div className="tp-file-actions">
+                                      <a href={a.file_url} download={a.file_name} target="_blank" rel="noopener noreferrer" className="tp-file-action-btn" title="הורד"><Download size={11} /></a>
+                                      <button className="tp-file-action-btn del" onClick={() => deleteMilestoneFile(mIdx, a.id, a.file_path)} title="מחק">×</button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '11.5px', color: '#94a3b8', padding: '6px 0' }}>אין קבצים מצורפים</div>
+                          )}
+                        </div>
                       </>
                     )}
 
