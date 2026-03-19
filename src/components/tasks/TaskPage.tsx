@@ -3,13 +3,14 @@ import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
   Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup, CornerUpRight,
-  StickyNote, Mail, CalendarPlus, Paperclip, Download, Flag,
+  StickyNote, Mail, CalendarPlus, Paperclip, Download, Flag, XCircle, RotateCw, Sparkles, ShieldAlert,
 } from 'lucide-react';
 import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment, fetchMilestoneAttachments, insertMilestoneAttachment, deleteMilestoneAttachmentRow, type MilestoneAttachment } from '@/lib/supabase-hooks';
 import { supabase } from '@/lib/supabase';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { exportSingleTask, exportSingleTaskAsPdf } from '@/services/backupService';
 import { sendTaskInvite } from '@/services/inviteService';
+import { suggestMilestones, suggestMitigations, suggestRisks } from '@/services/aiService';
 import { createPortal } from 'react-dom';
 import { Toast } from '../Toast';
 import { useAuth } from '@/contexts/AuthContext';
@@ -18,11 +19,11 @@ import { useAuth } from '@/contexts/AuthContext';
 
 
 const SCROLL_SECTIONS = [
-  { id: 'section-strategy',       label: 'אסטרטגיה ומדדים',            color: '#3b82f6', Icon: BarChart2,     accordionKey: 'strategy'       },
-  { id: 'section-team',           label: 'צוות ומשתתפים',              color: '#10b981', Icon: Users,         accordionKey: 'team'           },
-  { id: 'section-implementation', label: 'אפיון התהליך והחסמים',       color: '#0d9488', Icon: FileText,      accordionKey: 'implementation' },
-  { id: 'section-workplan',       label: 'תוכנית עבודה וביצוע',        color: '#6366f1', Icon: Flag,          accordionKey: 'workplan'       },
-  { id: 'section-completion',     label: 'סיום ותקשורת',               color: '#8b5cf6', Icon: MessageSquare, accordionKey: 'completion'     },
+  { id: 'section-strategy',       label: 'אסטרטגיה ומדדים',            color: '#3730a3', Icon: BarChart2,     accordionKey: 'strategy'       },
+  { id: 'section-team',           label: 'צוות ומשתתפים',              color: '#16a34a', Icon: Users,         accordionKey: 'team'           },
+  { id: 'section-implementation', label: 'אפיון התהליך והחסמים',       color: '#d97706', Icon: FileText,      accordionKey: 'implementation' },
+  { id: 'section-workplan',       label: 'תוכנית עבודה וביצוע',        color: '#7c3aed', Icon: Flag,          accordionKey: 'workplan'       },
+  { id: 'section-completion',     label: 'סיום ותקשורת',               color: '#0f766e', Icon: MessageSquare, accordionKey: 'completion'     },
 ] as const;
 
 // ── Shared style objects ───────────────────────────────────────────────────────
@@ -281,6 +282,28 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [newMilestoneText, setNewMilestoneText] = useState('');
 
+  // ── AI suggestions state ───────────────────────────────────────────────────
+  const [milestoneSuggestions, setMilestoneSuggestions] = useState<string[]>([]);
+  const [milestoneSuggestionsLoading, setMilestoneSuggestionsLoading] = useState(false);
+  const [mitigationSuggestions, setMitigationSuggestions] = useState<Record<number, string[]>>({});
+  const [mitigationSuggestionsLoading, setMitigationSuggestionsLoading] = useState<Record<number, boolean>>({});
+  const aiMilestoneDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiBarrierDebounceRefs = useRef<Record<number, ReturnType<typeof setTimeout>>>({});
+  const aiInitialScanDoneRef = useRef(false);
+  const aiMilestoneScanInProgressRef = useRef(false); // prevents concurrent scans
+
+  // ── Risk Radar state ──────────────────────────────────────────────────────
+  const [riskRadarSuggestions, setRiskRadarSuggestions] = useState<Array<{ risk: string; mitigation: string }>>([]);
+  const [riskRadarLoading, setRiskRadarLoading] = useState(false);
+  const aiRiskRadarDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const aiRiskRadarInProgressRef = useRef(false);
+  const aiRiskRadarDoneRef = useRef(false);
+
+  // ── AI auto-scan toggle — default OFF to conserve free-tier quota ─────────
+  // When false: AI only runs on explicit Refresh clicks.
+  // When true:  initial scan + debounce fire automatically.
+  const [aiAutoScanEnabled, setAiAutoScanEnabled] = useState(false);
+
   // Scroll-section refs for sticky side nav
   const sectionStrategyRef       = useRef<HTMLDivElement>(null);
   const sectionWorkplanRef       = useRef<HTMLDivElement>(null);
@@ -311,6 +334,108 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     }).catch(() => null); // silently ignore if table doesn't exist yet
   }, [taskId]);
 
+  // Helper: run a milestone scan — guarded against concurrent calls
+  const runMilestoneScan = useCallback(async (t: MedicalTask, isRefresh = false) => {
+    if (aiMilestoneScanInProgressRef.current) return; // already running
+    const hasContext = [t.description, t.problemStatement, t.proposedSolution, t.processName]
+      .some(s => (s ?? '').trim().length > 5);
+    if (!hasContext && !t.title) return;
+    aiMilestoneScanInProgressRef.current = true;
+    setMilestoneSuggestionsLoading(true);
+    try {
+      const suggestions = await suggestMilestones({
+        title:              t.title,
+        description:        t.description,
+        problemStatement:   t.problemStatement,
+        proposedSolution:   t.proposedSolution,
+        processName:        t.processName,
+        existingMilestones: t.milestones.map(m => m.text).filter(Boolean),
+        isRefresh,
+      });
+      // No client-side duplicate filter — let the user decide what to adopt
+      setMilestoneSuggestions(suggestions.filter(s => s.length > 5));
+    } catch { /* silent */ }
+    finally {
+      setMilestoneSuggestionsLoading(false);
+      aiMilestoneScanInProgressRef.current = false;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Helper: run a risk radar scan — guarded against concurrent calls
+  const runRiskRadarScan = useCallback(async (t: MedicalTask) => {
+    if (aiRiskRadarInProgressRef.current) return;
+    const hasCtx = (t.processName ?? '').trim().length > 8 || (t.proposedSolution ?? '').trim().length > 8;
+    if (!hasCtx) return;
+    aiRiskRadarInProgressRef.current = true;
+    setRiskRadarLoading(true);
+    try {
+      const risks = await suggestRisks({ title: t.title, processName: t.processName, proposedSolution: t.proposedSolution });
+      setRiskRadarSuggestions(risks);
+    } catch { /* silent */ }
+    finally {
+      setRiskRadarLoading(false);
+      aiRiskRadarInProgressRef.current = false;
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── AI: ONE-TIME initial scan — fires once when task loads (auto-scan only) ─
+  useEffect(() => {
+    if (!aiAutoScanEnabled) return;
+    if (aiInitialScanDoneRef.current) return;
+    const t = localTask ?? fetchedTask;
+    if (!t?.id) return;
+    aiInitialScanDoneRef.current = true;
+    runMilestoneScan(t);
+  }, [aiAutoScanEnabled, localTask?.id, fetchedTask?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── AI: ONE-TIME initial Risk Radar scan — staggered 700ms after milestone ─
+  useEffect(() => {
+    if (!aiAutoScanEnabled) return;
+    if (aiRiskRadarDoneRef.current) return;
+    const t = localTask ?? fetchedTask;
+    if (!t?.id) return;
+    aiRiskRadarDoneRef.current = true;
+    const timer = setTimeout(() => runRiskRadarScan(t), 700);
+    return () => clearTimeout(timer);
+  }, [aiAutoScanEnabled, localTask?.id, fetchedTask?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── AI: debounced re-scan when Strategy / Process fields are edited ───────────
+  // Watches only the actual text values shown in the UI. fetchedTask is NOT a dep
+  // so react-query background refreshes never reset the timer.
+  useEffect(() => {
+    if (!aiAutoScanEnabled || !localTask) return;
+    if (aiMilestoneDebounce.current) clearTimeout(aiMilestoneDebounce.current);
+    aiMilestoneDebounce.current = setTimeout(() => runMilestoneScan(localTask), 2200);
+    return () => { if (aiMilestoneDebounce.current) clearTimeout(aiMilestoneDebounce.current); };
+  }, [aiAutoScanEnabled, localTask?.description, localTask?.problemStatement, localTask?.proposedSolution, localTask?.processName, localTask?.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── AI: Risk Radar — debounced re-scan when characterization fields change ───
+  useEffect(() => {
+    if (!aiAutoScanEnabled || !localTask) return;
+    if (aiRiskRadarDebounce.current) clearTimeout(aiRiskRadarDebounce.current);
+    aiRiskRadarDebounce.current = setTimeout(() => runRiskRadarScan(localTask), 2900); // offset from milestone
+    return () => { if (aiRiskRadarDebounce.current) clearTimeout(aiRiskRadarDebounce.current); };
+  }, [aiAutoScanEnabled, localTask?.processName, localTask?.proposedSolution, localTask?.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── AI: barrier mitigation suggestions — debounced per barrier row ────────────
+  // fetchedTask removed from deps — only the actual risk text values are watched.
+  useEffect(() => {
+    if (!aiAutoScanEnabled || !localTask?.barriers?.length) return;
+    localTask.barriers.forEach((b, idx) => {
+      if (!b.risk.trim() || b.risk.trim().length < 6) return;
+      if (aiBarrierDebounceRefs.current[idx]) clearTimeout(aiBarrierDebounceRefs.current[idx]);
+      aiBarrierDebounceRefs.current[idx] = setTimeout(async () => {
+        if (mitigationSuggestionsLoading[idx]) return; // already loading this row
+        setMitigationSuggestionsLoading(prev => ({ ...prev, [idx]: true }));
+        try {
+          const suggestions = await suggestMitigations(b.risk, localTask.title);
+          setMitigationSuggestions(prev => ({ ...prev, [idx]: suggestions }));
+        } catch { /* silent */ }
+        finally { setMitigationSuggestionsLoading(prev => ({ ...prev, [idx]: false })); }
+      }, 1800);
+    });
+  }, [aiAutoScanEnabled, JSON.stringify(localTask?.barriers?.map(b => b.risk)), localTask?.title]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── One-time migration: currentState/goal → first metrics row ───────────────
   const kpiMigrationRanRef = useRef(false);
   useEffect(() => {
@@ -325,18 +450,21 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Persist to Supabase ──────────────────────────────────────────────────────
-  const save = useCallback(async (updated: MedicalTask) => {
-    if (!projectId) return;
+  const save = useCallback(async (updated: MedicalTask): Promise<boolean> => {
+    if (!projectId) return false;
     setSaving(true);
     try {
       await updateTask(updated, projectId);
       await refetch();
+      return true;
     } catch (e) {
       console.error('TaskPage save error:', e);
+      setToast({ message: 'שגיאה בשמירה — הנתונים לא נשמרו. נסה שנית.', type: 'error' });
+      return false;
     } finally {
       setSaving(false);
     }
-  }, [projectId, refetch]);
+  }, [projectId, refetch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Save whatever is currently in taskRef (used by onBlur handlers after patchLocal)
   const saveLatest = useCallback(() => {
@@ -357,6 +485,49 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const patchLocal = useCallback(<K extends keyof MedicalTask>(key: K, value: MedicalTask[K]) => {
     setLocalTask(prev => prev ? { ...prev, [key]: value } : prev);
   }, []);
+
+  // ── AI: one-click adopt a suggested milestone ─────────────────────────────────
+  const adoptMilestoneSuggestion = useCallback((text: string) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      // Dedup: remove any existing milestone with the same title before appending
+      const deduped = prev.milestones.filter(m => m.text !== text);
+      const updated = { ...prev, milestones: [...deduped, { text, done: false }] };
+      save(updated).then(ok => { if (ok) setMilestoneSuggestions(p => p.filter(s => s !== text)); });
+      return updated;
+    });
+  }, [save]);
+
+  // ── AI: one-click adopt a suggested mitigation plan ───────────────────────────
+  const adoptMitigationSuggestion = useCallback((barrierIdx: number, text: string) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const barriers = (prev.barriers || []).map((b, i) =>
+        i === barrierIdx ? { ...b, mitigation: text } : b
+      );
+      const updated = { ...prev, barriers };
+      save(updated).then(ok => {
+        if (ok) setMitigationSuggestions(p => ({ ...p, [barrierIdx]: (p[barrierIdx] || []).filter(s => s !== text) }));
+      });
+      return updated;
+    });
+  }, [save]);
+
+  // ── AI: dual-adopt — adds risk as a Barrier AND mitigation as a Milestone ───
+  const adoptRiskAsMilestone = useCallback((risk: string, mitigation: string, riskIdx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const barriers   = [...(prev.barriers  || []), { risk, mitigation }];
+      // Dedup: remove any existing milestone with the same title before appending
+      const deduped    = prev.milestones.filter(m => m.text !== mitigation);
+      const milestones = [...deduped, { text: mitigation, done: false }];
+      const updated = { ...prev, barriers, milestones };
+      save(updated).then(ok => {
+        if (ok) setRiskRadarSuggestions(p => p.filter((_, i) => i !== riskIdx));
+      });
+      return updated;
+    });
+  }, [save]);
 
   // ── Delete task ───────────────────────────────────────────────────────────────
   const handleDelete = async () => {
@@ -735,12 +906,41 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const deleteBarrier = useCallback((idx: number) => {
     setLocalTask(prev => {
       if (!prev) return prev;
-      const barriers = (prev.barriers || []).filter((_, i) => i !== idx);
-      const updated = { ...prev, barriers };
+      const barrier = (prev.barriers || [])[idx];
+      const linkedTitle = barrier?.risk ? `טיפול בחסם: ${barrier.risk}` : null;
+      const hasLinkedMilestone = linkedTitle
+        ? prev.milestones.some(m => m.text === linkedTitle)
+        : false;
+
+      const alsoDeleteMilestone =
+        hasLinkedMilestone &&
+        window.confirm(`האם למחוק גם את אבן הדרך המקושרת?\n"${linkedTitle}"`);
+
+      const barriers  = (prev.barriers || []).filter((_, i) => i !== idx);
+      const milestones = alsoDeleteMilestone && linkedTitle
+        ? prev.milestones.filter(m => m.text !== linkedTitle)
+        : prev.milestones;
+      const updated = { ...prev, barriers, milestones };
       save(updated);
       return updated;
     });
   }, [save]);
+
+  // On blur of a barrier risk field: save + auto-create linked milestone if new
+  const handleBarrierRiskBlur = useCallback((idx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const barrier = (prev.barriers || [])[idx];
+      if (!barrier?.risk?.trim()) { saveLatest(); return prev; }
+      const linkedTitle = `טיפול בחסם: ${barrier.risk.trim()}`;
+      const alreadyExists = prev.milestones.some(m => m.text === linkedTitle);
+      if (alreadyExists) { saveLatest(); return prev; }
+      const milestones = [...prev.milestones, { text: linkedTitle, done: false }];
+      const updated = { ...prev, milestones };
+      save(updated);
+      return updated;
+    });
+  }, [save, saveLatest]);
 
   // ── Comment submission ──────────────────────────────────────────────────────
   const handleSendComment = async () => {
@@ -929,13 +1129,256 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-section-band.tp-band-open {
           border-radius: 10px 10px 0 0;
         }
-        .tp-band-blue   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
-        .tp-band-teal   { background: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; }
-        .tp-band-amber  { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
-        .tp-band-green  { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
-        .tp-band-indigo { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
-        .tp-band-purple { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+        .tp-band-blue   { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; } /* Strategy — Deep Indigo */
+        .tp-band-green  { background: #dcfce7; color: #14532d; border: 1px solid #86efac; } /* Team — Forest Green */
+        .tp-band-amber  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; } /* Process — Warm Amber */
+        .tp-band-indigo { background: #ede9fe; color: #5b21b6; border: 1px solid #a78bfa; } /* Work Plan — Violet */
+        .tp-band-teal   { background: #ccfbf1; color: #134e4a; border: 1px solid #2dd4bf; } /* Completion — Dark Teal */
+        .tp-band-purple { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; } /* (unused by main sections) */
         .tp-section-wrap { display: block; margin-top: 8px; }
+
+        /* ── AI Suggestion Cards — clean enterprise style ── */
+        @keyframes tpAiPulse {
+          0%, 100% { opacity: 0.5; }
+          50%       { opacity: 0.9; }
+        }
+
+        .tp-ai-idea-bank {
+          margin-top: 14px;
+          padding: 12px 14px;
+          background: #f9fafb;
+          border: 1px solid #f3f4f6;
+          border-radius: 10px;
+        }
+        .tp-ai-idea-bank-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #6b7280;
+          letter-spacing: 0.3px;
+          margin-bottom: 10px;
+          direction: rtl;
+        }
+        .tp-ai-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          color: #7c3aed;
+          font-size: 10px;
+          font-weight: 600;
+          flex-shrink: 0;
+        }
+        /* Ghost placeholder card shown while loading */
+        .tp-ai-ghost-placeholder {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          padding: 10px 12px;
+          background: white;
+          border: 1px solid #f3f4f6;
+          border-radius: 7px;
+          animation: tpAiPulse 1.8s ease-in-out infinite;
+          direction: rtl;
+        }
+        .tp-ai-placeholder-dot {
+          width: 5px; height: 5px; border-radius: 50%;
+          background: #d8b4fe; flex-shrink: 0;
+        }
+        .tp-ai-placeholder-text {
+          font-size: 12px; color: #9ca3af; font-style: italic;
+        }
+        /* Actual suggestion cards */
+        .tp-ai-ghost-card {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 12px 8px 10px;
+          background: white;
+          border: 1px solid #f3f4f6;
+          border-right: 3px solid #7c3aed;
+          border-radius: 7px;
+          margin-bottom: 5px;
+          direction: rtl;
+          animation: tpFadeIn 0.3s ease;
+          transition: box-shadow 0.15s, border-color 0.15s;
+        }
+        .tp-ai-ghost-card:last-child { margin-bottom: 0; }
+        .tp-ai-ghost-card:hover {
+          box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+          border-color: #e5e7eb;
+          border-right-color: #7c3aed;
+        }
+        .tp-ai-ghost-text {
+          flex: 1;
+          min-width: 0;
+          font-size: 12px;
+          color: #374151;
+          line-height: 1.5;
+        }
+        .tp-ai-adopt-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 4px 9px;
+          border-radius: 5px;
+          border: 1px solid transparent;
+          background: transparent;
+          color: #7c3aed;
+          font-size: 11px;
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+          transition: background 0.12s, border-color 0.12s;
+          font-family: inherit;
+          flex-shrink: 0;
+        }
+        .tp-ai-adopt-btn:hover {
+          background: #f5f3ff;
+          border-color: #ddd6fe;
+        }
+        .tp-ai-dismiss-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 18px;
+          height: 18px;
+          border-radius: 4px;
+          border: none;
+          background: transparent;
+          color: #d1d5db;
+          cursor: pointer;
+          font-size: 14px;
+          line-height: 1;
+          transition: color 0.12s, background 0.12s;
+          font-family: inherit;
+          flex-shrink: 0;
+        }
+        .tp-ai-dismiss-btn:hover { background: #fef2f2; color: #ef4444; }
+
+        /* Mitigation ghost strip (inline, below each barrier row) */
+        .tp-ai-mitigation-strip {
+          padding: 8px 12px 10px;
+          background: #fffbeb;
+          border-top: 1px solid #fef3c7;
+          direction: rtl;
+          animation: tpFadeIn 0.3s ease;
+        }
+        .tp-ai-mitigation-header {
+          font-size: 10px;
+          font-weight: 600;
+          color: #6b7280;
+          margin-bottom: 7px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+        }
+        .tp-ai-mitigation-chip {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 7px 10px 7px 8px;
+          background: white;
+          border: 1px solid #f3f4f6;
+          border-right: 3px solid #f59e0b;
+          border-radius: 6px;
+          font-size: 11.5px;
+          color: #374151;
+          margin-bottom: 4px;
+          animation: tpFadeIn 0.3s ease;
+          transition: box-shadow 0.15s;
+        }
+        .tp-ai-mitigation-chip:last-child { margin-bottom: 0; }
+        .tp-ai-mitigation-chip:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
+        .tp-ai-mitigation-chip-text { flex: 1; min-width: 0; }
+        .tp-ai-mitigation-adopt {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          padding: 3px 8px;
+          border-radius: 5px;
+          border: 1px solid transparent;
+          background: transparent;
+          color: #d97706;
+          font-size: 10px;
+          font-weight: 600;
+          cursor: pointer;
+          font-family: inherit;
+          transition: background 0.12s, border-color 0.12s;
+          flex-shrink: 0;
+        }
+        .tp-ai-mitigation-adopt:hover { background: #fffbeb; border-color: #fde68a; }
+
+        /* Risk Radar panel (Characterization section) */
+        .tp-ai-risk-radar {
+          margin-top: 14px;
+          padding: 12px 14px;
+          background: #fffbeb;
+          border: 1px solid #fef3c7;
+          border-radius: 10px;
+        }
+        .tp-ai-risk-radar-header {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          font-size: 11px;
+          font-weight: 600;
+          color: #6b7280;
+          letter-spacing: 0.3px;
+          margin-bottom: 10px;
+          direction: rtl;
+        }
+        .tp-ai-risk-badge {
+          display: inline-flex;
+          align-items: center;
+          gap: 3px;
+          color: #d97706;
+          font-size: 10px;
+          font-weight: 600;
+          flex-shrink: 0;
+        }
+        .tp-ai-risk-card {
+          background: white;
+          border: 1px solid #f3f4f6;
+          border-right: 3px solid #f59e0b;
+          border-radius: 7px;
+          padding: 9px 12px 9px 10px;
+          margin-bottom: 5px;
+          direction: rtl;
+          animation: tpFadeIn 0.3s ease;
+          transition: box-shadow 0.15s;
+        }
+        .tp-ai-risk-card:last-child { margin-bottom: 0; }
+        .tp-ai-risk-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+        .tp-ai-risk-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: #92400e;
+          margin-bottom: 3px;
+        }
+        .tp-ai-risk-text { font-size: 12px; color: #374151; }
+        .tp-ai-risk-mitigation {
+          font-size: 11.5px;
+          color: #6b7280;
+          margin-top: 4px;
+          padding-top: 5px;
+          border-top: 1px solid #f9fafb;
+        }
+        .tp-ai-risk-actions {
+          display: flex;
+          align-items: center;
+          justify-content: flex-end;
+          gap: 4px;
+          margin-top: 7px;
+        }
+        .tp-ai-adopt-amber {
+          color: #d97706;
+        }
+        .tp-ai-adopt-amber:hover {
+          background: #fffbeb !important;
+          border-color: #fde68a !important;
+        }
         .tp-section-wrap.tp-section-collapsed { display: none; }
 
         /* ── KPI compare grid: Baseline | → | Target ── */
@@ -2250,7 +2693,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         <div className="tp-scroll-content">
 
           {/* ══ SECTION 1: STRATEGY & METRICS (Blue) ══ */}
-          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'strategy' ? '0 0 0 3px #93c5fd, 0 0 20px rgba(59,130,246,0.15)' : 'none' }}>
+          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'strategy' ? '0 0 0 3px #a5b4fc, 0 0 20px rgba(55,48,163,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-blue${!collapsedSections.has('strategy') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('strategy')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} /> אסטרטגיה ומדדים</span>
               {collapsedSections.has('strategy') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -2316,7 +2759,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
 
           {/* ══ SECTION 2a: TEAM & PARTICIPANTS (Green) ══ */}
-          <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'team' ? '0 0 0 3px #6ee7b7, 0 0 20px rgba(16,185,129,0.15)' : 'none' }}>
+          <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'team' ? '0 0 0 3px #86efac, 0 0 20px rgba(22,163,74,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-green${!collapsedSections.has('team') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('team')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} /> צוות ומשתתפים</span>
               {collapsedSections.has('team') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
@@ -2390,8 +2833,8 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
 
           {/* ══ SECTION 2: BLUEPRINT — Characterization & Barriers (Teal) ══ */}
-          <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'implementation' ? '0 0 0 3px #5eead4, 0 0 20px rgba(13,148,136,0.15)' : 'none' }}>
-            <div className={`tp-section-band tp-band-teal${!collapsedSections.has('implementation') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('implementation')}>
+          <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'implementation' ? '0 0 0 3px #fcd34d, 0 0 20px rgba(217,119,6,0.15)' : 'none' }}>
+            <div className={`tp-section-band tp-band-amber${!collapsedSections.has('implementation') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('implementation')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} /> אפיון התהליך והחסמים</span>
               {collapsedSections.has('implementation') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
@@ -2413,8 +2856,50 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                 </div>
               </div>
 
+              {/* ── Scope Grid (גבולות הגזרה) ── */}
+              <div style={{ marginBottom: '18px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#0f766e', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '10px', direction: 'rtl' }}>
+                  גבולות הגזרה (Scope)
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', direction: 'rtl' }}>
+
+                  {/* In-Scope — right column in RTL */}
+                  <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '10px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: '700', color: '#4338ca' }}>
+                      <CheckCircle2 size={14} style={{ color: '#6366f1', flexShrink: 0 }} />
+                      מה כלול בהיקף
+                    </div>
+                    <EditableArea
+                      value={task.scope ?? ''}
+                      onChange={v => patchLocal('scope', v)}
+                      onBlur={saveLatest}
+                      placeholder={'פריט אחד בכל שורה:\n• תהליך X\n• מחלקה Y\n• מערכת Z'}
+                      style={{ fontSize: '12.5px', color: '#3730a3', lineHeight: '1.6' }}
+                      minRows={3}
+                    />
+                  </div>
+
+                  {/* Out-of-Scope — left column in RTL */}
+                  <div style={{ background: '#fafafa', border: '1px solid #e2e8f0', borderRadius: '10px', padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11.5px', fontWeight: '700', color: '#9f1239' }}>
+                      <XCircle size={14} style={{ color: '#e11d48', flexShrink: 0 }} />
+                      מה לא כלול
+                    </div>
+                    <EditableArea
+                      value={task.outOfScope ?? ''}
+                      onChange={v => patchLocal('outOfScope', v)}
+                      onBlur={saveLatest}
+                      placeholder={'פריט אחד בכל שורה:\n• לא כולל X\n• מחוץ לתחום Y'}
+                      style={{ fontSize: '12.5px', color: '#881337', lineHeight: '1.6' }}
+                      minRows={3}
+                    />
+                  </div>
+
+                </div>
+              </div>
+
               {/* Barriers & Mitigation — dynamic table */}
-              <div style={{ fontSize: '11px', fontWeight: '700', color: '#0f766e', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '8px', direction: 'rtl' }}>חסמים ותוכנית מיתון</div>
+              <div style={{ fontSize: '11px', fontWeight: '700', color: '#0f766e', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '8px', direction: 'rtl' }}>חסמים</div>
 
               {(task.barriers || []).length === 0 ? (
                 <div style={{ padding: '16px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', marginBottom: '8px' }}>
@@ -2427,29 +2912,109 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     <div className="tp-mtable-hcell">פתרון / תוכנית מיתון</div>
                     <div className="tp-mtable-hcell" />
                   </div>
-                  {(task.barriers || []).map((b, idx) => (
-                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 28px', direction: 'rtl', alignItems: 'stretch', borderBottom: idx < (task.barriers || []).length - 1 ? '1px solid #f0f2f5' : 'none', background: 'white', minHeight: '38px' }}>
-                      <div className="tp-mtable-cell">
-                        <EditableArea value={b.risk} onChange={v => patchBarrier(idx, 'risk', v)} onBlur={saveLatest} placeholder="תאר את הסיכון או החסם..." style={{ fontSize: '12px' }} />
+                  {(task.barriers || []).map((b, idx) => {
+                    const mSuggs = mitigationSuggestions[idx] || [];
+                    const mLoading = mitigationSuggestionsLoading[idx] || false;
+                    const hasSuggestions = mSuggs.length > 0 || mLoading;
+                    return (
+                      <div key={idx} style={{ borderBottom: idx < (task.barriers || []).length - 1 ? '1px solid #f0f2f5' : 'none' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 28px', direction: 'rtl', alignItems: 'stretch', background: 'white', minHeight: '38px' }}>
+                          <div className="tp-mtable-cell">
+                            <EditableArea value={b.risk} onChange={v => patchBarrier(idx, 'risk', v)} onBlur={() => handleBarrierRiskBlur(idx)} placeholder="תאר את הסיכון או החסם..." style={{ fontSize: '12px' }} />
+                          </div>
+                          <div className="tp-mtable-cell" style={{ borderRight: '1px solid #f0f2f5' }}>
+                            <EditableArea value={b.mitigation} onChange={v => patchBarrier(idx, 'mitigation', v)} onBlur={saveLatest} placeholder="כיצד נתמודד עם זה..." style={{ fontSize: '12px' }} />
+                          </div>
+                          <div className="tp-mtable-del">
+                            <button className="tp-kpi-delete" onClick={() => deleteBarrier(idx)} title="מחק שורה"><Trash2 size={12} /></button>
+                          </div>
+                        </div>
+                        {hasSuggestions && (
+                          <div className="tp-ai-mitigation-strip">
+                            <div className="tp-ai-mitigation-header">
+                              <span className="tp-ai-risk-badge"><ShieldAlert size={11} />הצעות מיתון</span>
+                              {mLoading && <div style={{ width: '10px', height: '10px', border: '2px solid #fde68a', borderTopColor: '#d97706', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite' }} />}
+                            </div>
+                            {mSuggs.map((s, si) => (
+                              <div key={si} className="tp-ai-mitigation-chip">
+                                <span className="tp-ai-mitigation-chip-text">{s}</span>
+                                <button className="tp-ai-mitigation-adopt" onClick={() => adoptMitigationSuggestion(idx, s)} title="אמץ הצעה">
+                                  <Plus size={9} /> אמץ
+                                </button>
+                                <button className="tp-ai-dismiss-btn" style={{ width: '16px', height: '16px', fontSize: '13px' }} onClick={() => setMitigationSuggestions(prev => ({ ...prev, [idx]: (prev[idx] || []).filter((_, j) => j !== si) }))} title="דחה">×</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      <div className="tp-mtable-cell" style={{ borderRight: '1px solid #f0f2f5' }}>
-                        <EditableArea value={b.mitigation} onChange={v => patchBarrier(idx, 'mitigation', v)} onBlur={saveLatest} placeholder="כיצד נתמודד עם זה..." style={{ fontSize: '12px' }} />
-                      </div>
-                      <div className="tp-mtable-del">
-                        <button className="tp-kpi-delete" onClick={() => deleteBarrier(idx)} title="מחק שורה"><Trash2 size={12} /></button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
               <button className="tp-kpi-add-btn" onClick={addBarrier}><Plus size={13} /> הוסף חסם</button>
+
+              {/* ── Risk Radar: AI Risk Analysis — below barriers ── */}
+              <div className="tp-ai-risk-radar">
+                <div className="tp-ai-risk-radar-header">
+                  <span className="tp-ai-risk-badge"><ShieldAlert size={12} />Risk Radar</span>
+                  זיהוי סיכונים מבוסס AI
+                  {riskRadarLoading
+                    ? <div style={{ width: '11px', height: '11px', border: '2px solid #fde68a', borderTopColor: '#d97706', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite', marginRight: 'auto' }} />
+                    : <button
+                        title="לחץ לקבלת הצעות מבוססות AI"
+                        onClick={() => { if (localTask) { setRiskRadarSuggestions([]); runRiskRadarScan(localTask); } }}
+                        style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', border: '1px solid #fde68a', borderRadius: '6px', background: 'transparent', color: '#d97706', cursor: 'pointer', fontSize: '11px', fontWeight: '600', transition: 'background 0.12s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#fffbeb'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <Sparkles size={11} /> נתח סיכונים
+                      </button>
+                  }
+                </div>
+
+                {riskRadarLoading && riskRadarSuggestions.length === 0 && (
+                  <div className="tp-ai-ghost-placeholder">
+                    <div className="tp-ai-placeholder-dot" style={{ background: '#fcd34d' }} />
+                    <span className="tp-ai-placeholder-text">מנתח תהליך וזיהוי סיכונים פוטנציאליים...</span>
+                  </div>
+                )}
+                {!riskRadarLoading && riskRadarSuggestions.length === 0 && (
+                  <div className="tp-ai-ghost-placeholder" style={{ animationPlayState: 'paused', opacity: 0.65 }}>
+                    <div className="tp-ai-placeholder-dot" style={{ background: '#fcd34d' }} />
+                    <span className="tp-ai-placeholder-text">לחץ על כפתור הרענון לזיהוי סיכונים אוטומטי</span>
+                  </div>
+                )}
+
+                {riskRadarSuggestions.map((item, i) => (
+                  <div key={i} className="tp-ai-risk-card">
+                    <div className="tp-ai-risk-label">סיכון</div>
+                    <div className="tp-ai-risk-text">{item.risk}</div>
+                    <div className="tp-ai-risk-mitigation">{item.mitigation}</div>
+                    <div className="tp-ai-risk-actions">
+                      <button
+                        className="tp-ai-adopt-btn tp-ai-adopt-amber"
+                        onClick={() => adoptRiskAsMilestone(item.risk, item.mitigation, i)}
+                        style={{ fontSize: '11px' }}
+                        title="מוסיף את הסיכון לחסמים ואת המיתון כאבן דרך"
+                      >
+                        <Plus size={11} /> הוסף לחסמים ולמשימות
+                      </button>
+                      <button
+                        className="tp-ai-dismiss-btn"
+                        onClick={() => setRiskRadarSuggestions(prev => prev.filter((_, j) => j !== i))}
+                        title="דחה"
+                      >×</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
 
             </section>
             </div>{/* end tp-section-wrap implementation */}
           </div>
 
           {/* ══ SECTION 2b: WORK PLAN — Milestones (Amber) ══ */}
-          <div id="section-workplan" ref={sectionWorkplanRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'workplan' ? '0 0 0 3px #a5b4fc, 0 0 20px rgba(99,102,241,0.15)' : 'none' }}>
+          <div id="section-workplan" ref={sectionWorkplanRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'workplan' ? '0 0 0 3px #a78bfa, 0 0 20px rgba(124,58,237,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-indigo${!collapsedSections.has('workplan') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('workplan')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <ListChecks size={15} /> תוכנית עבודה וביצוע (אבני דרך)
@@ -2639,14 +3204,61 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     onBlur={e => { e.currentTarget.style.borderBottomColor = '#e2e8f0'; }} />
                 </div>
               </div>
+
+              {/* ── Idea Bank: AI Milestone Suggestions — always visible ── */}
+              <div className="tp-ai-idea-bank">
+                <div className="tp-ai-idea-bank-header">
+                  <span className="tp-ai-badge"><Sparkles size={12} />הצעות AI</span>
+                  הצעות חכמות לקידום המשימה
+                  {milestoneSuggestionsLoading
+                    ? <div style={{ width: '11px', height: '11px', border: '2px solid #ddd6fe', borderTopColor: '#7c3aed', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite', marginRight: 'auto' }} />
+                    : <button
+                        title="לחץ לקבלת הצעות מבוססות AI"
+                        onClick={() => { if (localTask) { setMilestoneSuggestions([]); aiInitialScanDoneRef.current = false; runMilestoneScan(localTask, true); } }}
+                        style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', border: '1px solid #ddd6fe', borderRadius: '6px', background: 'transparent', color: '#7c3aed', cursor: 'pointer', fontSize: '11px', fontWeight: '600', transition: 'background 0.12s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                      >
+                        <Sparkles size={11} /> הצע קידום משימה
+                      </button>
+                  }
+                </div>
+
+                {/* Placeholder: shown while loading or before first scan */}
+                {milestoneSuggestionsLoading && milestoneSuggestions.length === 0 && (
+                  <div className="tp-ai-ghost-placeholder">
+                    <div className="tp-ai-placeholder-dot" />
+                    <span className="tp-ai-placeholder-text">מנתח הקשר המשימה... הצעות חכמות יופיעו כאן בקרוב</span>
+                  </div>
+                )}
+
+                {/* Empty state: not loading, no suggestions yet (task may lack context) */}
+                {!milestoneSuggestionsLoading && milestoneSuggestions.length === 0 && (
+                  <div className="tp-ai-ghost-placeholder" style={{ animationPlayState: 'paused', opacity: 0.6 }}>
+                    <div className="tp-ai-placeholder-dot" style={{ background: '#c4b5fd' }} />
+                    <span className="tp-ai-placeholder-text">הוסף מטרה, תהליך או תיאור כדי לקבל הצעות</span>
+                  </div>
+                )}
+
+                {/* Live suggestions */}
+                {milestoneSuggestions.map((s, i) => (
+                  <div key={i} className="tp-ai-ghost-card">
+                    <span className="tp-ai-ghost-text">{s}</span>
+                    <button className="tp-ai-adopt-btn" onClick={() => adoptMilestoneSuggestion(s)}>
+                      <Plus size={11} /> הוסף
+                    </button>
+                    <button className="tp-ai-dismiss-btn" onClick={() => setMilestoneSuggestions(prev => prev.filter((_, j) => j !== i))} title="דחה הצעה">×</button>
+                  </div>
+                ))}
+              </div>
             </section>
             </div>{/* end tp-section-wrap workplan */}
           </div>
 
 
           {/* ══ SECTION 4: COMPLETION & COMMUNICATION (Purple) ══ */}
-          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'completion' ? '0 0 0 3px #c4b5fd, 0 0 20px rgba(139,92,246,0.15)' : 'none' }}>
-            <div className={`tp-section-band tp-band-purple${!collapsedSections.has('completion') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('completion')}>
+          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'completion' ? '0 0 0 3px #2dd4bf, 0 0 20px rgba(15,118,110,0.15)' : 'none' }}>
+            <div className={`tp-section-band tp-band-teal${!collapsedSections.has('completion') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('completion')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} /> סיום ותקשורת</span>
               {collapsedSections.has('completion') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>

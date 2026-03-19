@@ -63,6 +63,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (event, session) => {
+        // Invalid / expired refresh token → clear session so the user is sent to login
+        if (event === 'TOKEN_REFRESHED' && !session) {
+          supabase.auth.signOut().catch(() => null);
+          setUser(null);
+          setProfile(null);
+          return;
+        }
+
         setUser(session?.user ?? null);
         if (session?.user) {
           fetchProfile(session.user.id);
