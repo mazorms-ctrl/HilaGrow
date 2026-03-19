@@ -53,11 +53,24 @@ export interface MedicalTask {
     done: boolean;
     assignedTo?: string;        // profile ID
     dueDate?: string;           // ISO date string
+    updates?: string;           // Activity / status update log
+    meetingNotes?: string;      // Meeting summaries
+    parentRef?: string;         // "Born from" reference if promoted from an action item
     actionItems?: Array<{
       text: string;
       done: boolean;
       assignedTo?: string;      // profile ID
       dueDate?: string;         // ISO date string
+      notes?: string;           // Expandable detail/instructions
+    }>;
+    files?: Array<{
+      id: string;
+      name: string;
+      path: string;             // Supabase Storage path (bucket: milestone-attachments)
+      type: string;             // MIME type
+      size: number;             // bytes
+      url: string;              // Public URL
+      uploadedAt: string;       // ISO date string
     }>;
   }>;
   
@@ -72,7 +85,9 @@ export interface MedicalTask {
   kpis?: Array<{
     name: string;
     baseline: string;
+    baselineVal?: string;
     target: string;
+    targetVal?: string;
     cadence: string;
     source: string;
     owner: string;
@@ -83,6 +98,7 @@ export interface MedicalTask {
   approvers?: string[];     // Array of profile names/emails who must approve
   
   // ── Risks (סיכונים ותלויות) ──────────────────────────────────
+  barriers?: Array<{ risk: string; mitigation: string }>;
   risksBlockers: string;
   dependencies: string;
   links: string;
@@ -94,6 +110,47 @@ export interface MedicalTask {
   rolloutNotes?: string;
   measuredResult?: string;
   lessonsLearned?: string;
+}
+
+// ── Milestone attachments ───────────────────────────────────────────────────────
+
+export interface MilestoneAttachment {
+  id: string;
+  task_id: string;
+  milestone_idx: number;
+  file_name: string;
+  file_path: string;
+  file_url: string;
+  file_type: string | null;
+  file_size: number | null;
+  uploaded_at: string;
+}
+
+export async function fetchMilestoneAttachments(taskId: string): Promise<MilestoneAttachment[]> {
+  const { data, error } = await supabase
+    .from('milestone_attachments')
+    .select('*')
+    .eq('task_id', taskId)
+    .order('uploaded_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as MilestoneAttachment[];
+}
+
+export async function insertMilestoneAttachment(
+  row: Omit<MilestoneAttachment, 'id' | 'uploaded_at'>
+): Promise<MilestoneAttachment> {
+  const { data, error } = await supabase
+    .from('milestone_attachments')
+    .insert(row)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as MilestoneAttachment;
+}
+
+export async function deleteMilestoneAttachmentRow(id: string): Promise<void> {
+  const { error } = await supabase.from('milestone_attachments').delete().eq('id', id);
+  if (error) throw error;
 }
 
 // ── Profile types ──────────────────────────────────────────────────────────────

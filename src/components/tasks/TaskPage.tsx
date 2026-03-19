@@ -2,9 +2,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
-  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup,
+  Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup, CornerUpRight,
+  StickyNote, Mail, CalendarPlus, Paperclip, Download, Flag,
 } from 'lucide-react';
-import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment } from '@/lib/supabase-hooks';
+import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment, fetchMilestoneAttachments, insertMilestoneAttachment, deleteMilestoneAttachmentRow, type MilestoneAttachment } from '@/lib/supabase-hooks';
+import { supabase } from '@/lib/supabase';
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { exportSingleTask, exportSingleTaskAsPdf } from '@/services/backupService';
 import { sendTaskInvite } from '@/services/inviteService';
@@ -15,14 +17,12 @@ import { useAuth } from '@/contexts/AuthContext';
 // ── Config ─────────────────────────────────────────────────────────────────────
 
 
-const NAV_ITEMS = [
-  { id: 'foundations',  Icon: BookOpen,      label: 'יסודות'            },
-  { id: 'snapshot',     Icon: Activity,      label: 'תמונת מצב ויעדים' },
-  { id: 'participants', Icon: Users,         label: 'משתתפים'           },
-  { id: 'spec',         Icon: FileText,      label: 'אפיון'             },
-  { id: 'timeline',     Icon: ListChecks,    label: 'אבני דרך'          },
-  { id: 'outcome',      Icon: CheckCircle2,  label: 'תוצר סופי'         },
-  { id: 'discussion',   Icon: MessageSquare, label: 'דיון'              },
+const SCROLL_SECTIONS = [
+  { id: 'section-strategy',       label: 'אסטרטגיה ומדדים',            color: '#3b82f6', Icon: BarChart2,     accordionKey: 'strategy'       },
+  { id: 'section-team',           label: 'צוות ומשתתפים',              color: '#10b981', Icon: Users,         accordionKey: 'team'           },
+  { id: 'section-implementation', label: 'אפיון התהליך והחסמים',       color: '#0d9488', Icon: FileText,      accordionKey: 'implementation' },
+  { id: 'section-workplan',       label: 'תוכנית עבודה וביצוע',        color: '#6366f1', Icon: Flag,          accordionKey: 'workplan'       },
+  { id: 'section-completion',     label: 'סיום ותקשורת',               color: '#8b5cf6', Icon: MessageSquare, accordionKey: 'completion'     },
 ] as const;
 
 // ── Shared style objects ───────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ const cardStyle: React.CSSProperties = {
   background: '#ffffff',
   borderRadius: '16px',
   border: '1px solid #edf0f4',
-  padding: '20px',
+  padding: '14px 16px',
   boxShadow: '0 2px 8px rgba(15,23,42,0.06)',
 };
 
@@ -109,7 +109,7 @@ function EditableArea({
   useEffect(() => {
     if (ref.current) {
       ref.current.style.height = 'auto';
-      ref.current.style.height = Math.max(ref.current.scrollHeight, minRows * 22) + 'px';
+      ref.current.style.height = Math.max(ref.current.scrollHeight, minRows * 19) + 'px';
     }
   }, [value, minRows]);
 
@@ -137,8 +137,8 @@ function EditableArea({
           resize: 'none',
           overflow: 'hidden',
           fontFamily: 'inherit',
-          fontSize: '13.5px',
-          lineHeight: '1.75',
+          fontSize: '13px',
+          lineHeight: '1.5',
           fontWeight: '400',
           color: value ? '#1e293b' : '#94a3b8',
           direction: 'rtl',
@@ -219,6 +219,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     return () => document.removeEventListener('mousedown', onOutside);
   }, [backupMenuOpen]);
 
+
   async function handleJsonBackup() {
     if (!task || backingUp) return;
     setBackupMenuOpen(false);
@@ -264,7 +265,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   }
 
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [activeSection, setActiveSection] = useState<string>('foundations');
+  const [activeSection, setActiveSection] = useState<string>('section-strategy');
   const [participantSearch, setParticipantSearch] = useState('');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteSending, setInviteSending] = useState(false);
@@ -273,8 +274,20 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   const [commentText, setCommentText] = useState('');
   const [sendingComment, setSendingComment] = useState(false);
   const [expandedMilestones, setExpandedMilestones] = useState<Set<number>>(new Set());
+  const [expandedActionNotes, setExpandedActionNotes] = useState<Set<string>>(new Set());
+  const [uploadingMilestone, setUploadingMilestone] = useState<number | null>(null);
+  const [attachmentsByMilestone, setAttachmentsByMilestone] = useState<Record<number, MilestoneAttachment[]>>({});
   const [expandedOverviewCard, setExpandedOverviewCard] = useState<number | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
   const [newMilestoneText, setNewMilestoneText] = useState('');
+
+  // Scroll-section refs for sticky side nav
+  const sectionStrategyRef       = useRef<HTMLDivElement>(null);
+  const sectionWorkplanRef       = useRef<HTMLDivElement>(null);
+  const sectionImplementationRef = useRef<HTMLDivElement>(null);
+  const sectionTeamRef           = useRef<HTMLDivElement>(null);
+  const sectionCompletionRef     = useRef<HTMLDivElement>(null);
+  const [highlightedSection, setHighlightedSection] = useState<string | null>(null);
 
   // Always-current ref so onBlur handlers don't use stale closure values
   const taskRef = useRef<MedicalTask | null>(null);
@@ -283,6 +296,32 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   // Seed local state once the remote task arrives
   useEffect(() => {
     if (fetchedTask && !localTask) setLocalTask(fetchedTask);
+  }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Load milestone attachments from DB on mount
+  useEffect(() => {
+    if (!taskId) return;
+    fetchMilestoneAttachments(taskId).then(rows => {
+      const byIdx: Record<number, MilestoneAttachment[]> = {};
+      for (const row of rows) {
+        if (!byIdx[row.milestone_idx]) byIdx[row.milestone_idx] = [];
+        byIdx[row.milestone_idx].push(row);
+      }
+      setAttachmentsByMilestone(byIdx);
+    }).catch(() => null); // silently ignore if table doesn't exist yet
+  }, [taskId]);
+
+  // ── One-time migration: currentState/goal → first metrics row ───────────────
+  const kpiMigrationRanRef = useRef(false);
+  useEffect(() => {
+    if (kpiMigrationRanRef.current || !fetchedTask) return;
+    if ((fetchedTask.kpis?.length ?? 0) > 0) return;
+    if (!fetchedTask.currentState && !fetchedTask.goal) return;
+    kpiMigrationRanRef.current = true;
+    const firstRow = { name: '', baseline: fetchedTask.currentState || '', baselineVal: '', target: fetchedTask.goal || '', targetVal: '', cadence: '', source: '', owner: '' };
+    const updated = { ...fetchedTask, kpis: [firstRow] };
+    setLocalTask(updated);
+    save(updated);
   }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Persist to Supabase ──────────────────────────────────────────────────────
@@ -336,8 +375,59 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     }
   };
 
-  // ── Tab switch ────────────────────────────────────────────────────────────────
-  const switchTab = (id: string) => setActiveSection(id);
+  // ── Scroll-spy: highlight the active section as the user scrolls ─────────────
+  useEffect(() => {
+    const entries = [
+      { id: 'section-strategy',       ref: sectionStrategyRef       },
+      { id: 'section-team',           ref: sectionTeamRef           },
+      { id: 'section-implementation', ref: sectionImplementationRef },
+      { id: 'section-workplan',       ref: sectionWorkplanRef       },
+      { id: 'section-completion',     ref: sectionCompletionRef     },
+    ];
+    const valid = entries.filter(e => e.ref.current);
+    if (valid.length === 0) return;
+    const obs = new IntersectionObserver(
+      changes => {
+        for (const ch of changes) {
+          if (ch.isIntersecting) {
+            const found = valid.find(e => e.ref.current === ch.target);
+            if (found) setActiveSection(found.id);
+          }
+        }
+      },
+      { rootMargin: '-10% 0px -65% 0px', threshold: 0 }
+    );
+    valid.forEach(e => obs.observe(e.ref.current!));
+    return () => obs.disconnect();
+  }, [localTask?.id]);
+
+  // ── Scroll to section ─────────────────────────────────────────────────────────
+  const scrollToSection = useCallback((id: string) => {
+    const refMap: Record<string, React.RefObject<HTMLDivElement | null>> = {
+      'section-strategy':       sectionStrategyRef,
+      'section-team':           sectionTeamRef,
+      'section-implementation': sectionImplementationRef,
+      'section-workplan':       sectionWorkplanRef,
+      'section-completion':     sectionCompletionRef,
+    };
+    const accordionMap: Record<string, string> = {
+      'section-strategy':       'strategy',
+      'section-team':           'team',
+      'section-implementation': 'implementation',
+      'section-workplan':       'workplan',
+      'section-completion':     'completion',
+    };
+    // Expand the target accordion if it's collapsed
+    const key = accordionMap[id];
+    if (key) {
+      setCollapsedSections(prev => { const n = new Set(prev); n.delete(key); return n; });
+    }
+    // Brief glow highlight on the target section
+    setHighlightedSection(key ?? null);
+    setTimeout(() => setHighlightedSection(null), 1600);
+    refMap[id]?.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setActiveSection(id);
+  }, []);
 
   // ── Milestone toggle ─────────────────────────────────────────────────────────
   const toggleMilestone = async (idx: number) => {
@@ -365,6 +455,68 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       return updated;
     });
   }, [save]);
+
+  // ── Milestone file upload / delete ────────────────────────────────────────
+  const uploadMilestoneFile = useCallback(async (mIdx: number, file: File) => {
+    if (!localTask) return;
+    setUploadingMilestone(mIdx);
+
+    // 1. Optimistic: show file immediately with a local blob URL
+    const tempId = crypto.randomUUID();
+    const localUrl = URL.createObjectURL(file);
+    const optimistic: MilestoneAttachment = {
+      id: tempId, task_id: localTask.id, milestone_idx: mIdx,
+      file_name: file.name, file_path: '', file_url: localUrl,
+      file_type: file.type, file_size: file.size, uploaded_at: new Date().toISOString(),
+    };
+    setAttachmentsByMilestone(prev => ({
+      ...prev,
+      [mIdx]: [...(prev[mIdx] || []), optimistic],
+    }));
+    setUploadingMilestone(null);
+
+    // 2. Upload to Supabase Storage
+    try {
+      const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `${localTask.id}/${mIdx}/${Date.now()}_${safeName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('milestone-attachments')
+        .upload(storagePath, file);
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('milestone-attachments')
+        .getPublicUrl(storagePath);
+
+      // 3. Persist metadata to DB
+      const saved = await insertMilestoneAttachment({
+        task_id: localTask.id, milestone_idx: mIdx,
+        file_name: file.name, file_path: storagePath,
+        file_url: publicUrl, file_type: file.type, file_size: file.size,
+      });
+
+      // 4. Replace optimistic entry with the real DB row
+      setAttachmentsByMilestone(prev => ({
+        ...prev,
+        [mIdx]: (prev[mIdx] || []).map(a => a.id === tempId ? saved : a),
+      }));
+    } catch {
+      // Storage/DB not ready — file stays as session-only preview via blob URL
+    }
+  }, [localTask]);
+
+  const deleteMilestoneFile = useCallback(async (mIdx: number, attachmentId: string, filePath: string) => {
+    // Optimistic: remove from UI immediately
+    setAttachmentsByMilestone(prev => ({
+      ...prev,
+      [mIdx]: (prev[mIdx] || []).filter(a => a.id !== attachmentId),
+    }));
+    // Cleanup storage and DB row (fire-and-forget)
+    if (filePath) {
+      supabase.storage.from('milestone-attachments').remove([filePath]).catch(() => null);
+    }
+    deleteMilestoneAttachmentRow(attachmentId).catch(() => null);
+  }, []);
 
   // ── Delete milestone ──────────────────────────────────────────────────────
   const deleteMilestone = useCallback((mIdx: number) => {
@@ -414,7 +566,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   }, [save]);
 
   const patchActionItem = useCallback((
-    mIdx: number, aIdx: number, key: 'text' | 'done' | 'assignedTo' | 'dueDate', value: string | boolean
+    mIdx: number, aIdx: number, key: 'text' | 'done' | 'assignedTo' | 'dueDate' | 'notes', value: string | boolean
   ) => {
     setLocalTask(prev => {
       if (!prev) return prev;
@@ -445,11 +597,67 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     });
   }, [save]);
 
+  // ── Promote action item → standalone milestone ────────────────────────────
+  const promoteActionItem = useCallback((mIdx: number, aIdx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const parent = prev.milestones[mIdx];
+      const action = (parent.actionItems || [])[aIdx];
+      if (!action) return prev;
+      const newMilestone: MedicalTask['milestones'][0] = {
+        text: action.text,
+        done: action.done,
+        dueDate: action.dueDate,
+        parentRef: parent.text || `אבן דרך ${mIdx + 1}`,
+      };
+      const milestones = [
+        ...prev.milestones.map((m, i) =>
+          i !== mIdx ? m : { ...m, actionItems: (m.actionItems || []).filter((_, j) => j !== aIdx) }
+        ),
+        newMilestone,
+      ];
+      const updated = { ...prev, milestones };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  // ── Send individual action-item update email ───────────────────────────────
+  const sendActionItemEmail = useCallback((mIdx: number, aIdx: number) => {
+    const t = localTask ?? fetchedTask;
+    if (!t) return;
+    const m = t.milestones[mIdx];
+    const a = (m?.actionItems || [])[aIdx];
+    if (!a) return;
+    const teamProfiles = profiles.filter(p => (t.participants || []).includes(p.id));
+    const emails = teamProfiles.map(p => p.email).filter(Boolean).join(',');
+    const status = a.done ? '✅ הושלם' : `⏳ בתהליך${a.dueDate ? ` — תאריך יעד: ${a.dueDate}` : ''}`;
+    const lines = [`שלום,`, ``, `עדכון על משימה: ${a.text}`, `סטטוס: ${status}`];
+    if (a.notes) lines.push(``, `הערות:`, a.notes);
+    lines.push(``, `(חלק מאבן הדרך: ${m.text || ''})`, ``, `בברכה`);
+    const subject = encodeURIComponent(`עדכון משימה: ${a.text}`);
+    const body = encodeURIComponent(lines.join('\n'));
+    window.open(`mailto:${emails}?subject=${subject}&body=${body}`);
+  }, [localTask, fetchedTask, profiles]);
+
+  // ── Add action item to Google Calendar ────────────────────────────────────
+  const addActionToCalendar = useCallback((a: { text: string; dueDate?: string; notes?: string }) => {
+    const dateStr = a.dueDate ? a.dueDate.replace(/-/g, '') : '';
+    const allDay = dateStr ? `${dateStr}/${dateStr}` : '';
+    const params = new URLSearchParams({
+      action: 'TEMPLATE',
+      text: a.text,
+      ...(allDay ? { dates: allDay } : {}),
+      ...(a.notes ? { details: a.notes } : {}),
+    });
+    window.open(`https://calendar.google.com/calendar/render?${params.toString()}`, '_blank');
+  }, []);
+
   // ── KPI list helpers ────────────────────────────────────────────────────────
   const addKpi = useCallback(() => {
     setLocalTask(prev => {
       if (!prev) return prev;
-      const updated = { ...prev, kpis: [...(prev.kpis || []), { name: '', baseline: '', target: '', cadence: '', source: '', owner: '' }] };
+      const updated = { ...prev, kpis: [...(prev.kpis || []), { name: '', baseline: '', baselineVal: '', target: '', targetVal: '', cadence: '', source: '', owner: '' }] };
       save(updated);
       return updated;
     });
@@ -469,6 +677,66 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
       if (!prev) return prev;
       const kpis = (prev.kpis || []).filter((_, i) => i !== idx);
       const updated = { ...prev, kpis };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  // ── Barrier list helpers ─────────────────────────────────────────────────────
+  const barrierMigrationRanRef = useRef(false);
+  useEffect(() => {
+    if (barrierMigrationRanRef.current || !fetchedTask) return;
+    if ((fetchedTask.barriers?.length ?? 0) > 0) return;
+    if (!fetchedTask.risksBlockers && !fetchedTask.mitigationPlan) return;
+    barrierMigrationRanRef.current = true;
+    const firstRow = { risk: fetchedTask.risksBlockers || '', mitigation: fetchedTask.mitigationPlan || '' };
+    const updated = { ...fetchedTask, barriers: [firstRow] };
+    setLocalTask(updated);
+    save(updated);
+  }, [fetchedTask]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const sectionCollapseInitRef = useRef(false);
+  useEffect(() => {
+    if (sectionCollapseInitRef.current || !fetchedTask) return;
+    sectionCollapseInitRef.current = true;
+    const saved = localStorage.getItem(`tp-sections-${taskId}`);
+    if (saved) {
+      try { setCollapsedSections(new Set(JSON.parse(saved) as string[])); return; } catch { /* ignore */ }
+    }
+    setCollapsedSections(new Set(['strategy', 'team', 'implementation', 'workplan', 'completion']));
+  }, [fetchedTask, taskId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const toggleSection = useCallback((id: string) => {
+    setCollapsedSections(prev => {
+      const n = new Set(prev);
+      n.has(id) ? n.delete(id) : n.add(id);
+      localStorage.setItem(`tp-sections-${taskId}`, JSON.stringify([...n]));
+      return n;
+    });
+  }, []);
+
+  const addBarrier = useCallback(() => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const updated = { ...prev, barriers: [...(prev.barriers || []), { risk: '', mitigation: '' }] };
+      save(updated);
+      return updated;
+    });
+  }, [save]);
+
+  const patchBarrier = useCallback((idx: number, key: 'risk' | 'mitigation', value: string) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const barriers = (prev.barriers || []).map((b, i) => i === idx ? { ...b, [key]: value } : b);
+      return { ...prev, barriers };
+    });
+  }, []);
+
+  const deleteBarrier = useCallback((idx: number) => {
+    setLocalTask(prev => {
+      if (!prev) return prev;
+      const barriers = (prev.barriers || []).filter((_, i) => i !== idx);
+      const updated = { ...prev, barriers };
       save(updated);
       return updated;
     });
@@ -570,7 +838,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-grid, .tp-grid-3, .tp-grid-4 {
           display: grid;
           grid-template-columns: minmax(0, 1fr);
-          gap: 12px;
+          gap: 8px;
         }
         /* On mobile: span-2 must not overflow a 1-column grid */
         .tp-span-full  { grid-column: 1 / -1; }
@@ -589,44 +857,130 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           .tp-grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
         }
 
-        /* ── Tab bar ── */
-        .tp-tabbar {
+        /* ── Scroll layout: content + sticky side nav ── */
+        .tp-scroll-layout {
+          display: grid;
+          grid-template-columns: 1fr 190px;
+          gap: 0 20px;
+          /* no align-items — cells stretch to row height so sticky works */
+        }
+        .tp-scroll-content { min-width: 0; }
+        /* Wrapper column stretches to full content height; nav sticks inside it */
+        .tp-side-nav-col { min-width: 0; }
+
+        /* ── Sticky side nav ── */
+        .tp-side-nav {
+          position: sticky;
+          top: 16px;
+          max-height: calc(100vh - 48px);
+          overflow-y: auto;
+          scrollbar-width: none;
+          background: #ffffff;
+          border-radius: 14px;
+          border: 1px solid #e8edf3;
+          padding: 8px 6px;
+          box-shadow: 0 2px 8px rgba(15,23,42,0.06);
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .tp-side-nav::-webkit-scrollbar { display: none; }
+        .tp-nav-item {
           display: flex;
           align-items: center;
-          gap: 4px;
-          padding: 0 0 0 8px;
-          margin-bottom: 16px;
-          border-bottom: 1px solid #e2e8f0;
-          direction: rtl;
-          flex-wrap: nowrap;
-          overflow-x: auto;
-          -webkit-overflow-scrolling: touch;
-          scrollbar-width: none;
-        }
-        .tp-tabbar::-webkit-scrollbar { display: none; }
-        .tp-tab-button {
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-          padding: 4px 8px 10px;
+          gap: 7px;
+          padding: 8px 10px;
+          border-radius: 9px;
           border: none;
-          border-bottom: 2px solid transparent;
           background: transparent;
           cursor: pointer;
-          color: #64748b;
           font: inherit;
-          font-size: 12.5px;
+          font-size: 12px;
           font-weight: 500;
+          color: #64748b;
+          direction: rtl;
+          text-align: right;
+          transition: background 0.14s, color 0.14s;
           white-space: nowrap;
-          border-radius: 6px 6px 0 0;
-          transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
         }
-        .tp-tab-button:hover { color: #334155; background: rgba(0,0,0,0.025); }
-        .tp-tab-button[data-active="true"] {
-          color: #4f46e5;
+        .tp-nav-item:hover { background: #f1f5f9; color: #334155; }
+        .tp-nav-item[data-active="true"] {
+          background: var(--nav-bg, #eff6ff);
+          color: var(--nav-color, #2563eb);
           font-weight: 700;
-          border-bottom-color: #4f46e5;
         }
+
+        /* ── Section header bands ── */
+        .tp-section-band {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          padding: 10px 16px;
+          border-radius: 10px;
+          font-size: 13px;
+          font-weight: 700;
+          letter-spacing: 0.1px;
+          direction: rtl;
+          cursor: pointer;
+          user-select: none;
+          transition: border-radius 0.15s;
+        }
+        .tp-section-band.tp-band-open {
+          border-radius: 10px 10px 0 0;
+        }
+        .tp-band-blue   { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+        .tp-band-teal   { background: #f0fdfa; color: #0f766e; border: 1px solid #99f6e4; }
+        .tp-band-amber  { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }
+        .tp-band-green  { background: #f0fdf4; color: #166534; border: 1px solid #bbf7d0; }
+        .tp-band-indigo { background: #eef2ff; color: #4338ca; border: 1px solid #c7d2fe; }
+        .tp-band-purple { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; }
+        .tp-section-wrap { display: block; margin-top: 8px; }
+        .tp-section-wrap.tp-section-collapsed { display: none; }
+
+        /* ── KPI compare grid: Baseline | → | Target ── */
+        .tp-kpi-compare {
+          display: grid;
+          grid-template-columns: 1fr 28px 1fr;
+          gap: 0;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          overflow: hidden;
+          margin-bottom: 14px;
+        }
+        .tp-kpi-col-base  { background: #fef9f0; padding: 12px 14px; border-left: 1px solid #e2e8f0; }
+        .tp-kpi-col-arrow { display: flex; align-items: center; justify-content: center; background: #f8fafc; color: #94a3b8; font-size: 16px; }
+        .tp-kpi-col-tgt   { background: #f0fdf4; padding: 12px 14px; }
+        .tp-kpi-col-label { font-size: 10px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 6px; direction: rtl; }
+        .tp-kpi-col-base  .tp-kpi-col-label { color: #92400e; }
+        .tp-kpi-col-tgt   .tp-kpi-col-label { color: #166534; }
+
+        /* ── Barriers & Mitigation two-column table ── */
+        .tp-barriers-grid {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 0;
+          border: 1px solid #e2e8f0;
+          border-radius: 12px;
+          overflow: hidden;
+          margin-bottom: 12px;
+        }
+        .tp-barriers-col { padding: 12px 14px; direction: rtl; }
+        .tp-barriers-col:first-child { border-left: 1px solid #e2e8f0; background: #fff9f0; }
+        .tp-barriers-col:last-child  { background: #f0fdf4; }
+        .tp-barriers-col-header {
+          font-size: 10.5px; font-weight: 700; letter-spacing: 0.5px;
+          text-transform: uppercase; margin-bottom: 8px;
+          padding-bottom: 6px; border-bottom: 1px solid;
+          direction: rtl;
+        }
+        .tp-barriers-col:first-child .tp-barriers-col-header { color: #b45309; border-color: #fde68a; }
+        .tp-barriers-col:last-child  .tp-barriers-col-header { color: #166534; border-color: #bbf7d0; }
+        @media (max-width: 640px) {
+          .tp-barriers-grid { grid-template-columns: 1fr; }
+          .tp-barriers-col:first-child { border-left: none; border-bottom: 1px solid #e2e8f0; }
+        }
+
 
         /* ── Ghost action buttons ── */
         .tp-ghost-btn {
@@ -652,7 +1006,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           background: #f8fafc;
           border-radius: 10px;
           border: 1px solid #eef2f7;
-          padding: 10px 12px;
+          padding: 6px 10px;
           direction: rtl;
           text-align: right;
           transition: border-color 0.14s, box-shadow 0.14s;
@@ -734,6 +1088,20 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           transition: background 0.12s, border-color 0.12s;
         }
         .tp-kpi-add-btn:hover { background: #f5f3ff; border-color: #a5b4fc; }
+
+        /* ── Unified Metrics Table (compact) ── */
+        /* ── Unified Metrics Table (compact) ── */
+        .tp-mtable { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; margin-top: 8px; background: white; }
+        .tp-mtable-head, .tp-mtable-row { display: grid; grid-template-columns: 1.4fr 1fr 24px 1fr 28px; direction: rtl; align-items: stretch; }
+        .tp-mtable-head { background: #f8fafc; border-bottom: 1px solid #e2e8f0; }
+        .tp-mtable-row { border-bottom: 1px solid #f0f2f5; transition: background 0.12s; background: white; min-height: 42px; }
+        .tp-mtable-row:last-child { border-bottom: none; }
+        .tp-mtable-row:hover { background: #fbfbff; }
+        .tp-mtable-hcell { padding: 6px 10px; font-size: 10px; font-weight: 700; color: #94a3b8; letter-spacing: 0.5px; text-transform: uppercase; text-align: right; display: flex; align-items: center; }
+        .tp-mtable-cell { padding: 5px 9px; min-width: 0; overflow: hidden; display: flex; align-items: center; }
+        .tp-mtable-arrow { display: flex; align-items: center; justify-content: center; color: #d1d5db; font-size: 14px; }
+        .tp-mtable-del { display: flex; align-items: center; justify-content: center; }
+        @media (max-width: 600px) { .tp-mtable-head { display: none; } .tp-mtable-row { grid-template-columns: 1fr 24px 1fr auto; } }
 
         /* ── Management Overview ── */
         .tp-overview {
@@ -905,7 +1273,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         /* ── Inline editable fields ── */
         .tp-editable {
           border-radius: 7px;
-          padding: 4px 8px;
+          padding: 2px 8px;
           border: 1px solid transparent;
           background: transparent;
           transition: background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
@@ -921,16 +1289,31 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           box-shadow: 0 0 0 3px rgba(99,102,241,0.09);
         }
 
-        /* ── Milestone rows ── */
+        /* ── Milestone rows — flat ── */
         .tp-milestone-row {
-          border-radius: 10px;
-          border: 1px solid #e8edf3;
-          background: #ffffff;
-          transition: border-color 0.14s, box-shadow 0.14s;
+          background: transparent;
+          transition: background 0.12s;
           overflow: hidden;
+          border-radius: 8px;
         }
-        .tp-milestone-row:hover { border-color: #c7d2fe; box-shadow: 0 1px 6px rgba(99,102,241,0.07); }
-        .tp-milestone-row.done { border-color: #d1fae5; background: #f9fffe; }
+        .tp-milestone-row:hover { background: #fafbff; }
+        .tp-milestone-row.done:hover { background: #f0fdf9; }
+        .tp-milestone-row.done:hover .tp-milestone-delete-btn:hover { background: #d1fae5; color: #059669; }
+        /* Manage / workspace trigger — labeled pill, always visible */
+        .tp-manage-btn {
+          display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+          height: 26px; padding: 0 10px; border: none; background: #f1f5f9; cursor: pointer;
+          color: #475569; border-radius: 9999px; transition: all 0.15s; flex-shrink: 0;
+          font-size: 11px; font-weight: 600; font-family: inherit; letter-spacing: 0.2px;
+        }
+        .tp-manage-btn:hover { background: #e2e8f0; color: #1e293b; }
+        .tp-manage-btn.active { background: #e0e7ff; color: #4338ca; }
+        /* Ghost elements — invisible by default, appear on row hover */
+        .tp-milestone-ghost {
+          opacity: 0;
+          transition: opacity 0.15s, background 0.15s, color 0.15s;
+        }
+        .tp-milestone-row:hover .tp-milestone-ghost { opacity: 1; }
 
         /* ── Milestone header ── */
         .tp-milestone-hd {
@@ -948,7 +1331,6 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           align-items: center;
           gap: 8px;
           padding: 6px 14px 6px 14px;
-          border-top: 1px solid #f1f5f9;
           direction: rtl;
           background: #fafbfc;
           transition: background 0.12s;
@@ -956,7 +1338,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-action-row:hover { background: #f4f6f9; }
         .tp-action-row.done-action textarea { text-decoration: line-through; color: #94a3b8 !important; }
 
-        /* ── Assignee avatar pill ── */
+        /* ── Assignee avatar pill — ghost default, reveals on hover ── */
         .tp-assignee-pill {
           position: relative;
           overflow: hidden;
@@ -965,24 +1347,20 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           gap: 5px;
           padding: 4px 10px 4px 7px;
           border-radius: 20px;
-          background: #ede9fe;
-          color: #6d28d9;
+          background: transparent;
+          color: #64748b;
           font-size: 11.5px;
           font-weight: 600;
           white-space: nowrap;
           cursor: pointer;
-          border: 1px solid transparent;
+          border: 1px solid #e2e8f0;
           font-family: inherit;
-          transition: background 0.12s, border-color 0.12s;
+          transition: background 0.15s, border-color 0.15s, color 0.15s;
           flex-shrink: 0;
           user-select: none;
         }
-        .tp-assignee-pill:hover { background: #ddd6fe; border-color: #c4b5fd; }
-        .tp-assignee-pill.unassigned {
-          background: #f1f5f9;
-          color: #94a3b8;
-          border-color: transparent;
-        }
+        .tp-assignee-pill:hover { background: #ede9fe; color: #6d28d9; border-color: #c4b5fd; }
+        .tp-assignee-pill.unassigned { color: #94a3b8; border-color: #e2e8f0; }
         .tp-assignee-pill.unassigned:hover { background: #e2e8f0; color: #64748b; border-color: #cbd5e1; }
 
         /* ── Assignee dropdown — invisible full-cover overlay ── */
@@ -1051,6 +1429,147 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           margin: 0;
         }
 
+        /* ── Milestone workspace ── */
+        .tp-milestone-workspace {
+          background: #f8fafc;
+          border: 1px solid #e2e8f0;
+          border-top: none;
+          border-radius: 0 0 10px 10px;
+          padding: 14px 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 14px;
+          direction: rtl;
+        }
+        .tp-workspace-label {
+          font-size: 11px;
+          font-weight: 700;
+          color: #475569;
+          letter-spacing: 0.4px;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          margin-bottom: 5px;
+        }
+        .tp-workspace-textarea {
+          width: 100%;
+          box-sizing: border-box;
+          border: 1px solid #e2e8f0;
+          border-radius: 8px;
+          padding: 9px 12px;
+          font-size: 13px;
+          font-family: inherit;
+          direction: rtl;
+          text-align: right;
+          color: #334155;
+          background: white;
+          resize: none;
+          min-height: 56px;
+          outline: none;
+          line-height: 1.55;
+          transition: border-color 0.15s;
+        }
+        .tp-workspace-textarea:focus { border-color: #94a3b8; box-shadow: 0 0 0 3px rgba(148,163,184,0.15); }
+        .tp-workspace-divider { height: 1px; background: #e2e8f0; }
+        /* ── File upload section ── */
+        .tp-file-upload-btn {
+          display: inline-flex; align-items: center; gap: 5px;
+          height: 24px; padding: 0 10px; border-radius: 9999px; cursor: pointer;
+          font-size: 11px; font-weight: 600; font-family: inherit;
+          background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;
+          transition: all 0.15s; white-space: nowrap;
+        }
+        .tp-file-upload-btn:hover { background: #e2e8f0; color: #1e293b; }
+        .tp-file-list { display: flex; flex-wrap: wrap; gap: 10px; }
+        .tp-file-item {
+          display: flex; flex-direction: column; align-items: center; gap: 4px;
+          width: 72px;
+        }
+        .tp-file-thumb {
+          width: 64px; height: 64px; object-fit: cover; border-radius: 8px;
+          border: 1px solid #e2e8f0;
+        }
+        .tp-file-icon {
+          width: 64px; height: 64px; border-radius: 8px; border: 1px solid #e2e8f0;
+          background: white; display: flex; flex-direction: column;
+          align-items: center; justify-content: center; gap: 3px; color: #94a3b8;
+        }
+        .tp-file-ext { font-size: 9px; font-weight: 800; letter-spacing: 0.5px; color: #64748b; }
+        .tp-file-name {
+          font-size: 10px; color: #64748b; text-align: center; width: 72px;
+          overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .tp-file-actions { display: flex; gap: 3px; }
+        .tp-file-action-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 22px; height: 22px; border-radius: 9999px; border: none;
+          background: #f1f5f9; color: #64748b; cursor: pointer; font-size: 13px;
+          transition: all 0.12s; text-decoration: none;
+        }
+        .tp-file-action-btn:hover { background: #e2e8f0; color: #1e293b; }
+        .tp-file-action-btn.del:hover { background: #fee2e2; color: #ef4444; }
+        .tp-send-update-btn {
+          display: inline-flex;
+          align-items: center;
+          gap: 7px;
+          padding: 8px 16px;
+          border-radius: 8px;
+          border: none;
+          background: linear-gradient(135deg, #4f46e5, #6366f1);
+          color: white;
+          font-size: 13px;
+          font-weight: 600;
+          font-family: inherit;
+          cursor: pointer;
+          transition: opacity 0.15s;
+          align-self: flex-start;
+        }
+        .tp-send-update-btn:hover { opacity: 0.88; }
+        /* ── Action row v2: productivity group ── */
+        .tp-action-row { gap: 10px; padding: 7px 14px; }
+        .tp-action-productivity {
+          display: flex; align-items: center; gap: 6px; flex-shrink: 0;
+          padding: 0 6px;
+        }
+        .tp-action-admin { display: flex; align-items: center; gap: 2px; flex-shrink: 0; }
+        /* Primary pill buttons */
+        .tp-pa-btn {
+          display: inline-flex; align-items: center; justify-content: center; gap: 4px;
+          height: 24px; padding: 0 10px; cursor: pointer; flex-shrink: 0;
+          border-radius: 999px; font-size: 11px; font-weight: 600; font-family: inherit;
+          transition: all 0.18s; white-space: nowrap;
+        }
+        .tp-pa-btn.email { background: #eef2ff; color: #4f46e5; border: 1px solid #c7d2fe; }
+        .tp-pa-btn.email:hover { background: #4f46e5; color: white; border-color: #4f46e5; }
+        .tp-pa-btn.cal  { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+        .tp-pa-btn.cal:hover  { background: #16a34a; color: white; border-color: #16a34a; }
+        .tp-pa-btn.note { background: transparent; color: #94a3b8; border: 1px solid #e2e8f0; }
+        .tp-pa-btn.note:hover  { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+        .tp-pa-btn.note.active { background: #fffbeb; color: #92400e; border-color: #fde68a; }
+        /* Admin ghost buttons */
+        .tp-admin-btn {
+          display: inline-flex; align-items: center; justify-content: center;
+          width: 26px; height: 26px; border: none; background: none; cursor: pointer;
+          color: #d1d5db; border-radius: 9999px; transition: all 0.12s; flex-shrink: 0;
+          font-size: 15px; font-family: inherit; line-height: 1;
+        }
+        .tp-admin-btn:hover { background: #f1f5f9; color: #64748b; }
+        .tp-admin-btn.del:hover { background: #fee2e2; color: #ef4444; }
+        .tp-admin-btn.promote:hover { background: #eef2ff; color: #4f46e5; }
+        .tp-action-notes-area {
+          width: 100%; box-sizing: border-box; margin: 4px 0 4px 0;
+          border: 1px dashed #e2e8f0; border-radius: 6px; padding: 7px 10px;
+          font-size: 12px; font-family: inherit; direction: rtl; text-align: right;
+          color: #475569; background: #f8fafc; resize: none; outline: none;
+          line-height: 1.5; min-height: 38px;
+        }
+        .tp-action-notes-area:focus { border-color: #94a3b8; background: white; }
+        .tp-milestone-parent-ref {
+          font-size: 10.5px; color: #6366f1; background: #ede9fe;
+          border-radius: 6px; padding: 1px 8px; display: inline-flex;
+          align-items: center; gap: 4px; margin-top: 2px; flex-shrink: 0;
+        }
+
         /* ── Add action button ── */
         .tp-add-action-btn {
           display: flex;
@@ -1085,16 +1604,17 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         }
         .tp-expand-btn:hover { background: #f1f5f9; color: #475569; }
 
-        /* ── Milestone delete button ── */
+        /* ── Milestone delete button — ghost until row hover ── */
         .tp-milestone-delete-btn {
           display: flex; align-items: center; justify-content: center;
-          padding: 3px; border-radius: 5px;
+          padding: 5px; border-radius: 9999px;
           border: none; background: transparent;
-          cursor: pointer; color: #cbd5e1;
-          transition: color 0.12s, background 0.12s;
+          cursor: pointer; color: #edf0f4;
+          transition: color 0.15s, background 0.15s;
           flex-shrink: 0;
         }
-        .tp-milestone-delete-btn:hover { color: #ef4444; background: #fee2e2; }
+        .tp-milestone-row:hover .tp-milestone-delete-btn { color: #cbd5e1; }
+        .tp-milestone-delete-btn:hover { color: #ef4444 !important; background: #fee2e2; }
 
         /* ── Checkbox ── */
         .tp-check {
@@ -1124,9 +1644,25 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         }
         .tp-check:hover:not(:checked) { border-color: #6366f1; }
 
-        /* ── Desktop: restore tab gap ── */
-        @media (min-width: 768px) {
-          .tp-tabbar { gap: 14px; padding: 0; }
+        /* ── Mobile: collapse side nav to top pill row ── */
+        @media (max-width: 767px) {
+          .tp-scroll-layout {
+            grid-template-columns: 1fr;
+          }
+          .tp-side-nav {
+            display: flex;
+            flex-direction: row;
+            overflow-x: auto;
+            position: relative;
+            top: 0;
+            border-radius: 10px;
+            padding: 6px;
+            gap: 4px;
+            scrollbar-width: none;
+            margin-bottom: 12px;
+          }
+          .tp-side-nav::-webkit-scrollbar { display: none; }
+          .tp-nav-item { white-space: nowrap; font-size: 11.5px; padding: 6px 10px; }
         }
 
         /* ── Mobile tweaks — density-first ── */
@@ -1685,7 +2221,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
               {/* ── Modal footer ── */}
               <div className="tp-modal-footer">
                 <button
-                  onClick={() => { switchTab('timeline'); setExpandedMilestones(s => new Set([...s, mIdx])); setExpandedOverviewCard(null); }}
+                  onClick={() => { scrollToSection('section-implementation'); setExpandedMilestones(s => new Set([...s, mIdx])); setExpandedOverviewCard(null); }}
                   style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1px solid #e2e8f0', background: 'white', fontSize: '12px', fontWeight: '600', color: '#6366f1', cursor: 'pointer', fontFamily: 'inherit', transition: 'background 0.12s, border-color 0.12s' }}
                   onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; e.currentTarget.style.borderColor = '#a5b4fc'; }}
                   onMouseLeave={e => { e.currentTarget.style.background = 'white'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
@@ -1709,26 +2245,509 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         );
       })()}
 
-      {/* ── Tab bar ──────────────────────────────────────────────────────────── */}
-      <nav className="tp-tabbar">
-        {NAV_ITEMS.map(({ id, Icon, label }) => {
-          const active = activeSection === id;
-          return (
-            <button
-              key={id}
-              onClick={() => switchTab(id)}
-              className={`tp-tab-button${id === 'outcome' ? ' outcome-tab' : ''}`}
-              data-active={active}
-            >
-              <Icon size={12} />
-              {label}
-            </button>
-          );
-        })}
-      </nav>
+      {/* ── Scroll layout: content + sticky side nav ── */}
+      <div className="tp-scroll-layout">
+        <div className="tp-scroll-content">
 
-      {/* ── Tab panel — only the active section is rendered ─────────────────── */}
-      <div key={activeSection} style={{ animation: 'tpFadeIn 0.18s ease both' }}>
+          {/* ══ SECTION 1: STRATEGY & METRICS (Blue) ══ */}
+          <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'strategy' ? '0 0 0 3px #93c5fd, 0 0 20px rgba(59,130,246,0.15)' : 'none' }}>
+            <div className={`tp-section-band tp-band-blue${!collapsedSections.has('strategy') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('strategy')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} /> אסטרטגיה ומדדים</span>
+              {collapsedSections.has('strategy') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <div className={`tp-section-wrap${collapsedSections.has('strategy') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
+              <div className="tp-grid-3">
+                <Field label="תיאור כללי" className="tp-span-full">
+                  <EditableArea value={task.description} onChange={v => patchLocal('description', v)} onBlur={saveLatest} placeholder="תאר בקצרה את הפרויקט — מה מתבצע, בידי מי, ובאיזה הקשר?" minRows={1} />
+                </Field>
+                <Field label="בעיה / הזדמנות" className="tp-span-full">
+                  <EditableArea value={task.problemStatement} onChange={v => patchLocal('problemStatement', v)} onBlur={saveLatest} placeholder="מהו הכשל, הבזבוז, העיכוב או הסיכון שמניע את הפרויקט?" minRows={1} />
+                </Field>
+                <Field label="קהל יעד">
+                  <EditableArea value={task.targetAudience ?? ''} onChange={v => patchLocal('targetAudience', v)} onBlur={saveLatest} placeholder="מחלקות, תפקידים, מטופלים..." minRows={1} />
+                </Field>
+              </div>
+
+              {/* ── Unified Metrics Table (compact) ── */}
+              <div style={{ marginTop: '16px' }}>
+                <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '10px', direction: 'rtl' }}>מדדים ויעדים</div>
+
+                {(task.kpis || []).length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1', marginBottom: '10px' }}>
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>לא הוגדרו מדדים עדיין — לחץ &quot;+ הוסף מדד&quot; כדי להתחיל.</p>
+                  </div>
+                ) : (
+                  <div className="tp-mtable">
+                    {/* Header */}
+                    <div className="tp-mtable-head">
+                      <div className="tp-mtable-hcell">שם המדד</div>
+                      <div className="tp-mtable-hcell">מצב בסיס</div>
+                      <div className="tp-mtable-hcell" />
+                      <div className="tp-mtable-hcell">יעד</div>
+                      <div className="tp-mtable-hcell" />
+                    </div>
+
+                    {/* Data rows */}
+                    {(task.kpis || []).map((kpi, idx) => (
+                      <div key={idx} className="tp-mtable-row">
+                        <div className="tp-mtable-cell">
+                          <EditableArea value={kpi.name} onChange={v => patchKpi(idx, 'name', v)} onBlur={saveLatest} placeholder="שם המדד" style={{ fontSize: '13px', fontWeight: '600' }} />
+                        </div>
+                        <div className="tp-mtable-cell">
+                          <EditableArea value={kpi.baseline} onChange={v => patchKpi(idx, 'baseline', v)} onBlur={saveLatest} placeholder="מצב נוכחי..." style={{ fontSize: '12px' }} />
+                        </div>
+                        <div className="tp-mtable-arrow">←</div>
+                        <div className="tp-mtable-cell">
+                          <EditableArea value={kpi.target} onChange={v => patchKpi(idx, 'target', v)} onBlur={saveLatest} placeholder="מצב רצוי..." style={{ fontSize: '12px' }} />
+                        </div>
+                        <div className="tp-mtable-del">
+                          <button className="tp-kpi-delete" onClick={() => deleteKpi(idx)} title="מחק מדד"><Trash2 size={12} /></button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <button className="tp-kpi-add-btn" onClick={addKpi} style={{ marginTop: '8px' }}><Plus size={13} /> הוסף מדד</button>
+              </div>
+            </section>
+            </div>{/* end tp-section-wrap strategy */}
+          </div>
+
+          {/* ══ SECTION 2a: TEAM & PARTICIPANTS (Green) ══ */}
+          <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'team' ? '0 0 0 3px #6ee7b7, 0 0 20px rgba(16,185,129,0.15)' : 'none' }}>
+            <div className={`tp-section-band tp-band-green${!collapsedSections.has('team') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('team')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} /> צוות ומשתתפים</span>
+              {collapsedSections.has('team') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <div className={`tp-section-wrap${collapsedSections.has('team') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
+              <div className="tp-grid tp-grid-3">
+                <Field label="אחראי">
+                  <select value={task.assignedTo || ''} onChange={e => patch('assignedTo', e.target.value || null)} style={{ width: '100%', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '10px 14px', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', cursor: 'pointer', outline: 'none', direction: 'rtl' }}>
+                    <option value="">לא שויך</option>
+                    {profiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                  </select>
+                </Field>
+                <Field label="משתתפים" className="tp-span-full">
+                  {(task.participants || []).length === 0 ? (
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>אין משתתפים עדיין</p>
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '7px', direction: 'rtl' }}>
+                      {(task.participants || []).map(pid => {
+                        const profile = profiles.find(p => p.id === pid);
+                        if (!profile) return null;
+                        return (
+                          <span key={pid} style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', padding: '4px 10px 4px 6px', borderRadius: '20px', background: '#ede9fe', border: '1px solid #c7d2fe', color: '#6d28d9', fontSize: '12px', fontWeight: '500' }}>
+                            {profile.full_name || profile.email}
+                            <button onClick={() => patch('participants', task.participants.filter(id => id !== pid))} title="הסר" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: '14px', height: '14px', borderRadius: '50%', background: 'rgba(109,40,217,0.15)', border: 'none', cursor: 'pointer', color: '#6d28d9', fontSize: '11px', fontWeight: '700', padding: 0, lineHeight: 1, fontFamily: 'inherit' }}>×</button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+                </Field>
+                <Field label="הוסף משתתף" className="tp-span-full">
+                  <div style={{ position: 'relative', direction: 'rtl' }}>
+                    <input type="text" value={participantSearch} onChange={e => setParticipantSearch(e.target.value)} placeholder="חיפוש לפי שם או אימייל..." style={{ width: '100%', boxSizing: 'border-box', padding: '10px 14px', borderRadius: '14px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', background: '#f8fafc', direction: 'rtl' }} onFocus={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }} onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }} />
+                    {participantSearch.trim().length > 0 && (() => {
+                      const q = participantSearch.trim().toLowerCase();
+                      const opts = profiles.filter(p => !(task.participants || []).includes(p.id) && (p.full_name?.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q)));
+                      return (
+                        <div style={{ position: 'absolute', top: 'calc(100% + 4px)', right: 0, left: 0, zIndex: 20, background: 'white', border: '1px solid #e2e8f0', borderRadius: '12px', boxShadow: '0 4px 16px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                          {opts.length === 0 ? (
+                            <div style={{ padding: '10px 16px', fontSize: '13px', color: '#94a3b8' }}>אין תוצאות</div>
+                          ) : (
+                            opts.slice(0, 6).map(p => (
+                              <button key={p.id} onMouseDown={e => { e.preventDefault(); patch('participants', [...(task.participants || []), p.id]); setParticipantSearch(''); }} style={{ width: '100%', display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'none', border: 'none', cursor: 'pointer', fontSize: '13px', color: '#334155', fontFamily: 'inherit', textAlign: 'right', direction: 'rtl', borderBottom: '1px solid #f1f5f9' }} onMouseEnter={e => { e.currentTarget.style.background = '#f8fafc'; }} onMouseLeave={e => { e.currentTarget.style.background = 'none'; }}>
+                                {p.full_name || p.email}
+                              </button>
+                            ))
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </Field>
+                <Field label="הזמן לפי אימייל" className="tp-span-full">
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', direction: 'rtl' }}>
+                      <input type="email" dir="ltr" value={inviteEmail} onChange={e => { setInviteEmail(e.target.value); setInviteStatus('idle'); }} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSendInvite(); } }} placeholder="כתובת אימייל להזמנה..." style={{ flex: 1, boxSizing: 'border-box', padding: '10px 14px', borderRadius: '14px', border: '1px solid #e2e8f0', outline: 'none', fontSize: '13px', color: '#1e293b', fontFamily: 'inherit', background: '#f8fafc', direction: 'ltr', textAlign: 'left' }} onFocus={e => { e.currentTarget.style.borderColor = '#a5b4fc'; }} onBlur={e => { e.currentTarget.style.borderColor = '#e2e8f0'; }} />
+                      <button onClick={handleSendInvite} disabled={inviteSending || !inviteEmail.trim() || !profile} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '10px 16px', borderRadius: '14px', background: inviteSending || !inviteEmail.trim() || !profile ? '#e2e8f0' : 'linear-gradient(135deg,#2563eb,#6366f1)', color: inviteSending || !inviteEmail.trim() || !profile ? '#94a3b8' : '#fff', border: 'none', cursor: inviteSending || !inviteEmail.trim() ? 'not-allowed' : 'pointer', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit', whiteSpace: 'nowrap', flexShrink: 0, transition: 'background 0.15s' }}>
+                        {inviteSending ? <span style={{ display: 'inline-block', width: '14px', height: '14px', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', borderRadius: '50%', animation: 'tpSpin 0.7s linear infinite' }} /> : <Send size={14} />}
+                        שלח הזמנה
+                      </button>
+                    </div>
+                    {inviteStatus === 'success' && <div style={{ fontSize: '12px', color: '#059669', background: '#d1fae5', border: '1px solid #a7f3d0', borderRadius: '8px', padding: '7px 12px' }}>✅ ההזמנה נשלחה בהצלחה! המוזמן יקבל אימייל עם קישור להרשמה.</div>}
+                    {inviteStatus === 'error' && <div style={{ fontSize: '12px', color: '#b91c1c', background: '#fef2f2', border: '1px solid #fecaca', borderRadius: '8px', padding: '7px 12px' }}>❌ {inviteError || 'שגיאה בשליחת ההזמנה — נסה שנית.'}</div>}
+                    {inviteStatus === 'idle' && <div style={{ fontSize: '11px', color: '#94a3b8' }}>המוזמן יקבל אימייל עם קישור להרשמה ל-GROW+ ויתווסף אוטומטית למשימה זו.</div>}
+                  </div>
+                </Field>
+              </div>
+            </section>
+            </div>{/* end tp-section-wrap team */}
+          </div>
+
+          {/* ══ SECTION 2: BLUEPRINT — Characterization & Barriers (Teal) ══ */}
+          <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'implementation' ? '0 0 0 3px #5eead4, 0 0 20px rgba(13,148,136,0.15)' : 'none' }}>
+            <div className={`tp-section-band tp-band-teal${!collapsedSections.has('implementation') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('implementation')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} /> אפיון התהליך והחסמים</span>
+              {collapsedSections.has('implementation') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <div className={`tp-section-wrap${collapsedSections.has('implementation') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
+
+              {/* ── Project Characterization ── */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '14px' }}>
+                <Field label="הפתרון המתוכנן / התהליך האידיאלי" className="tp-span-full">
+                  <EditableArea value={task.proposedSolution ?? ''} onChange={v => patchLocal('proposedSolution', v)} onBlur={saveLatest} placeholder="מה מתבצע ואיך זה עובד באופן אידיאלי — טכנולוגיה, תהליך, שינוי נוהל..." minRows={1} />
+                </Field>
+                <div className="tp-grid" style={{ gridTemplateColumns: '1fr 1fr' }}>
+                  <Field label="גישה ומתודולוגיה">
+                    <EditableArea value={task.processName} onChange={v => patchLocal('processName', v)} onBlur={saveLatest} placeholder="גישה טכנית, מסגרת עבודה, שיטת הטמעה..." minRows={1} />
+                  </Field>
+                  <Field label="תוצרים מצופים">
+                    <EditableArea value={task.deliverables ?? ''} onChange={v => patchLocal('deliverables', v)} onBlur={saveLatest} placeholder="מה יימסר בסוף — מערכת, דוח, נוהל, הדרכה..." minRows={1} />
+                  </Field>
+                </div>
+              </div>
+
+              {/* Barriers & Mitigation — dynamic table */}
+              <div style={{ fontSize: '11px', fontWeight: '700', color: '#0f766e', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '8px', direction: 'rtl' }}>חסמים ותוכנית מיתון</div>
+
+              {(task.barriers || []).length === 0 ? (
+                <div style={{ padding: '16px', textAlign: 'center', background: '#f8fafc', borderRadius: '10px', border: '1px dashed #cbd5e1', marginBottom: '8px' }}>
+                  <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>לא הוגדרו חסמים — לחץ &quot;+ הוסף חסם&quot; כדי להתחיל.</p>
+                </div>
+              ) : (
+                <div className="tp-mtable" style={{ marginBottom: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 28px', direction: 'rtl', background: '#f8fafc', borderBottom: '1px solid #e2e8f0' }}>
+                    <div className="tp-mtable-hcell">חסם / סיכון</div>
+                    <div className="tp-mtable-hcell">פתרון / תוכנית מיתון</div>
+                    <div className="tp-mtable-hcell" />
+                  </div>
+                  {(task.barriers || []).map((b, idx) => (
+                    <div key={idx} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 28px', direction: 'rtl', alignItems: 'stretch', borderBottom: idx < (task.barriers || []).length - 1 ? '1px solid #f0f2f5' : 'none', background: 'white', minHeight: '38px' }}>
+                      <div className="tp-mtable-cell">
+                        <EditableArea value={b.risk} onChange={v => patchBarrier(idx, 'risk', v)} onBlur={saveLatest} placeholder="תאר את הסיכון או החסם..." style={{ fontSize: '12px' }} />
+                      </div>
+                      <div className="tp-mtable-cell" style={{ borderRight: '1px solid #f0f2f5' }}>
+                        <EditableArea value={b.mitigation} onChange={v => patchBarrier(idx, 'mitigation', v)} onBlur={saveLatest} placeholder="כיצד נתמודד עם זה..." style={{ fontSize: '12px' }} />
+                      </div>
+                      <div className="tp-mtable-del">
+                        <button className="tp-kpi-delete" onClick={() => deleteBarrier(idx)} title="מחק שורה"><Trash2 size={12} /></button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button className="tp-kpi-add-btn" onClick={addBarrier}><Plus size={13} /> הוסף חסם</button>
+
+            </section>
+            </div>{/* end tp-section-wrap implementation */}
+          </div>
+
+          {/* ══ SECTION 2b: WORK PLAN — Milestones (Amber) ══ */}
+          <div id="section-workplan" ref={sectionWorkplanRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'workplan' ? '0 0 0 3px #a5b4fc, 0 0 20px rgba(99,102,241,0.15)' : 'none' }}>
+            <div className={`tp-section-band tp-band-indigo${!collapsedSections.has('workplan') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('workplan')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ListChecks size={15} /> תוכנית עבודה וביצוע (אבני דרך)
+                {task.milestones.length > 0 && (
+                  <span style={{ fontSize: '11px', fontWeight: '600', color: milestonesDone === task.milestones.length ? '#10b981' : '#4338ca', background: milestonesDone === task.milestones.length ? '#d1fae5' : '#e0e7ff', padding: '1px 8px', borderRadius: '10px' }}>
+                    {milestonesDone} / {task.milestones.length}
+                  </span>
+                )}
+              </span>
+              {collapsedSections.has('workplan') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <div className={`tp-section-wrap${collapsedSections.has('workplan') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={cardStyle}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginBottom: '12px' }}>
+                {task.milestones.map((m, mIdx) => {
+                  const expanded = expandedMilestones.has(mIdx);
+                  const actions = m.actionItems || [];
+                  const actionsDone = actions.filter(a => a.done).length;
+                  const assignedProfile = m.assignedTo ? profiles.find(p => p.id === m.assignedTo) : null;
+                  const milestoneParticipantProfiles = task.participants.length > 0
+                    ? profiles.filter(p => task.participants.includes(p.id))
+                    : [];
+                  return (
+                    <div key={mIdx} className={`tp-milestone-row${m.done ? ' done' : ''}`}>
+                      <div className="tp-milestone-hd">
+                        {/* Checkbox toggle */}
+                        <button onClick={() => toggleMilestone(mIdx)} style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center' }} title={m.done ? 'סמן כלא הושלם' : 'סמן כהושלם'}>
+                          {m.done ? <CheckCircle2 size={18} style={{ color: '#10b981' }} /> : <Circle size={18} style={{ color: '#cbd5e1' }} />}
+                        </button>
+                        {/* Title + open button: title takes natural width, button hugs it */}
+                        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                          <div style={{ minWidth: 0, flexShrink: 1, position: 'relative' }}>
+                            <EditableArea value={m.text} onChange={v => patchMilestone(mIdx, 'text', v)} onBlur={saveLatest} placeholder="שם אבן הדרך..." style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b', textDecoration: m.done ? 'line-through' : 'none' }} />
+                            {m.parentRef && <span className="tp-milestone-parent-ref"><CornerUpRight size={10} /> מתוך: {m.parentRef}</span>}
+                          </div>
+                          <button className={`tp-manage-btn${expanded ? ' active' : ''}`} onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })} title={expanded ? 'סגור מרחב עבודה' : 'פתח מרחב ניהול'}>
+                            פתח
+                            {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                          </button>
+                        </div>
+                        {/* Date — always visible */}
+                        <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: '500', cursor: 'pointer', position: 'relative', flexShrink: 0, color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })() }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
+                          <CalendarDays size={11} />
+                          <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך'}</span>
+                          <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                        </label>
+                        {/* Progress badge */}
+                        {actions.length > 0 && (
+                          <span style={{ fontSize: '10px', fontWeight: '700', flexShrink: 0, letterSpacing: '0.2px', color: actionsDone === actions.length ? '#059669' : '#6366f1', background: actionsDone === actions.length ? '#f0fdf4' : '#f0f4ff', border: `1px solid ${actionsDone === actions.length ? '#d1fae5' : '#e0e7ff'}`, padding: '2px 8px', borderRadius: '999px' }}>
+                            {actionsDone}/{actions.length}
+                          </span>
+                        )}
+                        {/* Assignee — always visible */}
+                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }} className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`} title="שייך אחראי">
+                          <UserCircle2 size={13} />
+                          <span>{assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0] : 'שייך'}</span>
+                          <select className="tp-assignee-select" value={m.assignedTo || ''} onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}>
+                            <option value="">ללא אחראי</option>
+                            {milestoneParticipantProfiles.map(p => <option key={p.id} value={p.id}>{p.full_name || p.email}</option>)}
+                          </select>
+                        </label>
+                        {/* Delete — ghost until row hover */}
+                        <button onClick={() => deleteMilestone(mIdx)} title="מחק אבן דרך" className="tp-milestone-delete-btn tp-milestone-ghost">
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                      {expanded && (
+                        <div className="tp-milestone-workspace">
+                          {/* Status Update */}
+                          <div>
+                            <div className="tp-workspace-label"><DatabaseBackup size={13} /> עדכון סטטוס / מה נעשה</div>
+                            <textarea
+                              className="tp-workspace-textarea"
+                              value={m.updates || ''}
+                              onChange={e => { patchMilestone(mIdx, 'updates', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                              placeholder="מה קדם מאז הפגישה האחרונה? מה הושלם? מה תקוע?"
+                              rows={2}
+                            />
+                          </div>
+
+                          {/* Action Items */}
+                          <div>
+                            <div className="tp-workspace-label"><ListChecks size={13} /> משימות המשך</div>
+                            {actions.map((a, aIdx) => {
+                              const noteKey = `${mIdx}-${aIdx}`;
+                              const noteOpen = expandedActionNotes.has(noteKey);
+                              return (
+                                <div key={aIdx}>
+                                  <div className={`tp-action-row${a.done ? ' done-action' : ''}`}>
+                                    {/* Right: status */}
+                                    <input type="checkbox" className="tp-check" checked={a.done} onChange={e => patchActionItem(mIdx, aIdx, 'done', e.target.checked)} />
+                                    <div style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+                                      <EditableArea value={a.text} onChange={v => patchActionItem(mIdx, aIdx, 'text', v)} onBlur={saveLatest} placeholder="תיאור המשימה..." style={{ fontSize: '13px', color: a.done ? '#94a3b8' : '#334155' }} />
+                                      {a.done && <div style={{ position: 'absolute', top: '50%', left: 0, right: 0, height: '1px', background: '#94a3b8', pointerEvents: 'none' }} />}
+                                    </div>
+                                    {/* Center: productivity group */}
+                                    <div className="tp-action-productivity">
+                                      <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', height: '24px', padding: '0 8px', borderRadius: '999px', fontSize: '11px', fontWeight: '600', cursor: 'pointer', position: 'relative', whiteSpace: 'nowrap', border: `1px solid ${a.dueDate ? '#c7d2fe' : '#e2e8f0'}`, color: a.dueDate ? '#4f46e5' : '#94a3b8', background: a.dueDate ? '#eef2ff' : 'transparent', transition: 'all 0.15s' }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
+                                        <CalendarDays size={11} />
+                                        <span>{a.dueDate ? new Date(a.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך יעד'}</span>
+                                        <input type="date" value={a.dueDate || ''} onChange={e => patchActionItem(mIdx, aIdx, 'dueDate', e.target.value)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                                      </label>
+                                      <button className={`tp-pa-btn cal`} onClick={() => addActionToCalendar(a)} title="הוסף ליומן Google">
+                                        <CalendarPlus size={12} /> יומן
+                                      </button>
+                                      <button className={`tp-pa-btn note${noteOpen ? ' active' : ''}`} onClick={() => setExpandedActionNotes(s => { const n = new Set(s); n.has(noteKey) ? n.delete(noteKey) : n.add(noteKey); return n; })} title="הוסף הערה">
+                                        <StickyNote size={12} /> הערה
+                                      </button>
+                                      <button className="tp-pa-btn email" onClick={() => sendActionItemEmail(mIdx, aIdx)} title="שלח עדכון על משימה זו">
+                                        <Mail size={12} /> מייל
+                                      </button>
+                                    </div>
+                                    {/* Left: admin */}
+                                    <div className="tp-action-admin">
+                                      <button className="tp-admin-btn promote tp-milestone-ghost" onClick={() => promoteActionItem(mIdx, aIdx)} title="קדם למשימה עיקרית">
+                                        <CornerUpRight size={13} />
+                                      </button>
+                                      <button className="tp-admin-btn del tp-milestone-ghost" onClick={() => deleteActionItem(mIdx, aIdx)} title="הסר">×</button>
+                                    </div>
+                                  </div>
+                                  {noteOpen && (
+                                    <textarea
+                                      className="tp-action-notes-area"
+                                      value={a.notes || ''}
+                                      onChange={e => { patchActionItem(mIdx, aIdx, 'notes', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                                      placeholder="הוסף הוראות, קישורים, או הקשר נוסף..."
+                                      rows={2}
+                                    />
+                                  )}
+                                </div>
+                              );
+                            })}
+                            <button className="tp-add-action-btn" onClick={() => addActionItem(mIdx)}>
+                              <Plus size={12} /> הוסף משימת המשך
+                            </button>
+                          </div>
+
+                          {/* Files & Documents */}
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                              <div className="tp-workspace-label" style={{ marginBottom: 0 }}><Paperclip size={13} /> קבצים ומסמכים</div>
+                              <label htmlFor={`file-up-${mIdx}`} className="tp-file-upload-btn">
+                                {uploadingMilestone === mIdx
+                                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: 10, height: 10, border: '2px solid #cbd5e1', borderTopColor: '#475569', borderRadius: '50%', display: 'inline-block', animation: 'tpSpin 0.7s linear infinite' }} /> מעלה...</span>
+                                  : <><Paperclip size={11} /> העלה קובץ</>}
+                              </label>
+                              <input type="file" id={`file-up-${mIdx}`} style={{ display: 'none' }} accept="image/*,.pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMilestoneFile(mIdx, f); e.target.value = ''; }} />
+                            </div>
+                            {((attachmentsByMilestone[mIdx] || []).length > 0) ? (
+                              <div className="tp-file-list">
+                                {(attachmentsByMilestone[mIdx] || []).map(a => {
+                                  const isImage = (a.file_type || '').startsWith('image/');
+                                  const ext = a.file_name.split('.').pop()?.toUpperCase() ?? 'FILE';
+                                  return (
+                                    <div key={a.id} className="tp-file-item">
+                                      {isImage ? <img src={a.file_url} alt={a.file_name} className="tp-file-thumb" /> : <div className="tp-file-icon"><FileText size={20} /><span className="tp-file-ext">{ext}</span></div>}
+                                      <div className="tp-file-name">{a.file_name}</div>
+                                      <div className="tp-file-actions">
+                                        <a href={a.file_url} download={a.file_name} target="_blank" rel="noopener noreferrer" className="tp-file-action-btn" title="הורד"><Download size={11} /></a>
+                                        <button className="tp-file-action-btn del" onClick={() => deleteMilestoneFile(mIdx, a.id, a.file_path)} title="מחק">×</button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <div style={{ fontSize: '11.5px', color: '#94a3b8', padding: '6px 0' }}>אין קבצים מצורפים</div>
+                            )}
+                          </div>
+
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: task.milestones.length > 0 ? '4px' : '0' }}>
+                  <button onClick={() => addNewMilestone(newMilestoneText)} title="הוסף אבן דרך" style={{ flexShrink: 0, width: '24px', height: '24px', borderRadius: '50%', border: '1.5px dashed #94a3b8', background: newMilestoneText.trim() ? '#6366f1' : 'transparent', color: newMilestoneText.trim() ? '#fff' : '#94a3b8', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', transition: 'all 0.15s', padding: 0 }}
+                    onMouseEnter={e => { if (!newMilestoneText.trim()) { e.currentTarget.style.borderColor = '#6366f1'; e.currentTarget.style.color = '#6366f1'; } }}
+                    onMouseLeave={e => { if (!newMilestoneText.trim()) { e.currentTarget.style.borderColor = '#94a3b8'; e.currentTarget.style.color = '#94a3b8'; } }}>
+                    <Plus size={13} />
+                  </button>
+                  <input type="text" dir="rtl" value={newMilestoneText} onChange={e => setNewMilestoneText(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addNewMilestone(newMilestoneText); } if (e.key === 'Escape') setNewMilestoneText(''); }}
+                    placeholder="הוסף אבן דרך חדשה..."
+                    style={{ flex: 1, border: 'none', borderBottom: '1.5px dashed #e2e8f0', borderRadius: 0, padding: '4px 0', fontSize: '13px', color: '#334155', background: 'transparent', outline: 'none', fontFamily: 'inherit', textAlign: 'right', transition: 'border-color 0.15s' }}
+                    onFocus={e => { e.currentTarget.style.borderBottomColor = '#6366f1'; }}
+                    onBlur={e => { e.currentTarget.style.borderBottomColor = '#e2e8f0'; }} />
+                </div>
+              </div>
+            </section>
+            </div>{/* end tp-section-wrap workplan */}
+          </div>
+
+
+          {/* ══ SECTION 4: COMPLETION & COMMUNICATION (Purple) ══ */}
+          <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'completion' ? '0 0 0 3px #c4b5fd, 0 0 20px rgba(139,92,246,0.15)' : 'none' }}>
+            <div className={`tp-section-band tp-band-purple${!collapsedSections.has('completion') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('completion')}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} /> סיום ותקשורת</span>
+              {collapsedSections.has('completion') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
+            </div>
+            <div className={`tp-section-wrap${collapsedSections.has('completion') ? ' tp-section-collapsed' : ''}`}>
+            <section className="tp-section" style={{ ...cardStyle, borderColor: '#c7d2fe', borderWidth: '1.5px', boxShadow: '0 4px 20px rgba(79,70,229,0.08)', background: 'linear-gradient(160deg, #fefeff 0%, #f5f3ff 100%)' }}>
+              <div className="tp-grid-3" style={{ marginBottom: '16px' }}>
+                <Field label="תוצר מסירה" className="tp-span-2">
+                  <EditableArea value={task.finalDeliverable ?? ''} onChange={v => patchLocal('finalDeliverable', v)} onBlur={saveLatest} placeholder="מה הושלם ונמסר? — מערכת, נוהל, הדרכה, אב-טיפוס..." minRows={2} />
+                </Field>
+                <Field label="הערות Rollout">
+                  <EditableArea value={task.rolloutNotes ?? ''} onChange={v => patchLocal('rolloutNotes', v)} onBlur={saveLatest} placeholder="כיצד התבצע השילוב? תקלות? תגובות?" minRows={2} />
+                </Field>
+                <Field label="תוצאות מדודות" className="tp-span-2">
+                  <EditableArea value={task.measuredResult ?? ''} onChange={v => patchLocal('measuredResult', v)} onBlur={saveLatest} placeholder="KPI בפועל אחרי היישום — השווה לנקודת הבסיס." minRows={2} />
+                </Field>
+                <Field label="לקחים">
+                  <EditableArea value={task.lessonsLearned ?? ''} onChange={v => patchLocal('lessonsLearned', v)} onBlur={saveLatest} placeholder="מה למדנו? מה אחרת בפעם הבאה?" minRows={2} />
+                </Field>
+                <Field label="קישורים" className="tp-span-full">
+                  <EditableArea value={task.links} onChange={v => patchLocal('links', v)} onBlur={saveLatest} placeholder="https://..." style={{ wordBreak: 'break-all' }} />
+                </Field>
+              </div>
+
+              {/* Discussion */}
+              <div style={{ fontSize: '11px', fontWeight: '700', color: '#64748b', letterSpacing: '0.5px', textTransform: 'uppercase', marginBottom: '8px', direction: 'rtl', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                דיון
+                {comments.length > 0 && <span style={{ fontSize: '11px', fontWeight: '600', color: '#6366f1', background: '#ede9fe', padding: '2px 8px', borderRadius: '10px', textTransform: 'none', letterSpacing: 'normal' }}>{comments.length}</span>}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '20px' }}>
+                {commentsLoading && <div style={{ display: 'flex', justifyContent: 'center', padding: '20px' }}><div style={{ width: '20px', height: '20px', border: '2px solid #e2e8f0', borderTopColor: '#6366f1', borderRadius: '50%', animation: 'tpSpin 0.8s linear infinite' }} /></div>}
+                {!commentsLoading && comments.length === 0 && (
+                  <div style={{ padding: '32px 20px', textAlign: 'center', background: '#f8fafc', borderRadius: '12px', border: '1px dashed #cbd5e1' }}>
+                    <MessageSquare size={32} style={{ color: '#cbd5e1', margin: '0 auto 12px' }} />
+                    <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0 }}>אין הודעות עדיין. התחל דיון...</p>
+                  </div>
+                )}
+                {comments.map(comment => {
+                  const isOwn = user?.id === comment.author_id;
+                  const authorName = comment.author?.full_name || comment.author?.email || 'משתמש לא ידוע';
+                  const date = new Date(comment.created_at);
+                  const timeStr = date.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' });
+                  const dateStr = date.toLocaleDateString('he-IL', { day: 'numeric', month: 'short' });
+                  return (
+                    <div key={comment.id} style={{ display: 'flex', flexDirection: 'column', gap: '6px', padding: '14px 16px', background: isOwn ? '#ede9fe' : '#f8fafc', borderRadius: '12px', border: `1px solid ${isOwn ? '#c7d2fe' : '#e2e8f0'}`, direction: 'rtl', textAlign: 'right' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px' }}>
+                        <span style={{ fontSize: '13px', fontWeight: '700', color: isOwn ? '#6d28d9' : '#334155' }}>{authorName}</span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <span style={{ fontSize: '11px', color: '#94a3b8' }}>{dateStr} • {timeStr}</span>
+                          {isOwn && (
+                            <button onClick={() => handleDeleteComment(comment.id)} title="מחק" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px', fontSize: '11px', color: '#94a3b8', fontFamily: 'inherit', fontWeight: '600', borderRadius: '4px', transition: 'background 0.12s, color 0.12s' }} onMouseEnter={e => { e.currentTarget.style.background = 'rgba(239,68,68,0.1)'; e.currentTarget.style.color = '#ef4444'; }} onMouseLeave={e => { e.currentTarget.style.background = 'none'; e.currentTarget.style.color = '#94a3b8'; }}>מחק</button>
+                          )}
+                        </div>
+                      </div>
+                      <p style={{ margin: 0, fontSize: '14px', lineHeight: '1.65', color: '#334155', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{comment.content}</p>
+                    </div>
+                  );
+                })}
+              </div>
+              {user ? (
+                <div style={{ background: '#f8fafc', borderRadius: '18px', border: '1px solid #e2e8f0', padding: '18px', direction: 'rtl' }}>
+                  <textarea value={commentText} onChange={e => setCommentText(e.target.value)} placeholder="כתוב הודעה..." rows={3} style={{ width: '100%', boxSizing: 'border-box', border: 'none', outline: 'none', resize: 'none', background: 'white', borderRadius: '8px', padding: '10px 12px', fontSize: '14px', fontFamily: 'inherit', color: '#334155', direction: 'rtl', textAlign: 'right' }} onKeyDown={e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleSendComment(); } }} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '10px' }}>
+                    <button onClick={handleSendComment} disabled={!commentText.trim() || sendingComment} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 18px', borderRadius: '8px', border: 'none', cursor: commentText.trim() ? 'pointer' : 'not-allowed', background: commentText.trim() ? '#6366f1' : '#e2e8f0', color: 'white', fontSize: '13px', fontWeight: '600', fontFamily: 'inherit', transition: 'background 0.15s', opacity: sendingComment ? 0.6 : 1 }} onMouseEnter={e => { if (commentText.trim()) e.currentTarget.style.background = '#4f46e5'; }} onMouseLeave={e => { if (commentText.trim()) e.currentTarget.style.background = '#6366f1'; }}>
+                      <Send size={14} />
+                      {sendingComment ? 'שולח...' : 'שלח'}
+                    </button>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>Ctrl+Enter לשליחה</span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ padding: '20px', textAlign: 'center', background: '#fef3c7', borderRadius: '10px', border: '1px solid #fcd34d' }}>
+                  <p style={{ fontSize: '13px', color: '#92400e', margin: 0 }}>יש להתחבר כדי להשתתף בדיון</p>
+                </div>
+              )}
+            </section>
+            </div>{/* end tp-section-wrap completion */}
+          </div>
+
+        </div>{/* end tp-scroll-content */}
+
+        {/* ── Sticky side nav ── */}
+        <div className="tp-side-nav-col">
+          <nav className="tp-side-nav">
+            {SCROLL_SECTIONS.map(({ id, label, color, Icon }) => (
+              <button
+                key={id}
+                className="tp-nav-item"
+                data-active={activeSection === id}
+                style={{ '--nav-bg': color + '22', '--nav-color': color } as React.CSSProperties}
+                onClick={() => scrollToSection(id)}
+              >
+                <Icon size={14} style={{ color: activeSection === id ? color : undefined, flexShrink: 0 }} />
+                {label}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </div>{/* end tp-scroll-layout */}
+
+      {/* ── Dead code: legacy tab panels (never rendered) ── */}
+      <div key={activeSection} style={{ display: 'none' }}>
 
         {/* FOUNDATIONS — יסודות */}
         {activeSection === 'foundations' && <Section icon={BookOpen} title="יסודות">
@@ -1943,7 +2962,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     {/* ── Milestone header row ── */}
                     <div className="tp-milestone-hd">
 
-                      {/* Toggle done */}
+                      {/* Checkbox toggle */}
                       <button
                         onClick={() => toggleMilestone(mIdx)}
                         style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer', flexShrink: 0, display: 'flex', alignItems: 'center' }}
@@ -1955,96 +2974,66 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                         }
                       </button>
 
-                      {/* Title — inline editable */}
-                      <div style={{ flex: 1, minWidth: 0 }}>
-                        <EditableArea
-                          value={m.text}
-                          onChange={v => patchMilestone(mIdx, 'text', v)}
-                          onBlur={saveLatest}
-                          placeholder="שם אבן הדרך..."
-                          style={{
-                            fontSize: '13.5px',
-                            fontWeight: m.done ? '400' : '500',
-                            color: m.done ? '#6ee7b7' : '#1e293b',
-                            textDecoration: m.done ? 'line-through' : 'none',
-                          }}
-                        />
+                      {/* Title + open button: title takes natural width, button hugs it */}
+                      <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '12px' }}>
+                        <div style={{ minWidth: 0, flexShrink: 1, position: 'relative' }}>
+                          <EditableArea
+                            value={m.text}
+                            onChange={v => patchMilestone(mIdx, 'text', v)}
+                            onBlur={saveLatest}
+                            placeholder="שם אבן הדרך..."
+                            style={{ fontSize: '13.5px', fontWeight: m.done ? '400' : '500', color: m.done ? '#94a3b8' : '#1e293b', textDecoration: m.done ? 'line-through' : 'none' }}
+                          />
+                          {m.parentRef && <span className="tp-milestone-parent-ref"><CornerUpRight size={10} /> מתוך: {m.parentRef}</span>}
+                        </div>
+                        <button
+                          className={`tp-manage-btn${expanded ? ' active' : ''}`}
+                          onClick={() => setExpandedMilestones(s => { const n = new Set(s); n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx); return n; })}
+                          title={expanded ? 'כווץ' : 'הצג פעולות'}
+                        >
+                          פתח
+                          {expanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                        </button>
                       </div>
 
-                      {/* Due date */}
-                      <input
-                        type="date"
-                        value={m.dueDate || ''}
-                        onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)}
-                        title="תאריך יעד"
-                        style={{
-                          background: 'transparent', border: 'none', outline: 'none',
-                          fontSize: '11px', color: (() => {
-                            if (!m.dueDate || m.done) return '#94a3b8';
-                            const d = new Date(m.dueDate); d.setHours(0,0,0,0);
-                            const t = new Date(); t.setHours(0,0,0,0);
-                            return d < t ? '#ef4444' : '#64748b';
-                          })(),
-                          fontFamily: 'inherit', cursor: 'pointer', flexShrink: 0,
-                        }}
-                      />
+                      {/* Date — always visible */}
+                      <label title="תאריך יעד" style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', fontSize: '11px', fontWeight: '500', cursor: 'pointer', position: 'relative', flexShrink: 0, color: (() => { if (!m.dueDate || m.done) return '#94a3b8'; const d = new Date(m.dueDate); d.setHours(0,0,0,0); const t = new Date(); t.setHours(0,0,0,0); return d < t ? '#ef4444' : '#64748b'; })() }} onClick={e => { const inp = e.currentTarget.querySelector('input[type=date]') as HTMLInputElement | null; try { inp?.showPicker?.(); } catch { inp?.focus(); } }}>
+                        <CalendarDays size={11} />
+                        <span>{m.dueDate ? new Date(m.dueDate + 'T00:00:00').toLocaleDateString('he-IL', { day: 'numeric', month: 'short' }) : 'תאריך'}</span>
+                        <input type="date" value={m.dueDate || ''} onChange={e => patchMilestone(mIdx, 'dueDate', e.target.value || undefined)} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' }} />
+                      </label>
 
-                      {/* Action items counter badge */}
+                      {/* Progress badge — pill */}
                       {actions.length > 0 && (
-                        <span style={{
-                          fontSize: '10.5px', fontWeight: '600', flexShrink: 0,
-                          color: actionsDone === actions.length ? '#10b981' : '#6366f1',
-                          background: actionsDone === actions.length ? '#d1fae5' : '#ede9fe',
-                          padding: '1px 7px', borderRadius: '10px',
-                        }}>
+                        <span style={{ fontSize: '10px', fontWeight: '700', flexShrink: 0, letterSpacing: '0.2px', color: actionsDone === actions.length ? '#059669' : '#6366f1', background: actionsDone === actions.length ? '#f0fdf4' : '#f0f4ff', border: `1px solid ${actionsDone === actions.length ? '#d1fae5' : '#e0e7ff'}`, padding: '2px 8px', borderRadius: '999px' }}>
                           {actionsDone}/{actions.length}
                         </span>
                       )}
 
-                      {/* Assignee pill */}
-                      <div style={{ flexShrink: 0, position: 'relative' }}>
-                        <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
-                          className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`}
-                          title="שייך אחראי"
-                        >
-                          <UserCircle2 size={13} />
-                          <span>
-                            {assignedProfile
-                              ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0]
-                              : 'שייך'}
-                          </span>
-                          <select
-                            className="tp-assignee-select"
-                            value={m.assignedTo || ''}
-                            onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
-                          >
-                            <option value="">ללא אחראי</option>
-                            {milestoneParticipantProfiles.map(p => (
-                              <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-
-                      {/* Expand / collapse */}
-                      <button
-                        className="tp-expand-btn"
-                        onClick={() => setExpandedMilestones(s => {
-                          const n = new Set(s);
-                          n.has(mIdx) ? n.delete(mIdx) : n.add(mIdx);
-                          return n;
-                        })}
-                        title={expanded ? 'כווץ' : 'הצג פעולות'}
+                      {/* Assignee — always visible */}
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                        className={`tp-assignee-pill${!m.assignedTo ? ' unassigned' : ''}`}
+                        title="שייך אחראי"
                       >
-                        {expanded ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
-                        {actions.length === 0 ? 'פעולות' : ''}
-                      </button>
+                        <UserCircle2 size={13} />
+                        <span>{assignedProfile ? (assignedProfile.full_name || assignedProfile.email || '').split(' ')[0] : 'שייך'}</span>
+                        <select
+                          className="tp-assignee-select"
+                          value={m.assignedTo || ''}
+                          onChange={e => patchMilestone(mIdx, 'assignedTo', e.target.value || undefined)}
+                        >
+                          <option value="">ללא אחראי</option>
+                          {milestoneParticipantProfiles.map(p => (
+                            <option key={p.id} value={p.id}>{p.full_name || p.email}</option>
+                          ))}
+                        </select>
+                      </label>
 
-                      {/* Delete milestone */}
+                      {/* Delete — ghost until row hover */}
                       <button
                         onClick={() => deleteMilestone(mIdx)}
                         title="מחק אבן דרך"
-                        className="tp-milestone-delete-btn"
+                        className="tp-milestone-delete-btn tp-milestone-ghost"
                       >
                         <Trash2 size={13} />
                       </button>
@@ -2061,9 +3050,6 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                           const aProfile = a.assignedTo ? profiles.find(p => p.id === a.assignedTo) : null;
                           return (
                             <div key={aIdx} className={`tp-action-row${a.done ? ' done-action' : ''}`}>
-
-                              {/* Indent line */}
-                              <div style={{ width: '1px', height: '100%', background: '#e2e8f0', flexShrink: 0, alignSelf: 'stretch', marginTop: '2px', marginBottom: '2px' }} />
 
                               {/* Checkbox */}
                               <input
@@ -2133,18 +3119,11 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                                 />
                               </label>
 
-                              {/* Delete action item */}
+                              {/* Delete action item — ghost */}
                               <button
                                 onClick={() => deleteActionItem(mIdx, aIdx)}
                                 title="הסר"
-                                style={{
-                                  background: 'none', border: 'none', cursor: 'pointer',
-                                  color: '#cbd5e1', padding: '2px', borderRadius: '4px',
-                                  fontSize: '13px', lineHeight: 1, flexShrink: 0,
-                                  transition: 'color 0.12s',
-                                }}
-                                onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-                                onMouseLeave={e => { e.currentTarget.style.color = '#cbd5e1'; }}
+                                className="tp-admin-btn del tp-milestone-ghost"
                               >
                                 ×
                               </button>
@@ -2161,6 +3140,39 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                           <Plus size={12} />
                           הוסף פעולה
                         </button>
+
+                        {/* Files & Documents */}
+                        <div style={{ padding: '10px 14px', borderTop: '1px solid #f1f5f9', background: '#f8fafc', borderRadius: '0 0 8px 8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                            <div className="tp-workspace-label" style={{ marginBottom: 0 }}><Paperclip size={13} /> קבצים ומסמכים</div>
+                            <label htmlFor={`file-up2-${mIdx}`} className="tp-file-upload-btn">
+                              {uploadingMilestone === mIdx
+                                  ? <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}><span style={{ width: 10, height: 10, border: '2px solid #cbd5e1', borderTopColor: '#475569', borderRadius: '50%', display: 'inline-block', animation: 'tpSpin 0.7s linear infinite' }} /> מעלה...</span>
+                                  : <><Paperclip size={11} /> העלה קובץ</>}
+                            </label>
+                            <input type="file" id={`file-up2-${mIdx}`} style={{ display: 'none' }} accept="image/*,.pdf,.doc,.docx,.xlsx,.xls,.ppt,.pptx,.txt" onChange={e => { const f = e.target.files?.[0]; if (f) uploadMilestoneFile(mIdx, f); e.target.value = ''; }} />
+                          </div>
+                          {((attachmentsByMilestone[mIdx] || []).length > 0) ? (
+                            <div className="tp-file-list">
+                              {(attachmentsByMilestone[mIdx] || []).map(a => {
+                                const isImage = (a.file_type || '').startsWith('image/');
+                                const ext = a.file_name.split('.').pop()?.toUpperCase() ?? 'FILE';
+                                return (
+                                  <div key={a.id} className="tp-file-item">
+                                    {isImage ? <img src={a.file_url} alt={a.file_name} className="tp-file-thumb" /> : <div className="tp-file-icon"><FileText size={20} /><span className="tp-file-ext">{ext}</span></div>}
+                                    <div className="tp-file-name">{a.file_name}</div>
+                                    <div className="tp-file-actions">
+                                      <a href={a.file_url} download={a.file_name} target="_blank" rel="noopener noreferrer" className="tp-file-action-btn" title="הורד"><Download size={11} /></a>
+                                      <button className="tp-file-action-btn del" onClick={() => deleteMilestoneFile(mIdx, a.id, a.file_path)} title="מחק">×</button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: '11.5px', color: '#94a3b8', padding: '6px 0' }}>אין קבצים מצורפים</div>
+                          )}
+                        </div>
                       </>
                     )}
 
@@ -2612,7 +3624,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           </div>
         </Section>}
 
-      </div>
+      </div>{/* end legacy display:none wrapper */}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
