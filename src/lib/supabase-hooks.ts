@@ -304,6 +304,7 @@ function dbRowToMedicalTask(
     approvers: metadata.approvers || [],
     
     // Risks
+    barriers: Array.isArray(metadata.barriers) ? metadata.barriers : [],
     risksBlockers: metadata.risksBlockers || '',
     dependencies: metadata.dependencies || '',
     links: metadata.links || '',
@@ -848,6 +849,7 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     approvers: task.approvers,
     
     // Risks
+    barriers: task.barriers || [],
     risksBlockers: task.risksBlockers,
     dependencies: task.dependencies,
     links: task.links,
@@ -899,12 +901,15 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
 
   const confirmedUuid = updatedTask.id;
 
-  // Sync task_participants (delete all, re-insert)
+  // Sync task_participants: delete removed, upsert current (safe under concurrent saves)
   await supabase.from('task_participants').delete().eq('task_id', confirmedUuid);
   if (task.participants.length > 0) {
-    const { error: participantsError } = await supabase.from('task_participants').insert(
-      task.participants.map(profileId => ({ task_id: confirmedUuid, profile_id: profileId }))
-    );
+    const { error: participantsError } = await supabase
+      .from('task_participants')
+      .upsert(
+        task.participants.map(profileId => ({ task_id: confirmedUuid, profile_id: profileId })),
+        { onConflict: 'task_id,profile_id', ignoreDuplicates: true }
+      );
     if (participantsError) throw participantsError;
   }
 
@@ -932,14 +937,15 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
   if (deleteError) throw deleteError;
 
   if (task.milestones.length > 0) {
-    const { error: milestonesError } = await supabase.from('milestones').insert(
+    const { error: milestonesError } = await supabase.from('milestones').upsert(
       task.milestones.map((m, idx) => ({
         task_id: confirmedUuid,
         title: m.text,
         done: m.done,
         order: idx,
         assigned_to: m.assignedTo ?? null,
-      }))
+      })),
+      { onConflict: 'task_id,title', ignoreDuplicates: true }
     );
     if (milestonesError) throw milestonesError;
   }
