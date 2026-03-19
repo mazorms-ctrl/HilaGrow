@@ -3,7 +3,7 @@ import {
   ArrowRight, BookOpen, Activity, FileText, ListChecks,
   BarChart2, AlertTriangle, Users, CheckCircle2, Circle, AlertCircle, Trash2, MessageSquare, Send,
   Plus, ChevronDown, ChevronUp, UserCircle2, AlertOctagon, CalendarDays, DatabaseBackup, CornerUpRight,
-  StickyNote, Mail, CalendarPlus, Paperclip, Download, Flag, XCircle, RotateCw, Sparkles, ShieldAlert,
+  StickyNote, Mail, CalendarPlus, Paperclip, Download, Flag, XCircle, Sparkles, ShieldAlert,
 } from 'lucide-react';
 import { useTaskById, useProfiles, updateTask, deleteTask, type MedicalTask, useTaskComments, createComment, deleteComment, fetchMilestoneAttachments, insertMilestoneAttachment, deleteMilestoneAttachmentRow, type MilestoneAttachment } from '@/lib/supabase-hooks';
 import { supabase } from '@/lib/supabase';
@@ -302,7 +302,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
   // ── AI auto-scan toggle — default OFF to conserve free-tier quota ─────────
   // When false: AI only runs on explicit Refresh clicks.
   // When true:  initial scan + debounce fire automatically.
-  const [aiAutoScanEnabled, setAiAutoScanEnabled] = useState(false);
+  const [aiAutoScanEnabled] = useState(false);
 
   // Scroll-section refs for sticky side nav
   const sectionStrategyRef       = useRef<HTMLDivElement>(null);
