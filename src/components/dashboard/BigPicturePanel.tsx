@@ -3,14 +3,17 @@
  * Full-screen modal with zoom/pan tree canvas.
  * Triggered via useUIStore.openBigPicture() — rendered once at app root.
  */
-import { useEffect, useRef, useCallback, useState, useMemo } from 'react';
+import { useEffect, useRef, useCallback, useState, useMemo, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TransformWrapper, TransformComponent, type ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { X, ZoomIn, ZoomOut, Maximize2, Pencil, Check } from 'lucide-react';
-import { useTasks, useProjects } from '@/lib/supabase-hooks';
+import { useTasks, useProjects, useProfiles } from '@/lib/supabase-hooks';
 import { useAuth } from '@/contexts/AuthContext';
+
+// Profile map context — avoids threading through 4 component levels
+const ProfileMapContext = createContext<Map<string, string>>(new Map());
 import { useUIStore } from '@/store/uiStore';
 import { useBodyScrollLock } from '@/hooks/useBodyScrollLock';
 import { colors, shadows, typography } from '@/styles/tokens';
@@ -97,9 +100,18 @@ function TaskCard({
   const navigate = useNavigate();
   const closeBigPicture = useUIStore(s => s.closeBigPicture);
 
+  const profileMap = useContext(ProfileMapContext);
   const progress  = task.progress ?? 0;
   const isActive  = progress > 0;
   const isPersonal = !!currentUserName && task.owner === currentUserName;
+
+  // Build owner line: "שי שבו (אופיר, אדם) | נוירולוגיה"
+  const participantNames = (task.participants || [])
+    .map(id => profileMap.get(id)?.split(' ')[0] ?? '')
+    .filter(Boolean);
+  const participantStr = participantNames.length > 0 ? ` (${participantNames.join(', ')})` : '';
+  const deptStr = task.department ? ` | ${task.department}` : '';
+  const ownerLine = task.owner ? `${task.owner}${participantStr}${deptStr}` : null;
 
   // ── Visual tokens based on activity ──────────────────────────────────────
   const bg          = isActive ? pastel(color)         : '#f8fafc';
@@ -190,7 +202,7 @@ function TaskCard({
         </div>
       )}
 
-      {/* Footer: progress % + milestones + owner full name */}
+      {/* Footer: progress % + milestones + owner + participants + department */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         paddingBottom: '10px', flexWrap: 'wrap', gap: '4px',
@@ -198,9 +210,9 @@ function TaskCard({
         <span style={{ fontSize: '10.5px', color: metaColor }}>
           {progress}%{totalMilestones > 0 ? ` · ${doneMilestones}/${totalMilestones}` : ''}
         </span>
-        {task.owner && (
-          <span style={{ fontSize: '10.5px', color: metaColor, maxWidth: '110px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            👤 {task.owner}
+        {ownerLine && (
+          <span style={{ fontSize: '10.5px', color: metaColor, maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ownerLine}>
+            👤 {ownerLine}
           </span>
         )}
       </div>
@@ -874,6 +886,14 @@ function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
   const { projects, loading: projectsLoading } = useProjects(user?.id);
   const projectId = projects[0]?.id ?? null;
   const { tasks: rawTasks, loading: tasksLoading } = useTasks(projectId);
+  const { profiles } = useProfiles();
+
+  // id → full_name map, used by TaskCard to resolve participant UUIDs
+  const profileNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const p of profiles) if (p.full_name) map.set(p.id, p.full_name);
+    return map;
+  }, [profiles]);
 
   // ── Edit mode + drag state ────────────────────────────────────────────────
   const [editMode,   setEditMode]   = useState(false);
@@ -971,27 +991,29 @@ function TreeDataLoader({ transformRef, treeRef, animDone }: LoaderProps) {
   );
 
   return (
-    <div
-      style={{ width: '100%', height: '100%' }}
-      onDragEnd={() => { setDragTaskId(null); setDragCatName(null); }}
-    >
-      <TreeCanvas_Wrapper
-        tasks={tasks}
-        treeRef={treeRef}
-        transformRef={transformRef}
-        currentUserName={currentUserName}
-        animDone={animDone}
-        editMode={editMode}
-        onToggleEdit={() => setEditMode(m => !m)}
-        dragTaskId={dragTaskId}
-        dragCatName={dragCatName}
-        categoryParents={categoryParents}
-        onTaskDragStart={setDragTaskId}
-        onTaskMove={handleTaskMove}
-        onCatDragStart={setDragCatName}
-        onCatNest={handleCategoryNest}
-      />
-    </div>
+    <ProfileMapContext.Provider value={profileNameMap}>
+      <div
+        style={{ width: '100%', height: '100%' }}
+        onDragEnd={() => { setDragTaskId(null); setDragCatName(null); }}
+      >
+        <TreeCanvas_Wrapper
+          tasks={tasks}
+          treeRef={treeRef}
+          transformRef={transformRef}
+          currentUserName={currentUserName}
+          animDone={animDone}
+          editMode={editMode}
+          onToggleEdit={() => setEditMode(m => !m)}
+          dragTaskId={dragTaskId}
+          dragCatName={dragCatName}
+          categoryParents={categoryParents}
+          onTaskDragStart={setDragTaskId}
+          onTaskMove={handleTaskMove}
+          onCatDragStart={setDragCatName}
+          onCatNest={handleCategoryNest}
+        />
+      </div>
+    </ProfileMapContext.Provider>
   );
 }
 

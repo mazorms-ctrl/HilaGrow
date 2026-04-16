@@ -19,11 +19,11 @@ import { useAuth } from '@/contexts/AuthContext';
 
 
 const SCROLL_SECTIONS = [
-  { id: 'section-strategy',       label: 'אסטרטגיה ומדדים',            color: '#3730a3', Icon: BarChart2,     accordionKey: 'strategy'       },
-  { id: 'section-team',           label: 'צוות ומשתתפים',              color: '#16a34a', Icon: Users,         accordionKey: 'team'           },
-  { id: 'section-implementation', label: 'אפיון התהליך והחסמים',       color: '#d97706', Icon: FileText,      accordionKey: 'implementation' },
-  { id: 'section-workplan',       label: 'תוכנית עבודה וביצוע',        color: '#7c3aed', Icon: Flag,          accordionKey: 'workplan'       },
-  { id: 'section-completion',     label: 'סיום ותקשורת',               color: '#0f766e', Icon: MessageSquare, accordionKey: 'completion'     },
+  { id: 'section-strategy',       label: 'יסודות',                     color: '#7c83d0', Icon: BarChart2,     accordionKey: 'strategy'       },
+  { id: 'section-team',           label: 'צוות ומשתתפים',              color: '#6b9977', Icon: Users,         accordionKey: 'team'           },
+  { id: 'section-implementation', label: 'אפיון התהליך והחסמים',       color: '#c49a3c', Icon: FileText,      accordionKey: 'implementation' },
+  { id: 'section-workplan',       label: 'תוכנית עבודה וביצוע',        color: '#9171c0', Icon: Flag,          accordionKey: 'workplan'       },
+  { id: 'section-completion',     label: 'סיום ותקשורת',               color: '#4a8899', Icon: MessageSquare, accordionKey: 'completion'     },
 ] as const;
 
 // ── Shared style objects ───────────────────────────────────────────────────────
@@ -612,7 +612,10 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     await save(updated);
   };
 
-  // ── Milestone field patch (assignedTo, text) ──────────────────────────────
+  // ── Milestone field patch (assignedTo, text, updates, meetingNotes, …) ──────
+  // Text-like fields (updates, meetingNotes, text) skip the immediate save to
+  // avoid racing concurrent saves for every keystroke. The caller must add
+  // onBlur={saveLatest} to trigger the actual persist.
   const patchMilestone = useCallback(<K extends keyof MedicalTask['milestones'][0]>(
     idx: number, key: K, value: MedicalTask['milestones'][0][K]
   ) => {
@@ -622,7 +625,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         i === idx ? { ...m, [key]: value } : m
       );
       const updated = { ...prev, milestones };
-      save(updated);
+      if (key !== 'text' && key !== 'updates' && key !== 'meetingNotes') save(updated);
       return updated;
     });
   }, [save]);
@@ -1129,12 +1132,12 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         .tp-section-band.tp-band-open {
           border-radius: 10px 10px 0 0;
         }
-        .tp-band-blue   { background: #e0e7ff; color: #3730a3; border: 1px solid #a5b4fc; } /* Strategy — Deep Indigo */
-        .tp-band-green  { background: #dcfce7; color: #14532d; border: 1px solid #86efac; } /* Team — Forest Green */
-        .tp-band-amber  { background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; } /* Process — Warm Amber */
-        .tp-band-indigo { background: #ede9fe; color: #5b21b6; border: 1px solid #a78bfa; } /* Work Plan — Violet */
-        .tp-band-teal   { background: #ccfbf1; color: #134e4a; border: 1px solid #2dd4bf; } /* Completion — Dark Teal */
-        .tp-band-purple { background: #faf5ff; color: #6d28d9; border: 1px solid #ddd6fe; } /* (unused by main sections) */
+        .tp-band-blue   { background: linear-gradient(135deg, #ffffff 0%, #f5f6fd 100%); color: #1f2937; border: 1px solid #e8eaf5; border-right: 4px solid #7c83d0; } /* יסודות — Periwinkle */
+        .tp-band-green  { background: linear-gradient(135deg, #ffffff 0%, #f4f8f5 100%); color: #1f2937; border: 1px solid #e2ece5; border-right: 4px solid #6b9977; } /* Team — Sage Olive */
+        .tp-band-amber  { background: linear-gradient(135deg, #ffffff 0%, #faf7f0 100%); color: #1f2937; border: 1px solid #ede8d8; border-right: 4px solid #c49a3c; } /* Process — Warm Gold */
+        .tp-band-indigo { background: linear-gradient(135deg, #ffffff 0%, #f6f4fb 100%); color: #1f2937; border: 1px solid #e9e4f5; border-right: 4px solid #9171c0; } /* Work Plan — Muted Mauve */
+        .tp-band-teal   { background: linear-gradient(135deg, #ffffff 0%, #f2f7f8 100%); color: #1f2937; border: 1px solid #ddeaed; border-right: 4px solid #4a8899; } /* Completion — Deep Teal */
+        .tp-band-purple { background: linear-gradient(135deg, #ffffff 0%, #f6f4fb 100%); color: #1f2937; border: 1px solid #e9e4f5; border-right: 4px solid #9171c0; } /* (unused) */
         .tp-section-wrap { display: block; margin-top: 8px; }
 
         /* ── AI Suggestion Cards — clean enterprise style ── */
@@ -2695,7 +2698,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           {/* ══ SECTION 1: STRATEGY & METRICS (Blue) ══ */}
           <div id="section-strategy" ref={sectionStrategyRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'strategy' ? '0 0 0 3px #a5b4fc, 0 0 20px rgba(55,48,163,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-blue${!collapsedSections.has('strategy') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('strategy')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} /> אסטרטגיה ומדדים</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><BarChart2 size={15} style={{ color: '#7c83d0' }} /> יסודות</span>
               {collapsedSections.has('strategy') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
             <div className={`tp-section-wrap${collapsedSections.has('strategy') ? ' tp-section-collapsed' : ''}`}>
@@ -2761,7 +2764,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           {/* ══ SECTION 2a: TEAM & PARTICIPANTS (Green) ══ */}
           <div id="section-team" ref={sectionTeamRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'team' ? '0 0 0 3px #86efac, 0 0 20px rgba(22,163,74,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-green${!collapsedSections.has('team') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('team')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} /> צוות ומשתתפים</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><Users size={15} style={{ color: '#6b9977' }} /> צוות ומשתתפים</span>
               {collapsedSections.has('team') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
             <div className={`tp-section-wrap${collapsedSections.has('team') ? ' tp-section-collapsed' : ''}`}>
@@ -2835,7 +2838,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           {/* ══ SECTION 2: BLUEPRINT — Characterization & Barriers (Teal) ══ */}
           <div id="section-implementation" ref={sectionImplementationRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'implementation' ? '0 0 0 3px #fcd34d, 0 0 20px rgba(217,119,6,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-amber${!collapsedSections.has('implementation') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('implementation')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} /> אפיון התהליך והחסמים</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><FileText size={15} style={{ color: '#c49a3c' }} /> אפיון התהליך והחסמים</span>
               {collapsedSections.has('implementation') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
             <div className={`tp-section-wrap${collapsedSections.has('implementation') ? ' tp-section-collapsed' : ''}`}>
@@ -2963,9 +2966,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     : <button
                         title="לחץ לקבלת הצעות מבוססות AI"
                         onClick={() => { if (localTask) { setRiskRadarSuggestions([]); runRiskRadarScan(localTask); } }}
-                        style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', border: '1px solid #fde68a', borderRadius: '6px', background: 'transparent', color: '#d97706', cursor: 'pointer', fontSize: '11px', fontWeight: '600', transition: 'background 0.12s' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#fffbeb'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', border: '1px solid #d4b86a', borderRadius: '6px', background: 'transparent', color: '#c49a3c', cursor: 'pointer', fontSize: '11px', fontWeight: '600', transition: 'background 0.15s, box-shadow 0.15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#faf7f0'; e.currentTarget.style.boxShadow = '0 0 10px rgba(196,154,60,0.25)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none'; }}
                       >
                         <Sparkles size={11} /> נתח סיכונים
                       </button>
@@ -3017,7 +3020,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           <div id="section-workplan" ref={sectionWorkplanRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'workplan' ? '0 0 0 3px #a78bfa, 0 0 20px rgba(124,58,237,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-indigo${!collapsedSections.has('workplan') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('workplan')}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <ListChecks size={15} /> תוכנית עבודה וביצוע (אבני דרך)
+                <ListChecks size={15} style={{ color: '#9171c0' }} /> תוכנית עבודה וביצוע (אבני דרך)
                 {task.milestones.length > 0 && (
                   <span style={{ fontSize: '11px', fontWeight: '600', color: milestonesDone === task.milestones.length ? '#10b981' : '#4338ca', background: milestonesDone === task.milestones.length ? '#d1fae5' : '#e0e7ff', padding: '1px 8px', borderRadius: '10px' }}>
                     {milestonesDone} / {task.milestones.length}
@@ -3090,6 +3093,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                               className="tp-workspace-textarea"
                               value={m.updates || ''}
                               onChange={e => { patchMilestone(mIdx, 'updates', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                              onBlur={saveLatest}
                               placeholder="מה קדם מאז הפגישה האחרונה? מה הושלם? מה תקוע?"
                               rows={2}
                             />
@@ -3215,9 +3219,9 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                     : <button
                         title="לחץ לקבלת הצעות מבוססות AI"
                         onClick={() => { if (localTask) { setMilestoneSuggestions([]); aiInitialScanDoneRef.current = false; runMilestoneScan(localTask, true); } }}
-                        style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', border: '1px solid #ddd6fe', borderRadius: '6px', background: 'transparent', color: '#7c3aed', cursor: 'pointer', fontSize: '11px', fontWeight: '600', transition: 'background 0.12s' }}
-                        onMouseEnter={e => { e.currentTarget.style.background = '#f5f3ff'; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; }}
+                        style={{ marginRight: 'auto', display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '3px 8px', border: '1px solid #c0aee0', borderRadius: '6px', background: 'transparent', color: '#9171c0', cursor: 'pointer', fontSize: '11px', fontWeight: '600', transition: 'background 0.15s, box-shadow 0.15s' }}
+                        onMouseEnter={e => { e.currentTarget.style.background = '#f6f4fb'; e.currentTarget.style.boxShadow = '0 0 10px rgba(145,113,192,0.25)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.boxShadow = 'none'; }}
                       >
                         <Sparkles size={11} /> הצע קידום משימה
                       </button>
@@ -3259,11 +3263,11 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
           {/* ══ SECTION 4: COMPLETION & COMMUNICATION (Purple) ══ */}
           <div id="section-completion" ref={sectionCompletionRef} style={{ scrollMarginTop: '16px', marginBottom: '16px', borderRadius: '12px', transition: 'box-shadow 0.4s', boxShadow: highlightedSection === 'completion' ? '0 0 0 3px #2dd4bf, 0 0 20px rgba(15,118,110,0.15)' : 'none' }}>
             <div className={`tp-section-band tp-band-teal${!collapsedSections.has('completion') ? ' tp-band-open' : ''}`} onClick={() => toggleSection('completion')}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} /> סיום ותקשורת</span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}><MessageSquare size={15} style={{ color: '#4a8899' }} /> סיום ותקשורת</span>
               {collapsedSections.has('completion') ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
             </div>
             <div className={`tp-section-wrap${collapsedSections.has('completion') ? ' tp-section-collapsed' : ''}`}>
-            <section className="tp-section" style={{ ...cardStyle, borderColor: '#c7d2fe', borderWidth: '1.5px', boxShadow: '0 4px 20px rgba(79,70,229,0.08)', background: 'linear-gradient(160deg, #fefeff 0%, #f5f3ff 100%)' }}>
+            <section className="tp-section" style={cardStyle}>
               <div className="tp-grid-3" style={{ marginBottom: '16px' }}>
                 <Field label="תוצר מסירה" className="tp-span-2">
                   <EditableArea value={task.finalDeliverable ?? ''} onChange={v => patchLocal('finalDeliverable', v)} onBlur={saveLatest} placeholder="מה הושלם ונמסר? — מערכת, נוהל, הדרכה, אב-טיפוס..." minRows={2} />
