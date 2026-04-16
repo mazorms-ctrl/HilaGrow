@@ -612,7 +612,10 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
     await save(updated);
   };
 
-  // ── Milestone field patch (assignedTo, text) ──────────────────────────────
+  // ── Milestone field patch (assignedTo, text, updates, meetingNotes, …) ──────
+  // Text-like fields (updates, meetingNotes, text) skip the immediate save to
+  // avoid racing concurrent saves for every keystroke. The caller must add
+  // onBlur={saveLatest} to trigger the actual persist.
   const patchMilestone = useCallback(<K extends keyof MedicalTask['milestones'][0]>(
     idx: number, key: K, value: MedicalTask['milestones'][0][K]
   ) => {
@@ -622,7 +625,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
         i === idx ? { ...m, [key]: value } : m
       );
       const updated = { ...prev, milestones };
-      save(updated);
+      if (key !== 'text' && key !== 'updates' && key !== 'meetingNotes') save(updated);
       return updated;
     });
   }, [save]);
@@ -3090,6 +3093,7 @@ export function TaskPageContent({ taskId }: { taskId: string }) {
                               className="tp-workspace-textarea"
                               value={m.updates || ''}
                               onChange={e => { patchMilestone(mIdx, 'updates', e.target.value); e.target.style.height = 'auto'; e.target.style.height = e.target.scrollHeight + 'px'; }}
+                              onBlur={saveLatest}
                               placeholder="מה קדם מאז הפגישה האחרונה? מה הושלם? מה תקוע?"
                               rows={2}
                             />

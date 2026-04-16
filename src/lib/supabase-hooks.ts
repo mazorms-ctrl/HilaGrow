@@ -281,7 +281,16 @@ function dbRowToMedicalTask(
           done: m.done,
           assignedTo: extra.assignedTo as string | undefined,
           dueDate: extra.dueDate as string | undefined,
-          actionItems: (extra.actionItems || []) as Array<{ text: string; done: boolean; assignedTo?: string }>,
+          updates: (extra.updates as string | undefined) || '',
+          meetingNotes: (extra.meetingNotes as string | undefined) || '',
+          parentRef: extra.parentRef as string | undefined,
+          actionItems: (extra.actionItems || []) as Array<{
+            text: string;
+            done: boolean;
+            assignedTo?: string;
+            dueDate?: string;
+            notes?: string;
+          }>,
         };
       }),
     
@@ -869,10 +878,15 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
     milestoneExtras: task.milestones.map(m => ({
       assignedTo: m.assignedTo ?? null,
       dueDate: m.dueDate ?? null,
+      updates: m.updates ?? '',
+      meetingNotes: m.meetingNotes ?? '',
+      parentRef: m.parentRef ?? null,
       actionItems: (m.actionItems || []).map(a => ({
         text: a.text,
         done: a.done,
         assignedTo: a.assignedTo ?? null,
+        dueDate: a.dueDate ?? null,
+        notes: a.notes ?? '',
       })),
     })),
   };
@@ -937,15 +951,16 @@ export async function updateTask(task: MedicalTask, projectId: string): Promise<
   if (deleteError) throw deleteError;
 
   if (task.milestones.length > 0) {
-    const { error: milestonesError } = await supabase.from('milestones').upsert(
+    // Use insert (not upsert) — we just deleted all rows so there are no conflicts.
+    // Upsert with onConflict on a partial unique index caused inserts to fail silently.
+    const { error: milestonesError } = await supabase.from('milestones').insert(
       task.milestones.map((m, idx) => ({
         task_id: confirmedUuid,
         title: m.text,
         done: m.done,
         order: idx,
         assigned_to: m.assignedTo ?? null,
-      })),
-      { onConflict: 'task_id,title', ignoreDuplicates: true }
+      }))
     );
     if (milestonesError) throw milestonesError;
   }
